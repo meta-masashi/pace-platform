@@ -33,18 +33,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const node = mockAssessmentNodes.find((n) => n.node_id === node_id);
-    if (!node) {
-      return NextResponse.json(
-        { error: `Node ${node_id} not found` },
-        { status: 404 }
-      );
-    }
-
     if (!["yes", "no", "unclear"].includes(answer)) {
       return NextResponse.json(
         { error: 'answer must be "yes", "no", or "unclear"' },
         { status: 400 }
+      );
+    }
+
+    // Retrieve nodes cached at session start (real Supabase nodes or mock fallback)
+    const cachedNodes = sessionStore.getNodes(session_id);
+    const relevantNodes = cachedNodes ?? mockAssessmentNodes.filter(
+      (n) => n.file_type === state.assessmentType
+    );
+
+    const node = relevantNodes.find((n) => n.node_id === node_id);
+    if (!node) {
+      return NextResponse.json(
+        { error: `Node ${node_id} not found` },
+        { status: 404 }
       );
     }
 
@@ -56,9 +62,6 @@ export async function POST(request: NextRequest) {
     const complete = isSessionComplete(updatedState);
 
     // Find next question if not complete
-    const relevantNodes = mockAssessmentNodes.filter(
-      (n) => n.file_type === updatedState.assessmentType
-    );
     const nextQuestion = complete
       ? null
       : selectNextNode(updatedState, relevantNodes);

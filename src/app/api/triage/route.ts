@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { TriageEntry, TriggerType, Priority, DailyMetric } from "@/types";
 import { mockAthletes, mockMetrics } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/server";
 
 // ============================================================
 // Threshold constants
@@ -27,38 +28,40 @@ function sevenDayAvg(
 }
 
 // ============================================================
-// Compute triage entry for a single athlete
+// Compute triage entry from athlete + metrics arrays
 // ============================================================
-function computeTriageEntry(
-  athleteId: string,
-  teamId: string
-): TriageEntry | null {
-  const athlete = mockAthletes.find(
-    (a) => a.id === athleteId && a.team_id === teamId
-  );
-  if (!athlete) return null;
-
-  const metrics = mockMetrics[athleteId] ?? [];
+function computeTriageEntryFromData(
+  athlete: {
+    id: string;
+    name: string;
+    position: string;
+    status?: Priority;
+    nrs?: number;
+    hrv?: number;
+    acwr?: number;
+    last_updated?: string;
+  },
+  metrics: DailyMetric[]
+): TriageEntry {
   const latest = metrics[metrics.length - 1];
+
   if (!latest) {
-    // No metrics at all — use athlete snapshot values
     return {
-      athlete_id: athleteId,
+      athlete_id: athlete.id,
       athlete_name: athlete.name,
-      position: athlete.position,
-      priority: athlete.status,
+      position: athlete.position ?? "",
+      priority: (athlete.status as Priority) ?? "normal",
       triggers: [],
-      nrs: athlete.nrs,
-      hrv: athlete.hrv,
-      acwr: athlete.acwr,
-      last_updated: athlete.last_updated,
+      nrs: athlete.nrs ?? 0,
+      hrv: athlete.hrv ?? 0,
+      acwr: athlete.acwr ?? 0,
+      last_updated: athlete.last_updated ?? new Date().toISOString(),
     };
   }
 
   const avgNrs = sevenDayAvg(metrics.slice(0, -1), "nrs");
   const avgHrv = sevenDayAvg(metrics.slice(0, -1), "hrv");
   const avgAcwr = sevenDayAvg(metrics.slice(0, -1), "acwr");
-  const avgSubjective = sevenDayAvg(metrics.slice(0, -1), "subjective_condition");
 
   const triggers: TriggerType[] = [];
 
@@ -78,14 +81,13 @@ function computeTriageEntry(
   }
 
   // Subjective / objective discrepancy
-  // Normalise both to 0-1 scale to compare
   const nrsNorm = latest.nrs / 10;
-  const subjectiveNorm = 1 - (latest.subjective_condition - 1) / 4; // invert: 5=best -> 0, 1=worst -> 1
+  const subjectiveNorm = 1 - (latest.subjective_condition - 1) / 4;
   if (Math.abs(nrsNorm - subjectiveNorm) >= SUBJECTIVE_DISCREPANCY_THRESHOLD / 10) {
     triggers.push("subjective_objective_discrepancy");
   }
 
-  // Baseline deviation (HRV drop >= 20%)
+  // Baseline deviation
   if (avgHrv > 0 && (avgHrv - latest.hrv) / avgHrv >= HRV_BASELINE_DROP_CRITICAL) {
     if (!triggers.includes("hrv_drop")) {
       triggers.push("baseline_deviation");
@@ -110,19 +112,33 @@ function computeTriageEntry(
     priority = "watchlist";
   }
 
-  // Use athlete's stored inference label if available
   return {
-    athlete_id: athleteId,
+    athlete_id: athlete.id,
     athlete_name: athlete.name,
-    position: athlete.position,
+    position: athlete.position ?? "",
     priority,
     triggers,
     nrs: latest.nrs,
     hrv: latest.hrv,
     acwr: latest.acwr,
-    pace_inference_label: athlete.status !== "normal" ? undefined : undefined,
     last_updated: latest.date,
   };
+}
+
+// ============================================================
+// Fallback: compute triage from mock data (original logic)
+// ============================================================
+function computeTriageEntryFromMock(
+  athleteId: string,
+  teamId: string
+): TriageEntry | null {
+  const athlete = mockAthletes.find(
+    (a) => a.id === athleteId && a.team_id === teamId
+  );
+  if (!athlete) return null;
+
+  const metrics = mockMetrics[athleteId] ?? [];
+  return computeTriageEntryFromData(athlete, metrics);
 }
 
 // ============================================================
@@ -140,25 +156,107 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // ---- Try Supabase first ----
+    try {
+      const supabase = await createClient();
+
+      // Fetch athletes for the team
+      const { data: athletes, error: athletesError } = await supabase
+        .from("athletes")
+        .select("id, name, position")
+        .eq("team_id", team_id)
+        .eq("is_active", true);
+
+      if (athletesError) {
+        throw athletesError;
+      }
+
+      // If Supabase returned athletes, use real metrics
+      if (athletes && athletes.length > 0) {
+        const athleteIds = athletes.map((a) => a.id);
+
+        // Fetch last 14 days of metrics for all athletes in team
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+        const cutoff = fourteenDaysAgo.toISOString().split("T")[0];
+
+        const { data: metricsRows, error: metricsError } = await supabase
+          .from("daily_metrics")
+          .select("id, athlete_id, date, nrs, hrv, acwr, sleep_score, subjective_condition, hp_computed")
+          .in("athlete_id", athleteIds)
+          .gte("date", cutoff)
+          .order("date", { ascending: true });
+
+        if (metricsError) {
+          throw metricsError;
+        }
+
+        // Group metrics by athlete_id
+        const metricsByAthlete: Record<string, DailyMetric[]> = {};
+        for (const row of metricsRows ?? []) {
+          if (!metricsByAthlete[row.athlete_id]) {
+            metricsByAthlete[row.athlete_id] = [];
+          }
+          metricsByAthlete[row.athlete_id].push({
+            id: row.id,
+            athlete_id: row.athlete_id,
+            date: row.date,
+            nrs: Number(row.nrs ?? 0),
+            hrv: Number(row.hrv ?? 0),
+            acwr: Number(row.acwr ?? 0),
+            sleep_score: Number(row.sleep_score ?? 0),
+            subjective_condition: Number(row.subjective_condition ?? 3),
+            hp_computed: Number(row.hp_computed ?? 0),
+          });
+        }
+
+        const entries: TriageEntry[] = athletes.map((athlete) => {
+          const metrics = metricsByAthlete[athlete.id] ?? [];
+          return computeTriageEntryFromData(athlete, metrics);
+        });
+
+        const priorityOrder: Record<Priority, number> = {
+          critical: 0,
+          watchlist: 1,
+          normal: 2,
+        };
+        entries.sort(
+          (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
+        );
+
+        return NextResponse.json({
+          team_id,
+          computed_at: new Date().toISOString(),
+          entries,
+        });
+      }
+
+      // Supabase returned zero athletes — fall through to mock
+      console.warn("[triage] No athletes found in Supabase for team_id:", team_id, "— falling back to mock data");
+    } catch (supabaseErr) {
+      console.warn("[triage] Supabase query failed, falling back to mock data:", supabaseErr);
+    }
+
+    // ---- Fallback: mock data ----
     const teamAthletes = mockAthletes.filter((a) => a.team_id === team_id);
     if (teamAthletes.length === 0) {
-      return NextResponse.json(
-        { error: `No athletes found for team_id: ${team_id}` },
-        { status: 404 }
-      );
+      // Return empty array instead of 404 when no data at all
+      return NextResponse.json({
+        team_id,
+        computed_at: new Date().toISOString(),
+        entries: [],
+      });
     }
 
     const entries: TriageEntry[] = teamAthletes
-      .map((a) => computeTriageEntry(a.id, team_id))
+      .map((a) => computeTriageEntryFromMock(a.id, team_id))
       .filter((e): e is TriageEntry => e !== null);
 
-    // Sort by priority: critical > watchlist > normal
     const priorityOrder: Record<Priority, number> = {
       critical: 0,
       watchlist: 1,
       normal: 2,
     };
-
     entries.sort(
       (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
     );
