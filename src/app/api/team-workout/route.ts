@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Workout, WorkoutItem } from "@/types";
 import { checkRateLimit, extractUserId } from "@/lib/rate-limit";
 import { validateHardLocks } from "@/lib/hard-lock";
+import { createClient } from "@/lib/supabase/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
@@ -212,6 +213,20 @@ async function generateWithRetry(
 
 export async function POST(request: NextRequest) {
   try {
+    // ── Auth check ─────────────────────────────────────────────────────────
+    if (
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     // ── Rate limiting ──────────────────────────────────────────────────────
     const userId = extractUserId(request);
     const rl = checkRateLimit(userId, "team-workout");

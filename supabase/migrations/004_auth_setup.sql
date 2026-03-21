@@ -1,0 +1,48 @@
+-- =============================================================================
+-- 004_auth_setup.sql
+-- MANUAL EXECUTION REQUIRED — do NOT run this via automated migrations.
+-- Execute these statements in the Supabase SQL Editor after creating auth users.
+-- =============================================================================
+
+-- Step 1: Create test auth users in Supabase Auth
+-- (Do this via the Supabase Dashboard → Authentication → Users → "Add User",
+--  or use the Supabase Admin API / CLI. The SQL below is illustrative only —
+--  direct INSERT into auth.users is not recommended in production.)
+
+-- Step 2: After creating the auth users, insert corresponding staff rows.
+-- Replace the UUIDs below with the actual auth.users.id values from your project.
+--
+-- Example (replace <UUID_*> with real auth user IDs):
+--
+-- INSERT INTO staff (id, org_id, team_id, name, email, role, is_leader, is_active)
+-- VALUES
+--   ('<UUID_MASTER>',
+--    (SELECT id FROM organizations LIMIT 1),
+--    (SELECT id FROM teams LIMIT 1),
+--    'Master User', 'master@paceplatform.com', 'master', true, true),
+--
+--   ('<UUID_AT>',
+--    (SELECT id FROM organizations LIMIT 1),
+--    (SELECT id FROM teams LIMIT 1),
+--    'AT User', 'at@paceplatform.com', 'AT', false, true),
+--
+--   ('<UUID_PT>',
+--    (SELECT id FROM organizations LIMIT 1),
+--    (SELECT id FROM teams LIMIT 1),
+--    'PT User', 'pt@paceplatform.com', 'PT', false, true),
+--
+--   ('<UUID_SC>',
+--    (SELECT id FROM organizations LIMIT 1),
+--    (SELECT id FROM teams LIMIT 1),
+--    'S&C User', 'sc@paceplatform.com', 'S&C', false, true)
+-- ON CONFLICT (id) DO NOTHING;
+
+-- Step 3: Ensure the RLS policy allows a staff member to read their own row.
+-- (This is already handled by 002_rls.sql / 002_rls_policies.sql via auth.uid().)
+-- Verify with:
+--   SELECT * FROM staff WHERE id = auth.uid();
+
+-- Step 4: Verify login works end-to-end:
+--   1. Go to /auth/login
+--   2. Sign in with master@paceplatform.com / Pace2026!
+--   3. Should redirect to /dashboard with real name + role in the sidebar
