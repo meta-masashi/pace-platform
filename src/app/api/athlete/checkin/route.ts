@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "https://athlete.hachi-riskon.com",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+// Preflight
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 // Lazy-initialized service role client (avoids build-time env errors)
 function getServiceClient() {
   return createServiceClient(
@@ -16,13 +27,13 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "");
     if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS_HEADERS });
     }
 
     const supabaseAuth = await createClient();
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS_HEADERS });
     }
 
     // 2. Parse body
@@ -54,13 +65,13 @@ export async function POST(req: NextRequest) {
 
     if (dbError) {
       console.error("[checkin] DB error:", dbError);
-      return NextResponse.json({ error: dbError.message }, { status: 500 });
+      return NextResponse.json({ error: dbError.message }, { status: 500, headers: CORS_HEADERS });
     }
 
-    return NextResponse.json({ success: true, hp_computed });
+    return NextResponse.json({ success: true, hp_computed }, { headers: CORS_HEADERS });
   } catch (e) {
     console.error("[checkin] Unexpected error:", e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: CORS_HEADERS });
   }
 }
 
@@ -69,13 +80,13 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader?.replace("Bearer ", "");
   if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS_HEADERS });
   }
 
   const supabaseAuth = await createClient();
   const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
   if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS_HEADERS });
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -87,5 +98,5 @@ export async function GET(req: NextRequest) {
     .eq("date", today)
     .maybeSingle();
 
-  return NextResponse.json({ submitted: !!data, data: data ?? null });
+  return NextResponse.json({ submitted: !!data, data: data ?? null }, { headers: CORS_HEADERS });
 }

@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "https://athlete.hachi-riskon.com",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 // POST /api/invites/validate — Validate an invite code (no auth required)
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +23,7 @@ export async function POST(request: NextRequest) {
     const { code } = body as { code: string };
 
     if (!code) {
-      return NextResponse.json({ error: "code is required" }, { status: 400 });
+      return NextResponse.json({ error: "code is required" }, { status: 400, headers: CORS_HEADERS });
     }
 
     const { data: invite, error } = await supabase
@@ -29,11 +39,10 @@ export async function POST(request: NextRequest) {
     if (error || !invite) {
       return NextResponse.json(
         { error: "招待コードが無効か期限切れです" },
-        { status: 404 }
+        { status: 404, headers: CORS_HEADERS }
       );
     }
 
-    // Supabase returns joined tables as nested objects or arrays; normalise both forms
     const teamsRaw = invite.teams as unknown;
     const orgsRaw = invite.organizations as unknown;
     const teams = Array.isArray(teamsRaw)
@@ -50,9 +59,9 @@ export async function POST(request: NextRequest) {
       org_name: organizations?.name ?? null,
       team_name: teams?.name ?? null,
       athlete_name: invite.athlete_name ?? null,
-    });
+    }, { headers: CORS_HEADERS });
   } catch (err) {
     console.error("[api/invites/validate POST]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: CORS_HEADERS });
   }
 }

@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "https://athlete.hachi-riskon.com",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 interface UseInviteBody {
   code: string;
   athlete_id: string;
@@ -22,11 +32,10 @@ export async function POST(request: NextRequest) {
     if (!code || !athlete_id || !name) {
       return NextResponse.json(
         { error: "code, athlete_id, and name are required" },
-        { status: 400 }
+        { status: 400, headers: CORS_HEADERS }
       );
     }
 
-    // Lookup the invite (must be unused and not expired)
     const { data: invite, error: lookupError } = await supabase
       .from("athlete_invites")
       .select("id, org_id, team_id")
@@ -38,13 +47,12 @@ export async function POST(request: NextRequest) {
     if (lookupError || !invite) {
       return NextResponse.json(
         { error: "招待コードが無効か期限切れです" },
-        { status: 404 }
+        { status: 404, headers: CORS_HEADERS }
       );
     }
 
     const { org_id, team_id } = invite;
 
-    // Insert athlete record
     const { error: athleteError } = await supabase.from("athletes").insert({
       id: athlete_id,
       org_id,
@@ -57,12 +65,11 @@ export async function POST(request: NextRequest) {
       console.error("[api/invites/use POST] athlete insert:", athleteError);
       return NextResponse.json(
         { error: "Failed to create athlete record" },
-        { status: 500 }
+        { status: 500, headers: CORS_HEADERS }
       );
     }
 
-    // Mark invite as used
-    const { error: updateError } = await supabase
+    await supabase
       .from("athlete_invites")
       .update({
         used_at: new Date().toISOString(),
@@ -70,14 +77,9 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", invite.id);
 
-    if (updateError) {
-      console.error("[api/invites/use POST] invite update:", updateError);
-      // Athlete was created; log error but still return success
-    }
-
-    return NextResponse.json({ success: true, athlete_id, team_id });
+    return NextResponse.json({ success: true, athlete_id, team_id }, { headers: CORS_HEADERS });
   } catch (err) {
     console.error("[api/invites/use POST]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: CORS_HEADERS });
   }
 }
