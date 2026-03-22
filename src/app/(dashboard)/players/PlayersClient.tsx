@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, UserPlus, Copy, Check, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -20,6 +20,137 @@ const statusLabel: Record<Priority, string> = {
   normal: "Normal",
 };
 
+interface InviteResult {
+  code: string;
+  expires_at: string;
+}
+
+function InviteModal({ onClose }: { onClose: () => void }) {
+  const [athleteName, setAthleteName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<InviteResult | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ athlete_name: athleteName.trim() || undefined }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "招待コードの発行に失敗しました");
+      }
+      const data = await res.json();
+      setResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "エラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!result) return;
+    await navigator.clipboard.writeText(result.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const expiresDate = result
+    ? new Date(result.expires_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })
+    : "";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">招待コード発行</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {!result ? (
+            <>
+              <p className="text-sm text-gray-600">
+                選手がモバイルアプリで新規登録する際に使用する招待コードを発行します。
+                コードは<strong>1回使い切り・7日間有効</strong>です。
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  選手名（任意）
+                </label>
+                <input
+                  type="text"
+                  value={athleteName}
+                  onChange={(e) => setAthleteName(e.target.value)}
+                  placeholder="例: 山田 太郎"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">入力すると登録時に自動入力されます</p>
+              </div>
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+              >
+                {loading ? "発行中..." : "招待コードを発行する"}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="text-center space-y-3">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <Check className="w-6 h-6 text-green-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-700">招待コードを発行しました</p>
+              </div>
+
+              <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl p-4 text-center">
+                <p className="text-3xl font-bold tracking-[0.3em] text-gray-900 font-mono">
+                  {result.code}
+                </p>
+                <p className="text-xs text-gray-400 mt-2">{expiresDate}まで有効</p>
+              </div>
+
+              <button
+                onClick={handleCopy}
+                className="w-full flex items-center justify-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-lg text-sm transition-colors"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                {copied ? "コピーしました" : "コードをコピー"}
+              </button>
+
+              <p className="text-xs text-gray-500 text-center">
+                このコードをLINEやメールで選手に送ってください。
+                <br />選手は athlete.hachi-riskon.com から新規登録できます。
+              </p>
+
+              <button
+                onClick={() => { setResult(null); setAthleteName(""); }}
+                className="w-full text-sm text-green-600 hover:text-green-700 font-medium py-1"
+              >
+                もう1枚発行する
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface PlayersClientProps {
   athletes: Athlete[];
 }
@@ -27,6 +158,7 @@ interface PlayersClientProps {
 export function PlayersClient({ athletes }: PlayersClientProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<Priority | "all">("all");
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   const filtered = athletes.filter((a) => {
     const matchSearch =
@@ -39,9 +171,20 @@ export function PlayersClient({ athletes }: PlayersClientProps) {
 
   return (
     <div className="space-y-6">
+      {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} />}
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">選手一覧</h1>
-        <span className="text-sm text-gray-500">{athletes.length}名登録</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">{athletes.length}名登録</span>
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            招待コード発行
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
