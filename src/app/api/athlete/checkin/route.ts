@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
   const serviceSupabase = getServiceClient();
   const { data } = await serviceSupabase
     .from("daily_metrics")
-    .select("id, nrs, sleep_score, subjective_condition, memo")
+    .select("id, nrs, sleep_score, subjective_condition, memo, hp_computed")
     .eq("athlete_id", user.id)
     .eq("date", today)
     .maybeSingle();
