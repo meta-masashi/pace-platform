@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { Hash, Send, Link2, ShieldCheck, CheckCheck, Check, Filter } from "lucide-react";
 import { mockChannels, mockMessages, mockStaff } from "@/lib/mock-data";
 import { formatDateTime } from "@/lib/utils";
-import type { Channel, Message } from "@/types";
+import type { Channel, Message, Staff } from "@/types";
+import { createClient } from "@/lib/supabase/client";
 
 const roleColors: Record<string, string> = {
   master: "bg-purple-100 text-purple-700",
@@ -30,39 +31,188 @@ P: 荷重テスト明日実施。アイシング継続。Hard Lock延長`;
 
 type FilterRole = "all" | "AT" | "PT" | "S&C" | "master";
 
-const currentStaffId = "staff-2"; // logged in as AT (鈴木 花子)
+// Fallback mock staff id for unauthenticated / dev mode
+const MOCK_STAFF_ID = "staff-2";
 
 export default function CommunityPage() {
+  const [channels, setChannels] = useState<Channel[]>(mockChannels);
   const [activeChannel, setActiveChannel] = useState<Channel>(mockChannels[0]);
   const [messageText, setMessageText] = useState("");
   const [cdsEnabled, setCdsEnabled] = useState(false);
   const [roleFilter, setRoleFilter] = useState<FilterRole>("all");
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const channelMessages = messages.filter((m) => m.channel_id === activeChannel.id);
+  // The id used for "is this my message" checks (real auth uid or mock fallback)
+  const currentStaffId = currentUserId ?? MOCK_STAFF_ID;
+
+  // ── Initial bootstrap ──────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+
+    async function bootstrap() {
+      // 1. Resolve current user (silent fallback if not authenticated)
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!cancelled && user) {
+          setCurrentUserId(user.id);
+        }
+      } catch {
+        // unauthenticated — use mock staff id
+      }
+
+      // 2. Fetch channels
+      try {
+        const { data, error } = await supabase
+          .from("channels")
+          .select("*")
+          .order("name");
+
+        if (!cancelled && data && data.length > 0 && !error) {
+          setChannels(data as Channel[]);
+          setActiveChannel(data[0] as Channel);
+        }
+        // else keep mockChannels already set as initial state
+      } catch {
+        console.warn("[community] Failed to fetch channels, using mock data");
+      }
+    }
+
+    bootstrap();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Fetch messages whenever activeChannel changes ──────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+
+    async function fetchMessages() {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*, staff:staff_id(id, name, role, email, is_leader, is_active, org_id, team_id)")
+          .eq("channel_id", activeChannel.id)
+          .order("created_at", { ascending: true })
+          .limit(100);
+
+        if (cancelled) return;
+
+        if (data && data.length > 0 && !error) {
+          // Cast the staff join (returned as object) to Staff type
+          const mapped: Message[] = data.map((row) => ({
+            ...row,
+            staff: row.staff as unknown as Staff,
+          }));
+          setMessages(mapped);
+        } else {
+          // Fall back to mock messages for this channel
+          setMessages(mockMessages.filter((m) => m.channel_id === activeChannel.id));
+        }
+      } catch {
+        console.warn("[community] Failed to fetch messages, using mock data");
+        if (!cancelled) {
+          setMessages(mockMessages.filter((m) => m.channel_id === activeChannel.id));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchMessages();
+    return () => { cancelled = true; };
+  }, [activeChannel.id]);
+
+  // ── Realtime subscription ──────────────────────────────────────────────────
+  useEffect(() => {
+    const supabase = createClient();
+
+    const realtimeChannel = supabase
+      .channel(`messages:${activeChannel.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `channel_id=eq.${activeChannel.id}`,
+        },
+        async (payload) => {
+          try {
+            const { data } = await supabase
+              .from("messages")
+              .select("*, staff:staff_id(id, name, role, email, is_leader, is_active, org_id, team_id)")
+              .eq("id", payload.new.id)
+              .single();
+
+            if (data) {
+              const mapped: Message = {
+                ...data,
+                staff: data.staff as unknown as Staff,
+              };
+              setMessages((prev) => [...prev, mapped]);
+            }
+          } catch {
+            console.warn("[community] Realtime fetch failed for new message");
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(realtimeChannel);
+    };
+  }, [activeChannel.id]);
+
+  // ── Auto-scroll ────────────────────────────────────────────────────────────
+  const channelMessages = messages; // already filtered to activeChannel by fetch
   const filteredMessages = roleFilter === "all"
     ? channelMessages
-    : channelMessages.filter(m => m.staff.role === roleFilter);
+    : channelMessages.filter((m) => m.staff.role === roleFilter);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [filteredMessages.length, activeChannel.id]);
 
-  function handleSend() {
+  // ── Send message ───────────────────────────────────────────────────────────
+  async function handleSend() {
     if (!messageText.trim()) return;
-    const staff = mockStaff.find(s => s.id === currentStaffId) ?? mockStaff[1];
     const content = cdsEnabled ? messageText + CDS_DISCLAIMER : messageText;
-    const newMsg: Message = {
-      id: `msg-${Date.now()}`,
-      channel_id: activeChannel.id,
-      staff,
-      content,
-      created_at: new Date().toISOString(),
-      cds_disclaimer: cdsEnabled,
-      read_by: [],
-    };
-    setMessages(prev => [...prev, newMsg]);
+
+    if (currentUserId) {
+      // Authenticated: persist to Supabase; Realtime subscription will add to state
+      try {
+        const supabase = createClient();
+        await supabase.from("messages").insert({
+          channel_id: activeChannel.id,
+          staff_id: currentUserId,
+          content,
+          cds_disclaimer: cdsEnabled,
+        });
+        // Do NOT optimistically add — Realtime handles it
+      } catch {
+        console.warn("[community] Failed to send message");
+      }
+    } else {
+      // Dev / unauthenticated: local mock state
+      const staff = mockStaff.find((s) => s.id === MOCK_STAFF_ID) ?? mockStaff[1];
+      const newMsg: Message = {
+        id: `msg-${Date.now()}`,
+        channel_id: activeChannel.id,
+        staff,
+        content,
+        created_at: new Date().toISOString(),
+        cds_disclaimer: cdsEnabled,
+        read_by: [],
+      };
+      setMessages((prev) => [...prev, newMsg]);
+    }
+
     setMessageText("");
   }
 
@@ -78,10 +228,12 @@ export default function CommunityPage() {
     }
   }
 
+  // Read receipts remain local/mock for now (future task: persist via RPC)
   const unreadCount = (channelId: string) => {
-    return messages.filter(m =>
-      m.channel_id === channelId &&
-      !m.read_by?.some(r => r.staff_id === currentStaffId)
+    return messages.filter(
+      (m) =>
+        m.channel_id === channelId &&
+        !m.read_by?.some((r) => r.staff_id === currentStaffId)
     ).length;
   };
 
@@ -95,7 +247,7 @@ export default function CommunityPage() {
             <p className="text-xs text-gray-400 mt-0.5">多職種クローズドメッセージ</p>
           </div>
           <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
-            {mockChannels.map((channel) => {
+            {channels.map((channel) => {
               const unread = unreadCount(channel.id);
               return (
                 <button
@@ -126,7 +278,7 @@ export default function CommunityPage() {
           <div className="px-3 py-3 border-t border-gray-100 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">クイックアクション</p>
             <button
-              onClick={() => { setActiveChannel(mockChannels[0]); handleSOAPQuote(); }}
+              onClick={() => { setActiveChannel(channels[0]); handleSOAPQuote(); }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs text-left bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
             >
               <Link2 className="w-3.5 h-3.5 flex-shrink-0" />
@@ -136,7 +288,7 @@ export default function CommunityPage() {
               <ShieldCheck className={`w-3.5 h-3.5 ${cdsEnabled ? "text-amber-600" : "text-gray-400"}`} />
               <span className="text-xs text-gray-600 flex-1">CDS免責文言</span>
               <button
-                onClick={() => setCdsEnabled(v => !v)}
+                onClick={() => setCdsEnabled((v) => !v)}
                 className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${cdsEnabled ? "bg-amber-500" : "bg-gray-200"}`}
               >
                 <span className={`block w-4 h-4 bg-white rounded-full shadow-sm transition-transform mx-0.5 ${cdsEnabled ? "translate-x-4" : "translate-x-0"}`} />
@@ -158,7 +310,7 @@ export default function CommunityPage() {
               {/* Role filter */}
               <div className="flex items-center gap-1">
                 <Filter className="w-3.5 h-3.5 text-gray-400" />
-                {(["all", "AT", "PT", "S&C", "master"] as FilterRole[]).map(r => (
+                {(["all", "AT", "PT", "S&C", "master"] as FilterRole[]).map((r) => (
                   <button
                     key={r}
                     onClick={() => setRoleFilter(r)}
@@ -177,7 +329,20 @@ export default function CommunityPage() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-gray-50">
-            {filteredMessages.length === 0 ? (
+            {loading ? (
+              /* Loading skeleton */
+              <div className="space-y-4 pt-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-start gap-3 animate-pulse">
+                    <div className="w-9 h-9 rounded-full bg-gray-200 flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-gray-200 rounded w-32" />
+                      <div className="h-10 bg-gray-200 rounded w-3/4" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredMessages.length === 0 ? (
               <div className="text-center text-sm text-gray-400 pt-12">
                 このチャンネルにはまだメッセージがありません
               </div>
@@ -231,7 +396,7 @@ export default function CommunityPage() {
                             <CheckCheck className="w-3 h-3 text-blue-400" />
                             <span>既読 {readCount}</span>
                             <span className="text-gray-300">—</span>
-                            {message.read_by!.slice(0, 2).map(r => (
+                            {message.read_by!.slice(0, 2).map((r) => (
                               <span key={r.staff_id} className="text-gray-400">{r.staff_name.split(" ")[0]}</span>
                             ))}
                             {readCount > 2 && <span>他{readCount - 2}名</span>}
