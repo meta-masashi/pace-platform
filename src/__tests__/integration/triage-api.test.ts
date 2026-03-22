@@ -343,7 +343,7 @@ describe("GET /api/triage", () => {
     }
   });
 
-  it("Supabase がゼロ件の場合: モックデータにフォールバックする", async () => {
+  it("Supabase がゼロ件の場合: 空エントリを返す", async () => {
     // Return empty athletes array from Supabase
     mockFrom.mockImplementation((table: string) => {
       if (table === "athletes") {
@@ -372,27 +372,26 @@ describe("GET /api/triage", () => {
       };
     });
 
-    // Use team-1 which has athletes in mock data
     const req = new Request("http://localhost/api/triage?team_id=team-1");
     const res = await triageRoute(req as Parameters<typeof triageRoute>[0]);
     expect(res.status).toBe(200);
 
     const data = await res.json();
     expect(data).toHaveProperty("entries");
-    // Mock data has 6 athletes for team-1
-    expect(data.entries.length).toBeGreaterThan(0);
+    // No athletes → empty entries (no mock fallback)
+    expect(Array.isArray(data.entries)).toBe(true);
+    expect(data.entries.length).toBe(0);
   });
 
-  it("Supabase エラー時: モックデータにフォールバックする", async () => {
+  it("Supabase エラー時: 500を返す", async () => {
     setupSupabaseError();
 
     const req = new Request("http://localhost/api/triage?team_id=team-1");
     const res = await triageRoute(req as Parameters<typeof triageRoute>[0]);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
 
     const data = await res.json();
-    expect(data).toHaveProperty("team_id", "team-1");
-    expect(Array.isArray(data.entries)).toBe(true);
+    expect(data).toHaveProperty("error");
   });
 
   it("存在しない team_id: 空エントリを返す", async () => {

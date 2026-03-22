@@ -18,19 +18,68 @@ jest.mock("next/headers", () => ({
   })),
 }));
 
-// Mock Supabase server client — returns empty data so the route falls back to mock nodes
+// Minimal assessment node fixture — enough for bayesian engine to start a session
+const MOCK_NODES = [
+  {
+    node_id: "P0_001",
+    file_type: "F1_Acute",
+    phase: "P0",
+    category: "context",
+    question_text: "テスト質問1",
+    target_axis: "pain",
+    lr_yes: 2.0,
+    lr_no: 0.5,
+    kappa: 0.1,
+    routing_rules: null,
+    prescription_tags: [],
+    contraindication_tags: [],
+    time_decay_lambda: 0.01,
+    evidence_level: "A",
+    sort_order: 1,
+  },
+  {
+    node_id: "P0_002",
+    file_type: "F1_Acute",
+    phase: "P0",
+    category: "context",
+    question_text: "テスト質問2",
+    target_axis: "function",
+    lr_yes: 1.5,
+    lr_no: 0.7,
+    kappa: 0.05,
+    routing_rules: null,
+    prescription_tags: [],
+    contraindication_tags: [],
+    time_decay_lambda: 0.01,
+    evidence_level: "B",
+    sort_order: 2,
+  },
+];
+
+// Mock Supabase server client — returns fixture nodes so assessment/start works without DB
 jest.mock("@/lib/supabase/server", () => ({
   createClient: jest.fn(async () => ({
-    from: jest.fn(() => ({
-      select: jest.fn(() => ({
-        eq: jest.fn(() => ({
-          order: jest.fn(() => ({
-            data: null,
-            error: null,
+    from: jest.fn((table: string) => {
+      if (table === "assessment_nodes") {
+        return {
+          select: jest.fn(() => ({
+            eq: jest.fn(() => ({
+              order: jest.fn(async () => ({
+                data: MOCK_NODES,
+                error: null,
+              })),
+            })),
+          })),
+        };
+      }
+      return {
+        select: jest.fn(() => ({
+          eq: jest.fn(() => ({
+            order: jest.fn(async () => ({ data: [], error: null })),
           })),
         })),
-      })),
-    })),
+      };
+    }),
     auth: {
       getUser: jest.fn(async () => ({
         data: { user: { id: "staff-1" } },
