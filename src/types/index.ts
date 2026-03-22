@@ -166,15 +166,26 @@ export interface AthleteLock {
 }
 
 // ---- Rehabilitation ----
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+
 export interface RehabProgram {
   id: string;
   athlete_id: string;
-  diagnosis_code: string;
+  diagnosis_code?: string;
   diagnosis_label: string;
   current_phase: RehabPhase;
   start_date: string;
-  estimated_rtp_date: string;
+  estimated_rtp_date?: string;
   status: "active" | "completed" | "on_hold";
+  // Doctor approval fields
+  approval_status: ApprovalStatus;
+  doctor_name?: string;
+  doctor_institution?: string;
+  approved_by?: string;
+  approved_at?: string;
+  diagnosis_document_url?: string;
+  diagnosis_confirmed_at?: string;
+  rejection_reason?: string;
   // measurements
   rom?: number;
   swelling_grade?: number;
