@@ -92,6 +92,8 @@ export default async function TriagePage() {
   let staffMembers: { role: string; name: string }[] = [];
   let currentStaffName = "スタッフ";
   let currentStaffRole = "AT";
+  // athlete_id -> 未解決の最新 triage.id
+  const triageIdMap: Record<string, string> = {};
 
   try {
     if (
@@ -148,6 +150,22 @@ export default async function TriagePage() {
         entries.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
 
         triageEntries = entries;
+
+        // Fetch unresolved triage DB entries to populate triageIdMap
+        // (athlete_id -> 最新の未解決 triage.id)
+        const { data: triageRows } = await supabase
+          .from("triage")
+          .select("id, athlete_id, created_at")
+          .in("athlete_id", athleteIds)
+          .is("resolved_at", null)
+          .order("created_at", { ascending: false });
+
+        // 各 athlete の最新エントリのみ保持
+        for (const row of triageRows ?? []) {
+          if (!triageIdMap[row.athlete_id]) {
+            triageIdMap[row.athlete_id] = row.id;
+          }
+        }
       }
 
       // Fetch staff for escalation modal
@@ -196,6 +214,7 @@ export default async function TriagePage() {
       staffMembers={staffMembers}
       currentStaffName={currentStaffName}
       currentStaffRole={currentStaffRole}
+      triageIdMap={triageIdMap}
     />
   );
 }

@@ -1,5 +1,7 @@
--- Enable UUID extension
+-- Enable required extensions
 create extension if not exists "uuid-ossp";
+create extension if not exists "pgcrypto";   -- gen_random_uuid()
+create extension if not exists "vector";     -- pgvector: vector similarity search (RAG / embeddings)
 
 -- Multi-tenant
 create table organizations (

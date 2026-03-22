@@ -74,8 +74,19 @@ function entropy(priors: Record<string, number>): number {
 }
 
 /**
+ * Maximum posterior probability — used as the confidence metric.
+ * Range: [0, 1] where 1 means complete certainty.
+ */
+function maxPosterior(priors: Record<string, number>): number {
+  const values = Object.values(priors);
+  if (values.length === 0) return 0;
+  return Math.max(...values);
+}
+
+/**
  * Simulate the posterior after answering `node` with `answer`,
  * restricted to diagnoses relevant to this node's target_axis.
+ * Uses Bayesian update: P(dx | answer) ∝ P(dx) × LR(answer)
  */
 function simulatePosterior(
   priors: Record<string, number>,
@@ -88,6 +99,7 @@ function simulatePosterior(
   const updated = { ...priors };
   for (const code of relevantCodes) {
     if (updated[code] !== undefined) {
+      // Bayesian update: multiply prior by likelihood ratio
       updated[code] = updated[code] * lr;
     }
   }
@@ -95,7 +107,7 @@ function simulatePosterior(
 }
 
 // ============================================================
-// Public API
+// Public API — Legacy stateful functions
 // ============================================================
 
 /** Create a fresh inference state for a new session. */
@@ -146,6 +158,8 @@ export function updatePosterior(
 /**
  * Calculate the expected information gain (entropy reduction) if we were
  * to ask `node` next, given the current posterior.
+ * IG = H(current) − E[H(posterior | response)]
+ *    = H(current) − [P(yes)·H(posterior_yes) + P(no)·H(posterior_no)]
  */
 export function calculateInformationGain(
   node: AssessmentNode,
@@ -262,12 +276,131 @@ export function getResults(state: InferenceState): DiagnosisResult[] {
 
 /**
  * Determine whether the session is complete:
- * >= 8 nodes answered AND top diagnosis confidence > 0.65,
+ * >= 8 nodes answered AND top diagnosis confidence > 0.75 (§4.5仕様: 信頼度閾値 >75%),
  * OR the session is flagged as an emergency.
+ * 防壁4: Falls back safely — if state is corrupt, returns false to continue gathering data.
  */
 export function isSessionComplete(state: InferenceState): boolean {
   if (state.isEmergency) return true;
   if (state.answeredNodes.size < 8) return false;
-  const top = getResults(state)[0];
-  return top !== undefined && top.probability > 0.65;
+  try {
+    const top = getResults(state)[0];
+    return top !== undefined && top.probability > 0.75;
+  } catch {
+    // 防壁4: computation error fallback — keep session open
+    return false;
+  }
+}
+
+// ============================================================
+// Public API — Required interface from §タスク#4 specification
+// ============================================================
+
+/**
+ * Receive a new answer and update the probability distribution.
+ * Returns the updated beliefs and a confidence score (max posterior probability).
+ *
+ * P(diagnosis | answer_sequence) = P(diagnosis) × ∏ LR_i(answer_i)
+ * 事後確率は正規化（全仮説の合計 = 1）
+ *
+ * 防壁4: JSONパース失敗・計算エラー時は一様分布にリセット
+ */
+export function updateBeliefs(
+  currentBeliefs: Record<string, number>,
+  nodeId: string,
+  answer: "yes" | "no" | "unknown",
+  availableNodes: AssessmentNode[]
+): { updatedBeliefs: Record<string, number>; confidence: number } {
+  try {
+    const node = availableNodes.find((n) => n.node_id === nodeId);
+    if (!node) {
+      // Node not found — return beliefs unchanged
+      const confidence = maxPosterior(currentBeliefs);
+      return { updatedBeliefs: currentBeliefs, confidence };
+    }
+
+    // Map "unknown" → AnswerValue "unclear" for internal Bayesian update
+    const answerValue: AnswerValue =
+      answer === "yes" ? "yes" : answer === "no" ? "no" : "unclear";
+
+    const updatedBeliefs = simulatePosterior(currentBeliefs, node, answerValue);
+    const confidence = maxPosterior(updatedBeliefs);
+
+    return { updatedBeliefs, confidence };
+  } catch {
+    // 防壁4: 計算エラー時のフォールバック — 一様分布にリセット
+    const fallback = uniformPriors();
+    return { updatedBeliefs: fallback, confidence: maxPosterior(fallback) };
+  }
+}
+
+/**
+ * Select the next question to ask, ranked by information gain.
+ * Respects clinical phase order (RedFlag > 主訴 > 視診 > 触診 > 動作確認 > スペシャルテスト).
+ * Within the same phase, selects the node that maximises expected entropy reduction.
+ *
+ * IG(node) = H(beliefs) − [P(yes)·H(posterior_yes) + P(no)·H(posterior_no)]
+ *
+ * Returns null when all available nodes have been answered.
+ */
+export function selectNextQuestion(
+  currentBeliefs: Record<string, number>,
+  remainingNodes: AssessmentNode[],
+  answeredNodeIds: string[]
+): AssessmentNode | null {
+  // Filter to unanswered nodes only
+  const candidates = remainingNodes.filter(
+    (n) => !answeredNodeIds.includes(n.node_id)
+  );
+  if (candidates.length === 0) return null;
+
+  // Build a minimal state-like object for calculateInformationGain
+  const tempState: InferenceState = {
+    sessionId: "_temp",
+    athleteId: "_temp",
+    staffId: "_temp",
+    assessmentType: "F1_Acute",
+    injuryRegion: "general",
+    priors: currentBeliefs,
+    answeredNodes: new Set(answeredNodeIds),
+    responses: [],
+    isEmergency: false,
+    startedAt: new Date().toISOString(),
+  };
+
+  return candidates.sort((a, b) => {
+    // Phase priority first (RedFlag = 0 takes precedence)
+    const pA = PHASE_PRIORITY[a.phase] ?? 99;
+    const pB = PHASE_PRIORITY[b.phase] ?? 99;
+    if (pA !== pB) return pA - pB;
+    // Within same phase, maximise expected information gain
+    return calculateInformationGain(b, tempState) - calculateInformationGain(a, tempState);
+  })[0];
+}
+
+/**
+ * Check all 6 Red Flag items against the current answers.
+ * A Red Flag is triggered when a node with phase "RedFlag" has been answered "yes".
+ * Immediate emergency referral is required when hasRedFlag === true.
+ *
+ * Returns:
+ *   hasRedFlag      — true if any Red Flag criteria is met
+ *   triggeredFlags  — node_ids of triggered Red Flag nodes
+ */
+export function checkRedFlags(
+  answers: Record<string, "yes" | "no" | "unknown">
+): { hasRedFlag: boolean; triggeredFlags: string[] } {
+  // Red Flag node IDs defined in §4.5: RF_001 through RF_006
+  // Any node_id that starts with "RF_" is treated as a Red Flag gate item.
+  const triggeredFlags: string[] = Object.entries(answers)
+    .filter(([nodeId, answer]) => {
+      const isRedFlagNode = nodeId.startsWith("RF_") || nodeId.startsWith("REDFLAG_");
+      return isRedFlagNode && answer === "yes";
+    })
+    .map(([nodeId]) => nodeId);
+
+  return {
+    hasRedFlag: triggeredFlags.length > 0,
+    triggeredFlags,
+  };
 }

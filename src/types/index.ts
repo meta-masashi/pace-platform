@@ -229,6 +229,7 @@ export type TriggerType =
   | "subjective_objective_discrepancy"
   | "baseline_deviation";
 
+/** Computed triage entry (runtime, not persisted as-is) */
 export interface TriageEntry {
   athlete_id: string;
   athlete_name: string;
@@ -241,6 +242,28 @@ export interface TriageEntry {
   pace_inference_label?: string;
   pace_inference_confidence?: number;
   last_updated: string;
+}
+
+/** DB triage テーブルの永続化レコード */
+export type TriageTriggerType =
+  | "nrs_spike"
+  | "hrv_drop"
+  | "acwr_excess"
+  | "subjective_objective_divergence";
+
+export type TriageSeverity = "critical" | "watchlist";
+
+export interface TriageRecord {
+  id: string;
+  athlete_id: string;
+  org_id: string;
+  trigger_type: TriageTriggerType;
+  severity: TriageSeverity;
+  metric_value: number;
+  threshold_value: number;
+  created_at: string;
+  resolved_at?: string | null;
+  resolved_by_staff_id?: string | null;
 }
 
 // ---- Community ----

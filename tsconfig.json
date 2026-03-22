@@ -37,6 +37,7 @@
   "exclude": [
     "node_modules",
     "jest.config.ts",
-    "jest.setup.ts"
+    "jest.setup.ts",
+    "supabase/functions"
   ]
 }

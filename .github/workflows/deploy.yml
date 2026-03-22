@@ -8,9 +8,25 @@ env:
   NODE_VERSION: '20'
 
 jobs:
+  deploy-supabase-migrations:
+    name: Deploy Supabase DB Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply DB migrations to production
+        run: supabase db push --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
   deploy-frontend:
     name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
+    needs: deploy-supabase-migrations
     steps:
       - uses: actions/checkout@v4
 
@@ -31,11 +47,25 @@ jobs:
   notify-success:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [deploy-frontend]
+    needs: [deploy-supabase-migrations, deploy-frontend]
     if: success()
     steps:
       - name: Summary
         run: |
-          echo "## ✅ Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **DB Migrations**: Applied to Supabase production via \`supabase db push\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Frontend**: https://pace-platform-delta.vercel.app" >> $GITHUB_STEP_SUMMARY
           echo "- **Timestamp**: $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-supabase-migrations, deploy-frontend]
+    if: failure()
+    steps:
+      - name: Failure summary
+        run: |
+          echo "## Deployment FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "Check the failed job above and review logs." >> $GITHUB_STEP_SUMMARY
+          echo "- DB migration failures: check for schema conflicts or RLS policy errors." >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend failures: check Next.js build output and env var availability." >> $GITHUB_STEP_SUMMARY

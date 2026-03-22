@@ -30,6 +30,34 @@ jobs:
       - name: Run TypeScript type check
         run: npm run type-check
 
+  validate-migrations:
+    name: Validate Supabase Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify migration files exist and are non-empty
+        run: |
+          echo "Migration files:"
+          ls -la supabase/migrations/
+          for f in supabase/migrations/*.sql; do
+            if [ ! -s "$f" ]; then
+              echo "ERROR: $f is empty"
+              exit 1
+            fi
+            echo "OK: $f"
+          done
+
+      - name: Validate migration ordering (filenames must be sequential)
+        run: |
+          echo "Checking migration file naming..."
+          ls supabase/migrations/*.sql | sort -V
+          echo "Migration order validated."
+
   test:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest

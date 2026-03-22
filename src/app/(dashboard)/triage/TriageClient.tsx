@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { RefreshCw, Send, X, ShieldAlert, CheckCircle, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,8 @@ interface TriageClientProps {
   staffMembers: StaffMember[];
   currentStaffName: string;
   currentStaffRole: string;
+  // triage DB エントリID map: athlete_id -> 未解決のtriage.id (最新)
+  triageIdMap?: Record<string, string>;
 }
 
 export function TriageClient({
@@ -52,6 +54,7 @@ export function TriageClient({
   staffMembers,
   currentStaffName,
   currentStaffRole,
+  triageIdMap = {},
 }: TriageClientProps) {
   const [entries] = useState<TriageEntry[]>(initialEntries);
   const [escalationTarget, setEscalationTarget] = useState<EscalationTarget | null>(null);
@@ -60,9 +63,48 @@ export function TriageClient({
   const [severity, setSeverity] = useState<EscalationSeverity>("urgent");
   const [sent, setSent] = useState(false);
 
+  // 確認済みマーク管理: athleteId -> resolved_at
+  const [resolvedMap, setResolvedMap] = useState<Record<string, string>>({});
+  const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
+
   const critical = entries.filter((e) => e.priority === "critical").length;
   const watchlist = entries.filter((e) => e.priority === "watchlist").length;
   const normal = entries.filter((e) => e.priority === "normal").length;
+
+  // ── 確認済みにマーク ───────────────────────────────────────────────────────
+  const handleResolve = useCallback(async (entry: TriageEntry) => {
+    const triageId = triageIdMap[entry.athlete_id];
+    if (!triageId) return;
+
+    setResolvingIds((prev) => new Set(prev).add(entry.athlete_id));
+
+    try {
+      const res = await fetch(`/api/triage/${triageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("[triage resolve]", err);
+        return;
+      }
+
+      const { triage } = await res.json();
+      setResolvedMap((prev) => ({
+        ...prev,
+        [entry.athlete_id]: triage?.resolved_at ?? new Date().toISOString(),
+      }));
+    } catch (e) {
+      console.error("[triage resolve] fetch error", e);
+    } finally {
+      setResolvingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.athlete_id);
+        return next;
+      });
+    }
+  }, [triageIdMap]);
 
   function handleSendEscalation() {
     if (!escalationTarget) return;
@@ -134,8 +176,15 @@ export function TriageClient({
             <tbody className="divide-y divide-gray-50">
               {entries.map((entry) => {
                 const hasEscalated = escalations.some((e) => e.athlete_id === entry.athlete_id);
+                const isResolved = !!resolvedMap[entry.athlete_id];
+                const isResolving = resolvingIds.has(entry.athlete_id);
+                const hasTriageId = !!triageIdMap[entry.athlete_id];
+
                 return (
-                  <tr key={entry.athlete_id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={entry.athlete_id}
+                    className={`hover:bg-gray-50 transition-colors ${isResolved ? "opacity-50" : ""}`}
+                  >
                     <td className="px-4 py-3">
                       <Badge variant={entry.priority}>{priorityLabel[entry.priority]}</Badge>
                     </td>
@@ -175,7 +224,7 @@ export function TriageClient({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <a
                           href={`/players/${entry.athlete_id}`}
                           className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
@@ -189,6 +238,23 @@ export function TriageClient({
                           >
                             アセスメント
                           </a>
+                        )}
+                        {/* 確認済みボタン（triage DB エントリがある場合のみ表示） */}
+                        {entry.priority !== "normal" && hasTriageId && (
+                          <button
+                            onClick={() => handleResolve(entry)}
+                            disabled={isResolved || isResolving}
+                            className={`text-xs px-2 py-1 rounded flex items-center gap-1 transition-colors ${
+                              isResolved
+                                ? "bg-green-50 border border-green-200 text-green-600 cursor-default"
+                                : isResolving
+                                ? "bg-gray-100 text-gray-400 cursor-wait"
+                                : "bg-blue-600 text-white hover:bg-blue-700"
+                            }`}
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            {isResolved ? "確認済" : isResolving ? "処理中..." : "確認済みにする"}
+                          </button>
                         )}
                         {entry.priority === "critical" && (
                           <button

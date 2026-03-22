@@ -111,7 +111,23 @@ Next.js 15 (App Router) + Supabase + Gemini API を中核とした、
 
 ---
 
+## 本番環境情報
+
+| 項目 | 値 |
+|------|-----|
+| GitHub リポジトリ | https://github.com/meta-masashi/pace-platform |
+| Vercel プロジェクト | pace-platform (`prj_GAHZ1R4k8UHBUi2hBogG6iBeTd6j`) |
+| Vercel 本番 URL | https://pace-platform-delta.vercel.app |
+| Vercel Org | `team_W3XNPycaKqK0PoJEoFLsUtA2` |
+
+## CI/CD パイプライン構成
+
+| ワークフロー | トリガー | 内容 |
+|-------------|---------|------|
+| `.github/workflows/ci.yml` | push/PR on main, develop | lint → type-check → migration validate → unit test → integration test → build |
+| `.github/workflows/deploy.yml` | push on main | supabase db push → vercel --prod |
+
 ## 関連 ADR
 
-- ADR-002: データベーススキーマ設計（06-data-engineer 担当）
-- ADR-003: 認証・認可設計（04-backend 担当）
+- ADR-002: Gemini モデル移行（gemini-1.5-flash → gemini-2.0-flash）
+- ADR-003: Supabase DB マイグレーション戦略（05-architect 担当）

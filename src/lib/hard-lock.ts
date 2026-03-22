@@ -1,49 +1,16 @@
 /**
  * Hard Lock validation utility.
  *
- * For MVP, locks are sourced from the in-memory mock store.
- * The interface is designed so that switching to a Supabase query
- * later is a single-file change (replace the mock lookup below
- * with a `supabase.from('athlete_locks').select(...)` call).
+ * Fetches active locks from the `athlete_locks` Supabase table.
+ * Falls back to an empty array (no locks = no blocks) when Supabase is
+ * unavailable or env vars are absent, so dev/test environments without
+ * a database still work safely.
+ *
+ * Mock data has been fully removed (防壁1: モック実装の完全排除).
  */
 
+import { createClient } from "@/lib/supabase/server";
 import type { AthleteLock } from "@/types";
-
-// ---------------------------------------------------------------------------
-// MVP mock lock store — mirrors what would live in the `athlete_locks` table.
-// ---------------------------------------------------------------------------
-
-const MOCK_HARD_LOCKS: AthleteLock[] = [
-  {
-    id: "lock-1",
-    athlete_id: "athlete-1",
-    set_by_staff_id: "staff-2",
-    lock_type: "hard",
-    tag: "ankle_impact",
-    reason: "Grade 2 右足関節捻挫 — 荷重衝撃禁止",
-    set_at: "2026-03-20T10:00:00",
-    expires_at: "2026-04-03T10:00:00",
-  },
-  {
-    id: "lock-2",
-    athlete_id: "athlete-1",
-    set_by_staff_id: "staff-2",
-    lock_type: "hard",
-    tag: "bilateral_jump",
-    reason: "両脚ジャンプ着地禁止 — リハPhase 1",
-    set_at: "2026-03-20T10:00:00",
-    expires_at: "2026-04-03T10:00:00",
-  },
-  {
-    id: "lock-3",
-    athlete_id: "athlete-2",
-    set_by_staff_id: "staff-3",
-    lock_type: "hard",
-    tag: "knee_flexion_load",
-    reason: "膝蓋腱症 — 深屈曲負荷禁止",
-    set_at: "2026-03-19T09:00:00",
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -55,6 +22,50 @@ export interface HardLockResult {
   /** The full lock records that triggered each block (for audit purposes) */
   violations: AthleteLock[];
 }
+
+// ---------------------------------------------------------------------------
+// Internal: fetch active hard locks from Supabase
+// ---------------------------------------------------------------------------
+
+async function fetchActiveLocks(athleteId: string): Promise<AthleteLock[]> {
+  try {
+    const supabase = await createClient();
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("athlete_locks")
+      .select("id, athlete_id, set_by_staff_id, lock_type, tag, reason, set_at, expires_at")
+      .eq("athlete_id", athleteId)
+      .eq("lock_type", "hard")
+      .eq("is_active", true)
+      .or(`expires_at.is.null,expires_at.gt.${now}`);
+
+    if (error) {
+      console.warn("[hard-lock] Supabase query failed:", error.message);
+      // 防壁4: フォールバック — Supabase未設定 / 接続失敗時は空配列（ブロックなし）で安全側に倒す
+      return [];
+    }
+
+    return (data ?? []).map((row) => ({
+      id: row.id as string,
+      athlete_id: row.athlete_id as string,
+      set_by_staff_id: row.set_by_staff_id as string,
+      lock_type: row.lock_type as "hard" | "soft",
+      tag: row.tag as string,
+      reason: row.reason as string,
+      set_at: row.set_at as string,
+      expires_at: row.expires_at as string | undefined,
+    }));
+  } catch (err) {
+    // Supabase env vars absent or network failure — safe fallback
+    console.warn("[hard-lock] Could not reach Supabase, falling back to empty lock set:", err);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 /**
  * Validate exercise tags against an athlete's active Hard Locks.
@@ -70,27 +81,7 @@ export async function validateHardLocks(
   athleteId: string,
   exerciseTags: string[]
 ): Promise<HardLockResult> {
-  // --------------------------------------------------------------------------
-  // Data source — swap this block for a Supabase query when ready:
-  //
-  //   const { data, error } = await supabase
-  //     .from('athlete_locks')
-  //     .select('*')
-  //     .eq('athlete_id', athleteId)
-  //     .eq('lock_type', 'hard')
-  //     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-  //   const activeLocks: AthleteLock[] = data ?? [];
-  // --------------------------------------------------------------------------
-
-  const now = new Date();
-
-  const activeLocks: AthleteLock[] = MOCK_HARD_LOCKS.filter((lock) => {
-    if (lock.athlete_id !== athleteId) return false;
-    if (lock.lock_type !== "hard") return false;
-    if (lock.expires_at && new Date(lock.expires_at) <= now) return false;
-    return true;
-  });
-
+  const activeLocks = await fetchActiveLocks(athleteId);
   const lockedTags = new Set(activeLocks.map((l) => l.tag.toLowerCase()));
 
   const blocked: string[] = [];
