@@ -4,7 +4,6 @@
 ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.channels;
 
--- Ensure read_by column is jsonb (for read receipt upserts)
+-- Add read_by column if not exists (production DB was created without it)
 ALTER TABLE public.messages
-  ALTER COLUMN read_by SET DEFAULT '[]'::jsonb,
-  ALTER COLUMN read_by SET NOT NULL;
+  ADD COLUMN IF NOT EXISTS read_by JSONB NOT NULL DEFAULT '[]'::jsonb;
