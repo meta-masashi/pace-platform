@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { TriageEntry, TriggerType, Priority, DailyMetric } from "@/types";
-import { mockAthletes, mockMetrics } from "@/lib/mock-data";
+// import { mockAthletes, mockMetrics } from "@/lib/mock-data"; // removed: no mock fallback
 import { createClient } from "@/lib/supabase/server";
 
 // ============================================================
@@ -126,23 +126,73 @@ function computeTriageEntryFromData(
 }
 
 // ============================================================
-// Fallback: compute triage from mock data (original logic)
+// Persist triage entries to DB (fire-and-forget, non-blocking)
 // ============================================================
-function computeTriageEntryFromMock(
-  athleteId: string,
-  teamId: string
-): TriageEntry | null {
-  const athlete = mockAthletes.find(
-    (a) => a.id === athleteId && a.team_id === teamId
-  );
-  if (!athlete) return null;
+async function persistTriageEntries(
+  entries: TriageEntry[],
+  orgId: string,
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<void> {
+  // Map TriggerType → triage.trigger_type CHECK constraint values
+  const TRIGGER_MAP: Partial<Record<TriggerType, string>> = {
+    nrs_spike: "nrs_spike",
+    hrv_drop: "hrv_drop",
+    acwr_exceeded: "acwr_excess",
+    subjective_objective_discrepancy: "subjective_objective_divergence",
+  };
 
-  const metrics = mockMetrics[athleteId] ?? [];
-  return computeTriageEntryFromData(athlete, metrics);
+  const THRESHOLD_MAP: Record<string, number> = {
+    nrs_spike: NRS_SPIKE_THRESHOLD,
+    hrv_drop: HRV_DROP_PERCENT,
+    acwr_excess: ACWR_WATCHLIST,
+    subjective_objective_divergence: SUBJECTIVE_DISCREPANCY_THRESHOLD / 10,
+  };
+
+  const METRIC_VALUE_MAP = (entry: TriageEntry, trigger: string): number => {
+    if (trigger === "nrs_spike") return entry.nrs;
+    if (trigger === "hrv_drop") return entry.hrv;
+    if (trigger === "acwr_excess") return entry.acwr;
+    if (trigger === "subjective_objective_divergence") return entry.nrs / 10;
+    return 0;
+  };
+
+  const rows: Array<{
+    athlete_id: string;
+    org_id: string;
+    trigger_type: string;
+    severity: string;
+    metric_value: number;
+    threshold_value: number;
+  }> = [];
+
+  for (const entry of entries) {
+    if (entry.priority === "normal") continue;
+
+    for (const trigger of entry.triggers) {
+      const dbTrigger = TRIGGER_MAP[trigger];
+      if (!dbTrigger) continue; // baseline_deviation はtriageテーブル対象外
+
+      rows.push({
+        athlete_id: entry.athlete_id,
+        org_id: orgId,
+        trigger_type: dbTrigger,
+        severity: entry.priority === "critical" ? "critical" : "watchlist",
+        metric_value: METRIC_VALUE_MAP(entry, dbTrigger),
+        threshold_value: THRESHOLD_MAP[dbTrigger] ?? 0,
+      });
+    }
+  }
+
+  if (rows.length === 0) return;
+
+  const { error } = await supabase.from("triage").insert(rows);
+  if (error) {
+    console.warn("[triage] Failed to persist triage entries:", error.message);
+  }
 }
 
 // ============================================================
-// Route handler
+// GET /api/triage?team_id=xxx
 // ============================================================
 export async function GET(request: NextRequest) {
   try {
@@ -163,7 +213,7 @@ export async function GET(request: NextRequest) {
       // Fetch athletes for the team
       const { data: athletes, error: athletesError } = await supabase
         .from("athletes")
-        .select("id, name, position")
+        .select("id, name, position, org_id")
         .eq("team_id", team_id)
         .eq("is_active", true);
 
@@ -174,6 +224,7 @@ export async function GET(request: NextRequest) {
       // If Supabase returned athletes, use real metrics
       if (athletes && athletes.length > 0) {
         const athleteIds = athletes.map((a) => a.id);
+        const orgId: string = athletes[0].org_id as string;
 
         // Fetch last 14 days of metrics for all athletes in team
         const fourteenDaysAgo = new Date();
@@ -212,7 +263,7 @@ export async function GET(request: NextRequest) {
 
         const entries: TriageEntry[] = athletes.map((athlete) => {
           const metrics = metricsByAthlete[athlete.id] ?? [];
-          return computeTriageEntryFromData(athlete, metrics);
+          return computeTriageEntryFromData(athlete as { id: string; name: string; position: string }, metrics);
         });
 
         const priorityOrder: Record<Priority, number> = {
@@ -224,6 +275,11 @@ export async function GET(request: NextRequest) {
           (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
         );
 
+        // Persist non-normal entries to triage table (fire-and-forget)
+        persistTriageEntries(entries, orgId, supabase).catch((e) =>
+          console.warn("[triage] persistTriageEntries error:", e)
+        );
+
         return NextResponse.json({
           team_id,
           computed_at: new Date().toISOString(),
@@ -231,41 +287,13 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Supabase returned zero athletes — fall through to mock
-      console.warn("[triage] No athletes found in Supabase for team_id:", team_id, "— falling back to mock data");
+      // Supabase returned zero athletes — return empty triage array
+      console.warn("[triage] No athletes found in Supabase for team_id:", team_id);
+      return NextResponse.json({ entries: [], fallback: false });
     } catch (supabaseErr) {
-      console.warn("[triage] Supabase query failed, falling back to mock data:", supabaseErr);
+      console.error("[triage] Supabase query failed:", supabaseErr);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
-
-    // ---- Fallback: mock data ----
-    const teamAthletes = mockAthletes.filter((a) => a.team_id === team_id);
-    if (teamAthletes.length === 0) {
-      // Return empty array instead of 404 when no data at all
-      return NextResponse.json({
-        team_id,
-        computed_at: new Date().toISOString(),
-        entries: [],
-      });
-    }
-
-    const entries: TriageEntry[] = teamAthletes
-      .map((a) => computeTriageEntryFromMock(a.id, team_id))
-      .filter((e): e is TriageEntry => e !== null);
-
-    const priorityOrder: Record<Priority, number> = {
-      critical: 0,
-      watchlist: 1,
-      normal: 2,
-    };
-    entries.sort(
-      (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
-    );
-
-    return NextResponse.json({
-      team_id,
-      computed_at: new Date().toISOString(),
-      entries,
-    });
   } catch (err) {
     console.error("[triage]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

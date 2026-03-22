@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AssessmentType, AssessmentNode } from "@/types";
-import { mockAssessmentNodes } from "@/lib/mock-data";
+// import { mockAssessmentNodes } from "@/lib/mock-data"; // removed: no mock fallback
 import {
   initializeSession,
   selectNextNode,
@@ -50,7 +50,7 @@ async function fetchNodesFromSupabase(
     }
 
     if (!data || data.length === 0) {
-      return null; // signal: table is empty, fall back
+      return null; // signal: table is empty
     }
 
     return data.map((row) => rowToAssessmentNode(row as Record<string, unknown>));
@@ -77,18 +77,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ---- Fetch nodes: Supabase first, mock fallback ----
-    let relevantNodes = await fetchNodesFromSupabase(assessment_type);
+    // ---- Fetch nodes from Supabase ----
+    const relevantNodes = await fetchNodesFromSupabase(assessment_type);
 
     if (!relevantNodes) {
-      // Fall back to mock nodes when Supabase table is empty or query fails
-      console.warn(
+      console.error(
         "[assessment/start] No nodes found in Supabase for",
-        assessment_type,
-        "— falling back to mock nodes"
+        assessment_type
       );
-      relevantNodes = mockAssessmentNodes.filter(
-        (n) => n.file_type === assessment_type
+      return NextResponse.json(
+        { error: "Assessment nodes not configured. Please contact your administrator." },
+        { status: 503 }
       );
     }
 
