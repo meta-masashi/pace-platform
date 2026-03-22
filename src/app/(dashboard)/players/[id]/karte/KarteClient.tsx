@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, ClipboardList, Sparkles, Save, ExternalLink } from "lucide-react";
+import VideoAnalysis from "@/components/VideoAnalysis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -470,25 +471,73 @@ export function KarteClient({ athlete, soapNotes, rehabProgram }: KarteClientPro
               <CardTitle className="text-sm">新規SOAPノート</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
-                { key: "subjective" as const, label: "S（主観的情報）", placeholder: "選手の主訴・自覚症状を入力..." },
-                { key: "objective" as const, label: "O（客観的情報）", placeholder: "客観的所見・測定値・テスト結果を入力..." },
-                { key: "assessment" as const, label: "A（評価）", placeholder: "評価・判断・診断根拠を入力..." },
-                { key: "plan" as const, label: "P（計画）", placeholder: "今後の治療計画・禁忌事項・次回評価予定を入力..." },
-              ].map(({ key, label, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {label}
-                  </label>
-                  <textarea
-                    value={soap[key]}
-                    onChange={(e) => setSoap((prev) => ({ ...prev, [key]: e.target.value }))}
-                    rows={3}
-                    placeholder={placeholder}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                  />
-                </div>
-              ))}
+              {/* S field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  S（主観的情報）
+                </label>
+                <textarea
+                  value={soap.subjective}
+                  onChange={(e) => setSoap((prev) => ({ ...prev, subjective: e.target.value }))}
+                  rows={3}
+                  placeholder="選手の主訴・自覚症状を入力..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+
+              {/* O field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  O（客観的情報）
+                </label>
+                <textarea
+                  value={soap.objective}
+                  onChange={(e) => setSoap((prev) => ({ ...prev, objective: e.target.value }))}
+                  rows={3}
+                  placeholder="客観的所見・測定値・テスト結果を入力..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+
+              {/* Video analysis — fills O field */}
+              <VideoAnalysis
+                athleteName={athlete.name}
+                athletePosition={athlete.position}
+                onObjectiveGenerated={(text) =>
+                  setSoap((prev) => ({
+                    ...prev,
+                    objective: prev.objective ? prev.objective + "\n" + text : text,
+                  }))
+                }
+              />
+
+              {/* A field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  A（評価）
+                </label>
+                <textarea
+                  value={soap.assessment}
+                  onChange={(e) => setSoap((prev) => ({ ...prev, assessment: e.target.value }))}
+                  rows={3}
+                  placeholder="評価・判断・診断根拠を入力..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+
+              {/* P field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  P（計画）
+                </label>
+                <textarea
+                  value={soap.plan}
+                  onChange={(e) => setSoap((prev) => ({ ...prev, plan: e.target.value }))}
+                  rows={3}
+                  placeholder="今後の治療計画・禁忌事項・次回評価予定を入力..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
 
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
                 <p className="text-xs text-yellow-800">
