@@ -192,7 +192,6 @@ export default function CommunityPage() {
           channel_id: activeChannel.id,
           staff_id: currentUserId,
           content,
-          cds_disclaimer: cdsEnabled,
         });
         // Do NOT optimistically add — Realtime handles it
       } catch {
