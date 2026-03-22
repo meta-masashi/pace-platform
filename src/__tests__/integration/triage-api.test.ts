@@ -25,6 +25,12 @@ const mockFrom = jest.fn();
 
 jest.mock("@/lib/supabase/server", () => ({
   createClient: jest.fn(async () => ({
+    auth: {
+      getUser: jest.fn(async () => ({
+        data: { user: { id: "staff-test-id", email: "test@example.com" } },
+        error: null,
+      })),
+    },
     from: mockFrom,
   })),
 }));

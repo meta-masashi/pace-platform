@@ -196,6 +196,13 @@ async function persistTriageEntries(
 // ============================================================
 export async function GET(request: NextRequest) {
   try {
+    // ---- Auth check (Critical fix: medical PII must be protected) ----
+    const supabaseAuth = await createClient();
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const team_id = searchParams.get("team_id");
 

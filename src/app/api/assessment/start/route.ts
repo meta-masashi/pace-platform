@@ -62,6 +62,13 @@ async function fetchNodesFromSupabase(
 
 export async function POST(request: NextRequest) {
   try {
+    // ---- Auth check (High fix: prevent spoofed staff_id) ----
+    const supabaseAuth = await createClient();
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { athlete_id, staff_id, assessment_type, injury_region } = body as {
       athlete_id: string;
@@ -75,6 +82,11 @@ export async function POST(request: NextRequest) {
         { error: "athlete_id, staff_id, and assessment_type are required" },
         { status: 400 }
       );
+    }
+
+    // Enforce that staff_id matches the authenticated user
+    if (staff_id !== user.id) {
+      return NextResponse.json({ error: "staff_id mismatch" }, { status: 403 });
     }
 
     // ---- Fetch nodes from Supabase ----
