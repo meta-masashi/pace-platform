@@ -99,6 +99,12 @@ export function PlayerDetailClient({
             </button>
           );
         })}
+        <Link
+          href={`/players/${athlete.id}/karte`}
+          className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-indigo-700 hover:border-indigo-400 transition-colors"
+        >
+          カルテ
+        </Link>
       </div>
 
       {activeTab === "status" && (

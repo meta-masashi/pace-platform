@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { createClient } from "@/lib/supabase/server";
 import { mockTriageEntries, mockEscalations, mockStaff } from "@/lib/mock-data";
 import { TriageClient } from "./TriageClient";

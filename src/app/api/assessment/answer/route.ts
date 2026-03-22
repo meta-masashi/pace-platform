@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import type { AnswerValue } from "@/types";
 import { mockAssessmentNodes } from "@/lib/mock-data";
 import {
-  updatePosterior,
+  processAnswer,
   selectNextNode,
-  getResults,
-  isSessionComplete,
+  computeResult,
+  computeSummary,
+  shouldTerminate,
 } from "@/lib/bayesian-engine";
 import { sessionStore } from "@/lib/session-store";
 
@@ -55,11 +56,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Update inference state
-    const updatedState = updatePosterior(state, node, answer);
+    const updatedState = processAnswer(state, node, answer);
     sessionStore.set(session_id, updatedState);
 
-    const currentResults = getResults(updatedState);
-    const complete = isSessionComplete(updatedState);
+    // Retrieve all cached nodes to build result labels
+    const allNodes = cachedNodes ?? relevantNodes;
+    const currentResults = computeResult(updatedState, allNodes);
+    const summary = computeSummary(updatedState, allNodes);
+    const complete = shouldTerminate(updatedState);
 
     // Find next question if not complete
     const nextQuestion = complete
@@ -69,6 +73,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       next_question: nextQuestion,
       current_results: currentResults,
+      summary,
       is_complete: complete,
       is_emergency: updatedState.isEmergency,
     });

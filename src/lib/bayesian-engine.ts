@@ -1,35 +1,5 @@
 import type { AssessmentNode, AssessmentType, AnswerValue, DiagnosisResult } from "@/types";
-
-// ============================================================
-// Diagnosis catalogue
-// ============================================================
-
-// ※ これらはAI評価補助ラベルです。医学的診断名ではありません。
-const DIAGNOSIS_LABELS: Record<string, string> = {
-  ANK_DX_001: "足関節可動域制限パターンA",
-  ANK_DX_002: "足関節外側支持機構ストレスパターン",
-  KNEE_DX_001: "膝蓋腱周囲ストレスパターン",
-  KNEE_DX_002: "膝外側ストレスパターン",
-  KNEE_DX_003: "膝関節メカニカルストレスパターン",
-  KNEE_DX_004: "膝関節前方不安定性パターン",
-  MUSC_DX_001: "大腿前面筋機能低下パターン",
-  MUSC_DX_002: "大腿後面筋ストレスパターン",
-};
-
-const ALL_DIAGNOSIS_CODES = Object.keys(DIAGNOSIS_LABELS);
-
-// Map from node target_axis to relevant diagnosis codes
-const AXIS_TO_DIAGNOSES: Record<string, string[]> = {
-  ankle: ["ANK_DX_001", "ANK_DX_002"],
-  ankle_kinetic_chain: ["ANK_DX_001", "ANK_DX_002"],
-  knee: ["KNEE_DX_001", "KNEE_DX_002", "KNEE_DX_003", "KNEE_DX_004"],
-  meniscus: ["KNEE_DX_003"],
-  lower_body: ALL_DIAGNOSIS_CODES,
-  localization: ALL_DIAGNOSIS_CODES,
-  // General axes — contribute weakly to all
-  head_neck: [],
-  spine_neural: [],
-};
+import type { RiskLevel, AxisFinding, AssessmentSummary } from "@/types";
 
 // ============================================================
 // Core interfaces
@@ -40,74 +10,22 @@ export interface InferenceState {
   athleteId: string;
   staffId: string;
   assessmentType: AssessmentType;
-  injuryRegion: string; // e.g. "lower_limb", "upper_limb", "head_neck", "spine"
-  priors: Record<string, number>; // diagnosis_code -> probability
+  responses: Array<{
+    node_id: string;
+    answer: AnswerValue;
+    lr_yes: number;
+    lr_no: number;
+    target_axis: string;
+    prescription_tags: string[];
+    contraindication_tags: string[];
+  }>;
   answeredNodes: Set<string>;
-  responses: Array<{ node_id: string; answer: AnswerValue }>;
   isEmergency: boolean;
   startedAt: string;
 }
 
 // ============================================================
-// Helpers
-// ============================================================
-
-function uniformPriors(): Record<string, number> {
-  const p = 1 / ALL_DIAGNOSIS_CODES.length;
-  return Object.fromEntries(ALL_DIAGNOSIS_CODES.map((code) => [code, p]));
-}
-
-function normalize(priors: Record<string, number>): Record<string, number> {
-  const total = Object.values(priors).reduce((s, v) => s + v, 0);
-  if (total === 0) return uniformPriors();
-  return Object.fromEntries(
-    Object.entries(priors).map(([k, v]) => [k, v / total])
-  );
-}
-
-/** Shannon entropy of the current posterior distribution */
-function entropy(priors: Record<string, number>): number {
-  return -Object.values(priors).reduce((s, p) => {
-    if (p <= 0) return s;
-    return s + p * Math.log2(p);
-  }, 0);
-}
-
-/**
- * Maximum posterior probability — used as the confidence metric.
- * Range: [0, 1] where 1 means complete certainty.
- */
-function maxPosterior(priors: Record<string, number>): number {
-  const values = Object.values(priors);
-  if (values.length === 0) return 0;
-  return Math.max(...values);
-}
-
-/**
- * Simulate the posterior after answering `node` with `answer`,
- * restricted to diagnoses relevant to this node's target_axis.
- * Uses Bayesian update: P(dx | answer) ∝ P(dx) × LR(answer)
- */
-function simulatePosterior(
-  priors: Record<string, number>,
-  node: AssessmentNode,
-  answer: AnswerValue
-): Record<string, number> {
-  const relevantCodes = AXIS_TO_DIAGNOSES[node.target_axis] ?? ALL_DIAGNOSIS_CODES;
-  const lr = answer === "yes" ? node.lr_yes : answer === "no" ? node.lr_no : 1.0;
-
-  const updated = { ...priors };
-  for (const code of relevantCodes) {
-    if (updated[code] !== undefined) {
-      // Bayesian update: multiply prior by likelihood ratio
-      updated[code] = updated[code] * lr;
-    }
-  }
-  return normalize(updated);
-}
-
-// ============================================================
-// Public API — Legacy stateful functions
+// Public API
 // ============================================================
 
 /** Create a fresh inference state for a new session. */
@@ -116,291 +34,283 @@ export function initializeSession(
   athleteId: string,
   staffId: string,
   assessmentType: AssessmentType,
-  injuryRegion = "general"
+  // injuryRegion kept for backward compat with start/route.ts call signature
+  _injuryRegion = "general"
 ): InferenceState {
   return {
     sessionId,
     athleteId,
     staffId,
     assessmentType,
-    injuryRegion,
-    priors: uniformPriors(),
-    answeredNodes: new Set(),
     responses: [],
+    answeredNodes: new Set(),
     isEmergency: false,
     startedAt: new Date().toISOString(),
   };
 }
 
-/** Update posterior probabilities given a node answer. */
-export function updatePosterior(
+/** Receive a new answer and return updated InferenceState. */
+export function processAnswer(
   state: InferenceState,
   node: AssessmentNode,
   answer: AnswerValue
 ): InferenceState {
-  // RedFlag gate: a "yes" to any RedFlag node immediately triggers emergency
-  const isEmergency =
-    state.isEmergency || (node.phase === "RedFlag" && answer === "yes");
+  const newResponses = [
+    ...state.responses,
+    {
+      node_id: node.node_id,
+      answer,
+      lr_yes: node.lr_yes,
+      lr_no: node.lr_no,
+      target_axis: node.target_axis,
+      prescription_tags: node.prescription_tags ?? [],
+      contraindication_tags: node.contraindication_tags ?? [],
+    },
+  ];
 
-  const newPriors = simulatePosterior(state.priors, node, answer);
-  const newAnsweredNodes = new Set(state.answeredNodes);
-  newAnsweredNodes.add(node.node_id);
+  const newAnswered = new Set(state.answeredNodes);
+  newAnswered.add(node.node_id);
+
+  // Emergency: RedFlag axis with a "yes" answer that has a high LR
+  const isEmergency =
+    state.isEmergency ||
+    (node.target_axis === "RedFlag" && answer === "yes" && node.lr_yes >= 5);
 
   return {
     ...state,
-    priors: newPriors,
-    answeredNodes: newAnsweredNodes,
-    responses: [...state.responses, { node_id: node.node_id, answer }],
+    responses: newResponses,
+    answeredNodes: newAnswered,
     isEmergency,
   };
 }
 
 /**
- * Calculate the expected information gain (entropy reduction) if we were
- * to ask `node` next, given the current posterior.
- * IG = H(current) − E[H(posterior | response)]
- *    = H(current) − [P(yes)·H(posterior_yes) + P(no)·H(posterior_no)]
+ * Alias kept for backward compat with answer/route.ts which still calls updatePosterior.
+ * Internally delegates to processAnswer.
  */
-export function calculateInformationGain(
+export function updatePosterior(
+  state: InferenceState,
   node: AssessmentNode,
-  state: InferenceState
-): number {
-  // Use pre-computed information_gain from node definition when available
-  // as a prior estimate. We blend it with the dynamic computation.
-  const staticGain = node.information_gain ?? 0.5;
-
-  // Estimate P(yes) for this node under the current posterior by summing
-  // probabilities of relevant diagnoses (proxy for the marginal likelihood).
-  const relevantCodes = AXIS_TO_DIAGNOSES[node.target_axis] ?? ALL_DIAGNOSIS_CODES;
-  const pYes = Math.min(
-    0.95,
-    Math.max(0.05, relevantCodes.reduce((s, c) => s + (state.priors[c] ?? 0), 0))
-  );
-  const pNo = 1 - pYes;
-
-  const posteriorYes = simulatePosterior(state.priors, node, "yes");
-  const posteriorNo = simulatePosterior(state.priors, node, "no");
-
-  const currentEntropy = entropy(state.priors);
-  const expectedEntropy = pYes * entropy(posteriorYes) + pNo * entropy(posteriorNo);
-  const dynamicGain = currentEntropy - expectedEntropy;
-
-  // Blend static and dynamic gains (static useful early when posterior is flat)
-  return 0.4 * staticGain + 0.6 * dynamicGain;
+  answer: AnswerValue
+): InferenceState {
+  return processAnswer(state, node, answer);
 }
 
 /**
- * Clinical phase ordering:
- *   0 RedFlag → 1 主訴 → 2 視診 → 3 触診 → 4 動作確認 → 5 スペシャルテスト
- * Legacy Phase0/Phase1/… names are mapped to the same priority levels.
- * Within the same phase, the node with highest information gain is chosen.
- */
-const PHASE_PRIORITY: Record<string, number> = {
-  RedFlag: 0,
-  主訴: 1,
-  Phase0: 1,
-  視診: 2,
-  Phase1: 2,
-  触診: 3,
-  Phase2: 3,
-  動作確認: 4,
-  スペシャルテスト: 5,
-  Phase3: 5,
-};
-
-/**
- * Which injury regions each RedFlag node target_axis applies to.
- * "all" means it is universal and always shown.
- * Injury regions: "lower_limb", "upper_limb", "head_neck", "spine", "general"
- */
-const REDFLAG_REGIONS: Record<string, string[]> = {
-  head_neck: ["head_neck"],         // head trauma: only for head/neck injuries
-  spine_neural: ["all"],            // neurological sx: always screen
-  lower_body: ["lower_limb"],
-  knee: ["lower_limb"],
-  ankle: ["lower_limb"],
-  ankle_kinetic_chain: ["lower_limb"],
-  shoulder: ["upper_limb"],
-  elbow: ["upper_limb"],
-  spine: ["spine"],
-};
-
-function isRedFlagRelevant(node: AssessmentNode, injuryRegion: string): boolean {
-  const regions = REDFLAG_REGIONS[node.target_axis] ?? ["all"];
-  return regions.includes("all") || regions.includes(injuryRegion) || injuryRegion === "general";
-}
-
-/**
- * Select the next question respecting clinical phase order first,
- * then maximising information gain within the same phase.
- * RedFlag nodes are filtered to only those relevant to the reported injury region.
- * Returns null when no unanswered nodes remain.
+ * Select the next question to ask.
+ * Priority: RedFlag > Acute > Acute_Tissue > Meta > highest information gain
  */
 export function selectNextNode(
   state: InferenceState,
   availableNodes: AssessmentNode[]
 ): AssessmentNode | null {
-  const candidates = availableNodes.filter(
+  const unanswered = availableNodes.filter(
     (n) => !state.answeredNodes.has(n.node_id)
   );
-  if (candidates.length === 0) return null;
+  if (unanswered.length === 0) return null;
 
-  // Filter out RedFlag nodes irrelevant to the reported injury region
-  const filtered = candidates.filter((n) => {
-    if (n.phase !== "RedFlag") return true;
-    return isRedFlagRelevant(n, state.injuryRegion);
-  });
+  const PRIORITY_AXES = ["RedFlag", "Acute", "Acute_Tissue", "Meta"];
 
-  if (filtered.length === 0) return null;
+  for (const priorityAxis of PRIORITY_AXES) {
+    const highPriority = unanswered.filter(
+      (n) => n.target_axis === priorityAxis
+    );
+    if (highPriority.length > 0) {
+      return highPriority.sort((a, b) => b.lr_yes - a.lr_yes)[0];
+    }
+  }
 
-  return filtered.sort((a, b) => {
-    const pA = PHASE_PRIORITY[a.phase] ?? 99;
-    const pB = PHASE_PRIORITY[b.phase] ?? 99;
-    if (pA !== pB) return pA - pB;
-    return calculateInformationGain(b, state) - calculateInformationGain(a, state);
+  // Fallback: pick by highest information gain proxy = |log(LR_yes) - log(LR_no)|
+  return unanswered.sort((a, b) => {
+    const igA = Math.abs(
+      Math.log(Math.max(a.lr_yes, 0.01)) - Math.log(Math.max(a.lr_no, 0.01))
+    );
+    const igB = Math.abs(
+      Math.log(Math.max(b.lr_yes, 0.01)) - Math.log(Math.max(b.lr_no, 0.01))
+    );
+    return igB - igA;
   })[0];
 }
 
-/**
- * Return top diagnoses sorted by posterior probability.
- */
-export function getResults(state: InferenceState): DiagnosisResult[] {
-  return Object.entries(state.priors)
-    .map(([diagnosis_code, probability]) => ({
-      diagnosis_code,
-      label: DIAGNOSIS_LABELS[diagnosis_code] ?? diagnosis_code,
-      probability,
-    }))
-    .sort((a, b) => b.probability - a.probability);
+/** Determine whether the session should end. */
+export function shouldTerminate(state: InferenceState): boolean {
+  const n = state.responses.length;
+  if (state.isEmergency) return true;
+  if (n < 5) return false;
+  if (n >= 15) return true;
+
+  const sigFindings = state.responses.filter(
+    (r) =>
+      (r.answer === "yes" && r.lr_yes > 2) ||
+      (r.answer === "no" && r.lr_no < 0.5)
+  ).length;
+  return sigFindings >= 3;
 }
 
 /**
- * Determine whether the session is complete:
- * >= 8 nodes answered AND top diagnosis confidence > 0.75 (§4.5仕様: 信頼度閾値 >75%),
- * OR the session is flagged as an emergency.
- * 防壁4: Falls back safely — if state is corrupt, returns false to continue gathering data.
+ * Alias for shouldTerminate — kept for backward compat with answer/route.ts
+ * which calls isSessionComplete.
  */
 export function isSessionComplete(state: InferenceState): boolean {
-  if (state.isEmergency) return true;
-  if (state.answeredNodes.size < 8) return false;
-  try {
-    const top = getResults(state)[0];
-    return top !== undefined && top.probability > 0.75;
-  } catch {
-    // 防壁4: computation error fallback — keep session open
-    return false;
-  }
-}
-
-// ============================================================
-// Public API — Required interface from §タスク#4 specification
-// ============================================================
-
-/**
- * Receive a new answer and update the probability distribution.
- * Returns the updated beliefs and a confidence score (max posterior probability).
- *
- * P(diagnosis | answer_sequence) = P(diagnosis) × ∏ LR_i(answer_i)
- * 事後確率は正規化（全仮説の合計 = 1）
- *
- * 防壁4: JSONパース失敗・計算エラー時は一様分布にリセット
- */
-export function updateBeliefs(
-  currentBeliefs: Record<string, number>,
-  nodeId: string,
-  answer: "yes" | "no" | "unknown",
-  availableNodes: AssessmentNode[]
-): { updatedBeliefs: Record<string, number>; confidence: number } {
-  try {
-    const node = availableNodes.find((n) => n.node_id === nodeId);
-    if (!node) {
-      // Node not found — return beliefs unchanged
-      const confidence = maxPosterior(currentBeliefs);
-      return { updatedBeliefs: currentBeliefs, confidence };
-    }
-
-    // Map "unknown" → AnswerValue "unclear" for internal Bayesian update
-    const answerValue: AnswerValue =
-      answer === "yes" ? "yes" : answer === "no" ? "no" : "unclear";
-
-    const updatedBeliefs = simulatePosterior(currentBeliefs, node, answerValue);
-    const confidence = maxPosterior(updatedBeliefs);
-
-    return { updatedBeliefs, confidence };
-  } catch {
-    // 防壁4: 計算エラー時のフォールバック — 一様分布にリセット
-    const fallback = uniformPriors();
-    return { updatedBeliefs: fallback, confidence: maxPosterior(fallback) };
-  }
+  return shouldTerminate(state);
 }
 
 /**
- * Select the next question to ask, ranked by information gain.
- * Respects clinical phase order (RedFlag > 主訴 > 視診 > 触診 > 動作確認 > スペシャルテスト).
- * Within the same phase, selects the node that maximises expected entropy reduction.
- *
- * IG(node) = H(beliefs) − [P(yes)·H(posterior_yes) + P(no)·H(posterior_no)]
- *
- * Returns null when all available nodes have been answered.
+ * Build a multi-axis AssessmentSummary from the current state.
  */
-export function selectNextQuestion(
-  currentBeliefs: Record<string, number>,
-  remainingNodes: AssessmentNode[],
-  answeredNodeIds: string[]
-): AssessmentNode | null {
-  // Filter to unanswered nodes only
-  const candidates = remainingNodes.filter(
-    (n) => !answeredNodeIds.includes(n.node_id)
+export function computeSummary(
+  state: InferenceState,
+  allNodes: AssessmentNode[]
+): AssessmentSummary {
+  const nodeMap = new Map(allNodes.map((n) => [n.node_id, n]));
+
+  // Build positive findings from yes-answers with LR_yes > 1.5
+  const positiveFindings: AxisFinding[] = state.responses
+    .filter((r) => r.answer === "yes" && r.lr_yes > 1.5)
+    .map((r) => {
+      const node = nodeMap.get(r.node_id);
+      return {
+        axis: r.target_axis,
+        nodeId: r.node_id,
+        question: node?.question_text ?? r.node_id,
+        answer: "yes" as const,
+        isSignificant: r.lr_yes > 2.0,
+        prescriptionTags: r.prescription_tags.filter((t) => t !== "—"),
+        contraindicationTags: r.contraindication_tags.filter((t) => t !== "—"),
+      };
+    });
+
+  const hasRedFlag =
+    positiveFindings.some((f) => f.axis === "RedFlag") || state.isEmergency;
+  const hasAcuteInjury = positiveFindings.some(
+    (f) =>
+      f.axis === "Acute" || f.axis === "Acute_Tissue" || f.axis === "Grade"
   );
-  if (candidates.length === 0) return null;
 
-  // Build a minimal state-like object for calculateInformationGain
-  const tempState: InferenceState = {
-    sessionId: "_temp",
-    athleteId: "_temp",
-    staffId: "_temp",
-    assessmentType: "F1_Acute",
-    injuryRegion: "general",
-    priors: currentBeliefs,
-    answeredNodes: new Set(answeredNodeIds),
-    responses: [],
-    isEmergency: false,
-    startedAt: new Date().toISOString(),
-  };
+  // Risk level
+  let riskLevel: RiskLevel = "green";
+  if (hasRedFlag) {
+    riskLevel = "red";
+  } else if (
+    hasAcuteInjury ||
+    positiveFindings.filter((f) => f.isSignificant).length >= 2
+  ) {
+    riskLevel = "yellow";
+  }
 
-  return candidates.sort((a, b) => {
-    // Phase priority first (RedFlag = 0 takes precedence)
-    const pA = PHASE_PRIORITY[a.phase] ?? 99;
-    const pB = PHASE_PRIORITY[b.phase] ?? 99;
-    if (pA !== pB) return pA - pB;
-    // Within same phase, maximise expected information gain
-    return calculateInformationGain(b, tempState) - calculateInformationGain(a, tempState);
-  })[0];
-}
+  // Aggregate tags (deduplicated)
+  const allPrescriptionTags = [
+    ...new Set(positiveFindings.flatMap((f) => f.prescriptionTags)),
+  ];
+  const allContraindicationTags = [
+    ...new Set(positiveFindings.flatMap((f) => f.contraindicationTags)),
+  ];
 
-/**
- * Check all 6 Red Flag items against the current answers.
- * A Red Flag is triggered when a node with phase "RedFlag" has been answered "yes".
- * Immediate emergency referral is required when hasRedFlag === true.
- *
- * Returns:
- *   hasRedFlag      — true if any Red Flag criteria is met
- *   triggeredFlags  — node_ids of triggered Red Flag nodes
- */
-export function checkRedFlags(
-  answers: Record<string, "yes" | "no" | "unknown">
-): { hasRedFlag: boolean; triggeredFlags: string[] } {
-  // Red Flag node IDs defined in §4.5: RF_001 through RF_006
-  // Any node_id that starts with "RF_" is treated as a Red Flag gate item.
-  const triggeredFlags: string[] = Object.entries(answers)
-    .filter(([nodeId, answer]) => {
-      const isRedFlagNode = nodeId.startsWith("RF_") || nodeId.startsWith("REDFLAG_");
-      return isRedFlagNode && answer === "yes";
-    })
-    .map(([nodeId]) => nodeId);
+  // Confidence score
+  const sigCount = positiveFindings.filter((f) => f.isSignificant).length;
+  const confidenceScore = Math.min(
+    0.95,
+    0.4 + sigCount * 0.15 + state.responses.length * 0.03
+  );
+
+  // Human-readable interpretation
+  let interpretation = "";
+  if (hasRedFlag) {
+    interpretation = "緊急所見あり。即座に医師へのエスカレーションが必要です。";
+  } else if (hasAcuteInjury) {
+    const acuteCount = positiveFindings.filter((f) =>
+      f.axis.startsWith("Acute")
+    ).length;
+    interpretation = `急性外傷の所見が${acuteCount}件確認されました。安静と画像評価を検討してください。`;
+  } else if (riskLevel === "yellow") {
+    const axes = [...new Set(positiveFindings.map((f) => f.axis))].join("、");
+    interpretation = `${axes} に有意な所見が確認されました。段階的負荷管理と定期的なモニタリングを推奨します。`;
+  } else {
+    interpretation = `現時点では重篤な所見は認められません（${state.responses.length}項目評価済み）。引き続きモニタリングを継続してください。`;
+  }
 
   return {
-    hasRedFlag: triggeredFlags.length > 0,
-    triggeredFlags,
+    riskLevel,
+    hasRedFlag,
+    hasAcuteInjury,
+    positiveFindings,
+    allPrescriptionTags,
+    allContraindicationTags,
+    confidenceScore,
+    nodesAnswered: state.responses.length,
+    interpretation,
   };
+}
+
+/**
+ * Backward-compat wrapper for /api/assessment/result (and any other callers
+ * that expect DiagnosisResult[]).
+ */
+export function computeResult(
+  state: InferenceState,
+  allNodes: AssessmentNode[]
+): DiagnosisResult[] {
+  const summary = computeSummary(state, allNodes);
+
+  if (summary.hasRedFlag) {
+    return [
+      {
+        diagnosis_code: "RED_FLAG",
+        label: "⚠️ 緊急所見 — 医師へのエスカレーション必要",
+        probability: 0.99,
+        prescriptionTags: [],
+        contraindicationTags: summary.allContraindicationTags,
+      },
+    ];
+  }
+
+  const findings = summary.positiveFindings.slice(0, 5).map((f, i) => ({
+    diagnosis_code: `FINDING_${i + 1}`,
+    label: `[${f.axis}] ${f.question.slice(0, 60)}`,
+    probability:
+      Math.max(0.3, 0.9 - i * 0.1) * (f.isSignificant ? 1 : 0.7),
+    prescriptionTags: f.prescriptionTags,
+    contraindicationTags: f.contraindicationTags,
+  }));
+
+  if (findings.length === 0) {
+    return [
+      {
+        diagnosis_code: "NO_FINDING",
+        label: `現時点で有意な所見なし（${summary.nodesAnswered}項目評価）`,
+        probability: 0.85,
+        prescriptionTags: [],
+        contraindicationTags: [],
+      },
+    ];
+  }
+
+  return findings;
+}
+
+/**
+ * Alias kept for backward compat with answer/route.ts which calls getResults.
+ * Returns DiagnosisResult[] from the current session state.
+ * Note: allNodes is not available in the answer route so we pass an empty array
+ * and let computeResult handle the empty-node-map case gracefully.
+ */
+export function getResults(state: InferenceState): DiagnosisResult[] {
+  return computeResult(state, []);
+}
+
+// ============================================================
+// Legacy functions retained for any remaining callers
+// ============================================================
+
+/**
+ * @deprecated Use processAnswer instead.
+ * Kept because start/route.ts passes a 5th injuryRegion arg to initializeSession;
+ * the new initializeSession already accepts it (as _injuryRegion).
+ */
+export function applyAnswer(
+  state: InferenceState,
+  node: AssessmentNode,
+  answer: AnswerValue
+): InferenceState {
+  return processAnswer(state, node, answer);
 }

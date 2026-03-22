@@ -110,6 +110,34 @@ export interface DiagnosisResult {
   diagnosis_code: string;
   label: string;
   probability: number;
+  prescriptionTags?: string[];
+  contraindicationTags?: string[];
+}
+
+// ---- Multi-axis assessment summary (replaces Bayesian body-part classification) ----
+
+export type RiskLevel = "green" | "yellow" | "red";
+
+export interface AxisFinding {
+  axis: string;
+  nodeId: string;
+  question: string;
+  answer: "yes" | "no";
+  isSignificant: boolean;
+  prescriptionTags: string[];
+  contraindicationTags: string[];
+}
+
+export interface AssessmentSummary {
+  riskLevel: RiskLevel;
+  hasRedFlag: boolean;
+  hasAcuteInjury: boolean;
+  positiveFindings: AxisFinding[];
+  allPrescriptionTags: string[];
+  allContraindicationTags: string[];
+  confidenceScore: number;
+  nodesAnswered: number;
+  interpretation: string;
 }
 
 export interface Assessment {

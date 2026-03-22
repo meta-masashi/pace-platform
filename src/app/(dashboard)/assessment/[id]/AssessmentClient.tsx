@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { mockActiveAssessment, mockStaff } from "@/lib/mock-data";
-import type { Athlete, AssessmentNode, AnswerValue, DiagnosisResult, Role } from "@/types";
+import type { Athlete, AssessmentNode, AnswerValue, AssessmentSummary, Role } from "@/types";
 
 const igLabel = (ig?: number) => {
   if (!ig) return { label: "low", cls: "bg-gray-100 text-gray-600" };
@@ -16,6 +16,12 @@ const igLabel = (ig?: number) => {
 };
 
 const answerLabels: Record<AnswerValue, string> = { yes: "はい", no: "いいえ", unclear: "不明" };
+
+const RISK_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
+  red:    { label: "高リスク",   cls: "bg-red-100 text-red-700 border-red-300",       icon: "🔴" },
+  yellow: { label: "要観察",     cls: "bg-amber-100 text-amber-700 border-amber-300", icon: "🟡" },
+  green:  { label: "異常なし",   cls: "bg-green-100 text-green-700 border-green-300", icon: "🟢" },
+};
 
 const INJURY_REGIONS = [
   { value: "lower_limb", label: "下肢（膝・足関節・股関節）", icon: "🦵" },
@@ -38,7 +44,7 @@ export function AssessmentClient({ athlete }: AssessmentClientProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<AssessmentNode | null>(null);
   const [responses, setResponses] = useState<Array<{ node_id: string; answer: AnswerValue; question_text: string }>>([]);
-  const [differentials, setDifferentials] = useState<DiagnosisResult[]>([]);
+  const [summary, setSummary] = useState<AssessmentSummary | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [isEmergency, setIsEmergency] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,6 +53,7 @@ export function AssessmentClient({ athlete }: AssessmentClientProps) {
   const [escalationSent, setEscalationSent] = useState(false);
   const [escalationTargets, setEscalationTargets] = useState<Role[]>(["PT"]);
   const [auditLogged, setAuditLogged] = useState(false);
+  const [karteSaved, setKarteSaved] = useState(false);
 
   async function startSession(region: InjuryRegion) {
     setStarting(true);
@@ -91,7 +98,7 @@ export function AssessmentClient({ athlete }: AssessmentClientProps) {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.current_results) setDifferentials(data.current_results);
+        if (data.summary) setSummary(data.summary);
         setIsComplete(data.is_complete ?? false);
         setIsEmergency(data.is_emergency ?? false);
         setCurrentQuestion(data.next_question ?? null);
@@ -106,6 +113,7 @@ export function AssessmentClient({ athlete }: AssessmentClientProps) {
 
   const ig = igLabel(currentQuestion?.information_gain);
   const regionLabel = INJURY_REGIONS.find((r) => r.value === injuryRegion);
+  const riskBadge = summary ? (RISK_BADGE[summary.riskLevel] ?? RISK_BADGE.green) : null;
 
   // Step 1: Injury region selector
   if (!injuryRegion) {
@@ -304,6 +312,49 @@ export function AssessmentClient({ athlete }: AssessmentClientProps) {
                   </p>
                 </div>
               )}
+              {/* Save to Karte */}
+              {summary && (
+                !karteSaved ? (
+                  <button
+                    onClick={() => {
+                      try {
+                        const existing = JSON.parse(
+                          localStorage.getItem(`assessment-results-${id}`) ?? "[]"
+                        ) as Array<typeof summary & { savedAt: string; athleteId: string }>;
+                        existing.unshift({
+                          ...summary,
+                          savedAt: new Date().toISOString(),
+                          athleteId: id,
+                        });
+                        localStorage.setItem(
+                          `assessment-results-${id}`,
+                          JSON.stringify(existing.slice(0, 20))
+                        );
+                        setKarteSaved(true);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700 hover:bg-indigo-100 transition-colors font-medium"
+                  >
+                    <FileText className="w-4 h-4 text-indigo-500" />
+                    カルテに保存
+                  </button>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-lg">
+                      <CheckCircle className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                      <p className="text-xs text-indigo-700">カルテに保存しました</p>
+                    </div>
+                    <Link
+                      href={`/players/${id}/karte`}
+                      className="flex items-center justify-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 py-1"
+                    >
+                      カルテを開く →
+                    </Link>
+                  </div>
+                )
+              )}
             </div>
           )}
 
@@ -366,48 +417,101 @@ export function AssessmentClient({ athlete }: AssessmentClientProps) {
           </p>
         </div>
 
+        {/* Right column — multi-axis assessment summary */}
         <div className="col-span-2 space-y-4">
           <Card>
             <CardContent className="py-4 space-y-4">
               <div>
-                <p className="text-sm font-semibold text-gray-700">リアルタイム評価候補</p>
+                <p className="text-sm font-semibold text-gray-700">リアルタイム評価サマリー</p>
                 <p className="text-xs text-gray-400 mt-0.5">※ AI補助情報。医学的診断ではありません</p>
               </div>
 
-              {differentials[0] && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <p className="text-xs text-amber-600 mb-1">最有力評価候補</p>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-amber-900 text-sm">{differentials[0].label}</p>
-                    <span className="text-sm font-bold text-amber-700 flex-shrink-0">
-                      {Math.round(differentials[0].probability * 100)}pt
-                    </span>
+              {/* Risk level badge */}
+              {riskBadge && summary && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold ${riskBadge.cls}`}>
+                  <span>{riskBadge.icon}</span>
+                  <span>{riskBadge.label}</span>
+                  <span className="ml-auto text-xs font-normal opacity-70">
+                    信頼度 {Math.round(summary.confidenceScore * 100)}%
+                  </span>
+                </div>
+              )}
+
+              {/* Interpretation */}
+              {summary && (
+                <div className="bg-gray-50 rounded-lg px-3 py-2">
+                  <p className="text-xs text-gray-700 leading-relaxed">{summary.interpretation}</p>
+                </div>
+              )}
+
+              {/* Positive findings */}
+              {summary && summary.positiveFindings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-500 uppercase">有意な所見</p>
+                  {summary.positiveFindings.map((f, i) => (
+                    <div
+                      key={`${f.nodeId}-${i}`}
+                      className={`rounded-lg px-3 py-2 text-xs space-y-0.5 border ${
+                        f.isSignificant
+                          ? "bg-amber-50 border-amber-200"
+                          : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-semibold px-1.5 py-0.5 rounded ${
+                          f.isSignificant ? "bg-amber-200 text-amber-800" : "bg-gray-200 text-gray-600"
+                        }`}>
+                          {f.axis}
+                        </span>
+                        {f.isSignificant && (
+                          <span className="text-amber-600 font-medium">有意</span>
+                        )}
+                      </div>
+                      <p className="text-gray-700 leading-snug">{f.question.slice(0, 80)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Prescription tags */}
+              {summary && summary.allPrescriptionTags.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-gray-500 uppercase">推奨アクション</p>
+                  <div className="flex flex-wrap gap-1">
+                    {summary.allPrescriptionTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
                   </div>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-gray-500 uppercase">鑑別候補</p>
-                {differentials.map((d, i) => (
-                  <div key={d.diagnosis_code} className="space-y-0.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-700 truncate flex-1 pr-2">{d.label}</span>
-                      <span className="text-gray-500 flex-shrink-0">{Math.round(d.probability * 100)}pt</span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-1.5">
-                      <div
-                        className={`h-1.5 rounded-full ${i === 0 ? "bg-amber-400" : "bg-blue-400"}`}
-                        style={{ width: `${Math.round(d.probability * 100)}%` }}
-                      />
-                    </div>
+              {/* Contraindication tags */}
+              {summary && summary.allContraindicationTags.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-red-500 uppercase">禁忌・注意事項</p>
+                  <div className="flex flex-wrap gap-1">
+                    {summary.allContraindicationTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
                   </div>
-                ))}
-                {differentials.length === 0 && (
-                  <p className="text-xs text-gray-400 text-center py-4">
-                    回答を進めると評価候補が表示されます
-                  </p>
-                )}
-              </div>
+                </div>
+              )}
+
+              {!summary && (
+                <p className="text-xs text-gray-400 text-center py-4">
+                  回答を進めると評価サマリーが表示されます
+                </p>
+              )}
             </CardContent>
           </Card>
 

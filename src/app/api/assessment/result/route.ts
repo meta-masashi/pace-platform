@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mockAssessmentNodes } from "@/lib/mock-data";
-import { getResults } from "@/lib/bayesian-engine";
+import { computeResult, computeSummary } from "@/lib/bayesian-engine";
 import { sessionStore } from "@/lib/session-store";
 
 export async function GET(request: NextRequest) {
@@ -23,27 +23,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const diagnosisResults = getResults(state);
-    const primaryDiagnosis = diagnosisResults[0] ?? null;
-    const differentials = diagnosisResults.slice(1);
-
     // Retrieve nodes cached at session start (real Supabase nodes or mock fallback)
     const cachedNodes = sessionStore.getNodes(session_id);
     const allNodes = cachedNodes ?? mockAssessmentNodes;
 
-    // Collect all prescription and contraindication tags from answered nodes
-    const prescriptionTags = new Set<string>();
-    const contraindicationTags = new Set<string>();
-
-    for (const response of state.responses) {
-      const node = allNodes.find((n) => n.node_id === response.node_id);
-      if (!node) continue;
-
-      if (response.answer === "yes") {
-        node.prescription_tags.forEach((t) => prescriptionTags.add(t));
-        node.contraindication_tags.forEach((t) => contraindicationTags.add(t));
-      }
-    }
+    const results = computeResult(state, allNodes);
+    const summary = computeSummary(state, allNodes);
 
     return NextResponse.json({
       session_id,
@@ -53,11 +38,19 @@ export async function GET(request: NextRequest) {
       started_at: state.startedAt,
       completed_at: new Date().toISOString(),
       is_emergency: state.isEmergency,
-      primary_diagnosis: primaryDiagnosis,
-      differentials,
-      prescription_tags: Array.from(prescriptionTags),
-      contraindication_tags: Array.from(contraindicationTags),
+      // Legacy fields — kept for backward compat
+      primary_diagnosis: results[0] ?? null,
+      differentials: results.slice(1),
+      prescription_tags: summary.allPrescriptionTags,
+      contraindication_tags: summary.allContraindicationTags,
       responses: state.responses,
+      // New multi-axis summary fields
+      results,
+      summary,
+      interpretation: summary.interpretation,
+      riskLevel: summary.riskLevel,
+      hasRedFlag: summary.hasRedFlag,
+      hasAcuteInjury: summary.hasAcuteInjury,
     });
   } catch (err) {
     console.error("[assessment/result]", err);

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { createClient } from "@/lib/supabase/server";
 import { mockAthletes } from "@/lib/mock-data";
 import { PlayersClient } from "./PlayersClient";

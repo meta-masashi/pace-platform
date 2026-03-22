@@ -1,16 +1,14 @@
 /**
- * Unit tests for src/lib/bayesian-engine.ts
+ * Unit tests for the assessment flow using the new multi-axis Bayesian engine.
  *
- * These tests exercise the pure functional API of the Bayesian engine using
- * hand-crafted minimal AssessmentNode fixtures.  No real Supabase connection
- * or network I/O is involved.
+ * These tests exercise the pure functional API using hand-crafted AssessmentNode
+ * fixtures. No real Supabase connection or network I/O is involved.
  */
 
 import {
   initializeSession,
   selectNextNode,
   updatePosterior,
-  calculateInformationGain,
   getResults,
   isSessionComplete,
 } from "@/lib/bayesian-engine";
@@ -20,14 +18,13 @@ import type { AssessmentNode, AssessmentType } from "@/types";
 // Fixtures
 // ---------------------------------------------------------------------------
 
-/** Minimal valid AssessmentNode factory */
 function makeNode(overrides: Partial<AssessmentNode> & { node_id: string }): AssessmentNode {
   return {
     file_type: "F1_Acute",
     phase: "主訴",
     category: "pain",
     question_text: "Test question?",
-    target_axis: "knee",
+    target_axis: "Axis 5A",
     lr_yes: 2.0,
     lr_no: 0.5,
     kappa: 0.6,
@@ -45,7 +42,7 @@ const HIGH_GAIN_NODE = makeNode({
   lr_yes: 8.0,
   lr_no: 0.2,
   information_gain: 0.9,
-  target_axis: "knee",
+  target_axis: "Axis 5A",
   phase: "主訴",
 });
 
@@ -54,14 +51,14 @@ const LOW_GAIN_NODE = makeNode({
   lr_yes: 1.2,
   lr_no: 0.9,
   information_gain: 0.1,
-  target_axis: "knee",
+  target_axis: "Axis 2A",
   phase: "主訴",
 });
 
 const REDFLAG_NODE = makeNode({
   node_id: "node-redflag",
   phase: "RedFlag",
-  target_axis: "spine_neural", // "all" regions — always relevant
+  target_axis: "RedFlag",
   lr_yes: 50,
   lr_no: 0.1,
   information_gain: 0.8,
@@ -69,7 +66,7 @@ const REDFLAG_NODE = makeNode({
 
 const ANKLE_NODE = makeNode({
   node_id: "node-ankle",
-  target_axis: "ankle",
+  target_axis: "Axis 5E",
   phase: "触診",
   lr_yes: 3.0,
   lr_no: 0.4,
@@ -104,24 +101,10 @@ describe("initializeSession", () => {
     expect(session.isEmergency).toBe(false);
   });
 
-  it("initialises priors as a non-empty probability distribution summing to ~1", () => {
-    const session = initializeSession("sess-4", "a", "s", ASSESSMENT_TYPE);
-
-    const codes = Object.keys(session.priors);
-    expect(codes.length).toBeGreaterThan(0);
-
-    const total = Object.values(session.priors).reduce((s, p) => s + p, 0);
-    expect(total).toBeCloseTo(1.0, 5);
-  });
-
-  it("accepts an optional injuryRegion parameter", () => {
-    const session = initializeSession("sess-5", "a", "s", ASSESSMENT_TYPE, "lower_limb");
-    expect(session.injuryRegion).toBe("lower_limb");
-  });
-
-  it("defaults injuryRegion to 'general'", () => {
-    const session = initializeSession("sess-6", "a", "s", ASSESSMENT_TYPE);
-    expect(session.injuryRegion).toBe("general");
+  it("accepts an optional injuryRegion parameter without throwing", () => {
+    expect(() =>
+      initializeSession("sess-5", "a", "s", ASSESSMENT_TYPE, "lower_limb")
+    ).not.toThrow();
   });
 
   it("sets a valid ISO startedAt timestamp", () => {
@@ -152,17 +135,16 @@ describe("selectNextNode", () => {
     expect(selectNextNode(state, [HIGH_GAIN_NODE, LOW_GAIN_NODE])).toBeNull();
   });
 
-  it("selects a RedFlag node before a 主訴 node (phase priority)", () => {
-    const state = initializeSession("sess-c", "a", "s", ASSESSMENT_TYPE, "general");
+  it("selects a RedFlag node before other nodes (priority axis)", () => {
+    const state = initializeSession("sess-c", "a", "s", ASSESSMENT_TYPE);
 
     const chosen = selectNextNode(state, [LOW_GAIN_NODE, REDFLAG_NODE]);
     expect(chosen).not.toBeNull();
     expect(chosen!.node_id).toBe(REDFLAG_NODE.node_id);
   });
 
-  it("within the same phase, selects the higher information-gain node", () => {
+  it("within non-priority axes, selects the higher LR node", () => {
     const state = initializeSession("sess-d", "a", "s", ASSESSMENT_TYPE);
-    // Both nodes share the same phase ("主訴")
     const chosen = selectNextNode(state, [LOW_GAIN_NODE, HIGH_GAIN_NODE]);
 
     expect(chosen).not.toBeNull();
@@ -173,7 +155,6 @@ describe("selectNextNode", () => {
     let state = initializeSession("sess-e", "a", "s", ASSESSMENT_TYPE);
     state = updatePosterior(state, HIGH_GAIN_NODE, "yes");
 
-    // Only HIGH_GAIN_NODE is answered; LOW_GAIN_NODE should be returned.
     const chosen = selectNextNode(state, [HIGH_GAIN_NODE, LOW_GAIN_NODE]);
     expect(chosen).not.toBeNull();
     expect(chosen!.node_id).toBe(LOW_GAIN_NODE.node_id);
@@ -181,7 +162,7 @@ describe("selectNextNode", () => {
 });
 
 // ---------------------------------------------------------------------------
-// updatePosterior (recordAnswer equivalent)
+// updatePosterior
 // ---------------------------------------------------------------------------
 
 describe("updatePosterior", () => {
@@ -199,28 +180,6 @@ describe("updatePosterior", () => {
     expect(state.responses).toHaveLength(1);
     expect(state.responses[0].node_id).toBe(HIGH_GAIN_NODE.node_id);
     expect(state.responses[0].answer).toBe("no");
-  });
-
-  it("updates the posterior probability distribution after a 'yes' answer", () => {
-    const state0 = initializeSession("sess-h", "a", "s", ASSESSMENT_TYPE);
-    const priorBefore = { ...state0.priors };
-
-    const state1 = updatePosterior(state0, HIGH_GAIN_NODE, "yes");
-
-    // At least one diagnosis probability should have changed
-    const changed = Object.keys(priorBefore).some(
-      (code) => Math.abs(state1.priors[code] - priorBefore[code]) > 1e-9
-    );
-    expect(changed).toBe(true);
-  });
-
-  it("posterior probabilities still sum to ~1 after an answer", () => {
-    let state = initializeSession("sess-i", "a", "s", ASSESSMENT_TYPE);
-    state = updatePosterior(state, HIGH_GAIN_NODE, "yes");
-    state = updatePosterior(state, ANKLE_NODE, "no");
-
-    const total = Object.values(state.priors).reduce((s, p) => s + p, 0);
-    expect(total).toBeCloseTo(1.0, 5);
   });
 
   it("accumulates multiple responses correctly", () => {
@@ -247,7 +206,7 @@ describe("updatePosterior", () => {
 // ---------------------------------------------------------------------------
 
 describe("Red flag detection", () => {
-  it("answering 'yes' to a RedFlag node sets isEmergency to true", () => {
+  it("answering 'yes' to a RedFlag node with high LR sets isEmergency to true", () => {
     let state = initializeSession("sess-l", "a", "s", ASSESSMENT_TYPE);
     state = updatePosterior(state, REDFLAG_NODE, "yes");
 
@@ -279,7 +238,7 @@ describe("Red flag detection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getResults (computeResult equivalent)
+// getResults
 // ---------------------------------------------------------------------------
 
 describe("getResults", () => {
@@ -304,43 +263,6 @@ describe("getResults", () => {
       expect(results[i - 1].probability).toBeGreaterThanOrEqual(results[i].probability);
     }
   });
-
-  it("total probability across all diagnoses is ~1", () => {
-    const state = initializeSession("sess-r", "a", "s", ASSESSMENT_TYPE);
-    const total = getResults(state).reduce((s, r) => s + r.probability, 0);
-    expect(total).toBeCloseTo(1.0, 5);
-  });
-
-  it("answering 'yes' to a high-LR node raises the top diagnosis probability", () => {
-    const state0 = initializeSession("sess-s", "a", "s", ASSESSMENT_TYPE);
-    const topBefore = getResults(state0)[0].probability;
-
-    const state1 = updatePosterior(state0, HIGH_GAIN_NODE, "yes");
-    const topAfter = getResults(state1)[0].probability;
-
-    expect(topAfter).toBeGreaterThan(topBefore);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// calculateInformationGain
-// ---------------------------------------------------------------------------
-
-describe("calculateInformationGain", () => {
-  it("returns a finite number for any node", () => {
-    const state = initializeSession("sess-t", "a", "s", ASSESSMENT_TYPE);
-    const gain = calculateInformationGain(HIGH_GAIN_NODE, state);
-
-    expect(isFinite(gain)).toBe(true);
-  });
-
-  it("a high-LR node has greater information gain than a low-LR node", () => {
-    const state = initializeSession("sess-u", "a", "s", ASSESSMENT_TYPE);
-    const highGain = calculateInformationGain(HIGH_GAIN_NODE, state);
-    const lowGain = calculateInformationGain(LOW_GAIN_NODE, state);
-
-    expect(highGain).toBeGreaterThan(lowGain);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -353,9 +275,8 @@ describe("isSessionComplete", () => {
     expect(isSessionComplete(state)).toBe(false);
   });
 
-  it("returns false when fewer than 8 nodes are answered even with high confidence", () => {
+  it("returns false when fewer than 5 nodes are answered", () => {
     let state = initializeSession("sess-w", "a", "s", ASSESSMENT_TYPE);
-    // Answer only 3 nodes
     for (const node of [HIGH_GAIN_NODE, LOW_GAIN_NODE, ANKLE_NODE]) {
       state = updatePosterior(state, node, "yes");
     }
