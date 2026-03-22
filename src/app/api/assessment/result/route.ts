@@ -27,12 +27,16 @@ export async function GET(request: NextRequest) {
     const primaryDiagnosis = diagnosisResults[0] ?? null;
     const differentials = diagnosisResults.slice(1);
 
+    // Retrieve nodes cached at session start (real Supabase nodes or mock fallback)
+    const cachedNodes = sessionStore.getNodes(session_id);
+    const allNodes = cachedNodes ?? mockAssessmentNodes;
+
     // Collect all prescription and contraindication tags from answered nodes
     const prescriptionTags = new Set<string>();
     const contraindicationTags = new Set<string>();
 
     for (const response of state.responses) {
-      const node = mockAssessmentNodes.find((n) => n.node_id === response.node_id);
+      const node = allNodes.find((n) => n.node_id === response.node_id);
       if (!node) continue;
 
       if (response.answer === "yes") {
