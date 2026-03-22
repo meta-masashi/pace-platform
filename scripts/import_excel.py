@@ -51,11 +51,14 @@ ASSESSMENT_COL_ALIASES: dict[str, str] = {
     "nodeid": "node_id",
     "id": "node_id",
     "node": "node_id",
+    "node_id（固定）": "node_id",
     # phase
     "phase": "phase",
+    "フェーズ": "phase",
     # category
     "category": "category",
     "cat": "category",
+    "カテゴリ": "category",
     # question_text
     "question_text": "question_text",
     "question": "question_text",
@@ -63,28 +66,38 @@ ASSESSMENT_COL_ALIASES: dict[str, str] = {
     "item": "question_text",
     "content": "question_text",
     "質問": "question_text",
+    "質問文": "question_text",
     # target_axis
     "target_axis": "target_axis",
     "axis": "target_axis",
+    "対象axis": "target_axis",
+    "対象axis（inference_label紐付け）": "target_axis",
     # lr_yes
     "lr_yes": "lr_yes",
     "lr+": "lr_yes",
     "lryes": "lr_yes",
     "lr_positive": "lr_yes",
+    "lr_yes(臨床値)": "lr_yes",
+    "lr_yes_sr(κ補正)": "lr_yes",
     # lr_no
     "lr_no": "lr_no",
     "lr-": "lr_no",
     "lrno": "lr_no",
     "lr_negative": "lr_no",
+    "lr_no_clinical": "lr_no",
+    "lr_no除外力": "lr_no",
     # kappa
     "kappa": "kappa",
     "cohen_kappa": "kappa",
     "inter_rater": "kappa",
+    "κ係数": "kappa",
     # routing_rules
     "routing_rules": "routing_rules",
     "routing": "routing_rules",
     "routes": "routing_rules",
     "next": "routing_rules",
+    "routing_v4.3": "routing_rules",
+    "routing_v4": "routing_rules",
     # prescription_tags
     "prescription_tags": "prescription_tags",
     "prescription": "prescription_tags",
@@ -100,6 +113,13 @@ ASSESSMENT_COL_ALIASES: dict[str, str] = {
     "lambda": "time_decay_lambda",
     "decay": "time_decay_lambda",
     "time_decay": "time_decay_lambda",
+    "time_decay_λ": "time_decay_lambda",
+    # evidence_level
+    "evidence_level": "evidence_level",
+    "エビデンスlv": "evidence_level",
+    "エビデンスlevel": "evidence_level",
+    # sort_order (not stored but useful)
+    "sort_order": "sort_order",
 }
 
 EXERCISE_COL_ALIASES: dict[str, str] = {
@@ -357,6 +377,15 @@ def parse_assessment_sheet(
         # Ensure question_text is not null
         if not rec.get("question_text"):
             rec["question_text"] = rec.get("node_id", "")
+
+        # Ensure lr_yes / lr_no / kappa are not null (DB NOT NULL constraint)
+        # Default 1.0 = neutral evidence (does not shift probability)
+        if rec.get("lr_yes") is None:
+            rec["lr_yes"] = 1.0
+        if rec.get("lr_no") is None:
+            rec["lr_no"] = 1.0
+        if rec.get("kappa") is None:
+            rec["kappa"] = 0.0
 
         records.append(rec)
 
