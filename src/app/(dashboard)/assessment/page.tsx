@@ -1,11 +1,36 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { createClient } from "@/lib/supabase/server";
 import { mockAthletes } from "@/lib/mock-data";
+import type { Athlete } from "@/types";
 
-export default function AssessmentIndexPage() {
-  const atRisk = mockAthletes.filter((a) => a.status !== "normal");
+export default async function AssessmentIndexPage() {
+  let athletes: Athlete[] = [];
+
+  try {
+    const supabase = await createClient();
+
+    const { data: rows, error } = await supabase
+      .from("athletes")
+      .select("*")
+      .eq("is_active", true)
+      .order("name");
+
+    if (!error && rows && rows.length > 0) {
+      athletes = rows as Athlete[];
+    }
+  } catch (err) {
+    console.warn("[assessment] Supabase query failed, falling back to mock data:", err);
+  }
+
+  // Fall back to mock data if Supabase returned empty
+  if (athletes.length === 0) athletes = mockAthletes;
+
+  const atRisk = athletes.filter((a) => a.status !== "normal");
 
   return (
     <div className="space-y-6">
