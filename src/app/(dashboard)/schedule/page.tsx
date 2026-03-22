@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
-import { mockScheduleEvents, mockAttendance, mockStaff } from "@/lib/mock-data";
+// import { mockScheduleEvents, mockAttendance, mockStaff } from "@/lib/mock-data";
 import { ScheduleClient } from "./ScheduleClient";
 import type { ScheduleEvent, AttendanceRecord, Staff } from "@/types";
 
@@ -57,13 +57,9 @@ export default async function SchedulePage() {
       attendance = [];
     }
   } catch (err) {
-    console.warn("[schedule] Supabase query failed, falling back to mock data:", err);
+    console.error("[schedule] Supabase query failed:", err);
+    // Return empty arrays — no mock fallback
   }
-
-  // Fall back to mock data if Supabase returned empty
-  if (scheduleEvents.length === 0) scheduleEvents = mockScheduleEvents;
-  if (staff.length === 0) staff = mockStaff;
-  if (attendance.length === 0) attendance = mockAttendance;
 
   return (
     <ScheduleClient

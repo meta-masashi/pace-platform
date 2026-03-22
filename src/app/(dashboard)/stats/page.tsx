@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
-import { mockAthletes, mockAuditLogs, mockEscalations } from "@/lib/mock-data";
+// import { mockAthletes, mockAuditLogs, mockEscalations } from "@/lib/mock-data";
 import { StatsClient } from "./StatsClient";
 import type { Athlete, AuditLog, EscalationRecord, Role } from "@/types";
 
@@ -61,13 +61,9 @@ export default async function StatsPage() {
       }));
     }
   } catch (err) {
-    console.warn("[stats] Supabase query failed, falling back to mock data:", err);
+    console.error("[stats] Supabase query failed:", err);
+    // Return empty arrays — no mock fallback
   }
-
-  // Fall back to mock data if Supabase returned empty
-  if (athletes.length === 0) athletes = mockAthletes;
-  if (auditLogs.length === 0) auditLogs = mockAuditLogs;
-  if (escalations.length === 0) escalations = mockEscalations;
 
   return (
     <StatsClient
