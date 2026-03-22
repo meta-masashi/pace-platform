@@ -11,7 +11,6 @@ import type {
   AssessmentNode,
   ScheduleEvent,
   AttendanceRecord,
-  MessageReadReceipt,
   AuditLog,
   EscalationRecord,
 } from "@/types";

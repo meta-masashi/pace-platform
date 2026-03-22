@@ -1,5 +1,5 @@
+import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { mockAthletes, mockMetrics, mockActiveAssessment, mockRehabWorkout } from "@/lib/mock-data";
 import { formatDate } from "@/lib/utils";
 import { PlayerDetailClient } from "./PlayerDetailClient";
 import type { Athlete, Workout, DiagnosisResult, Priority } from "@/types";
@@ -142,31 +142,12 @@ export default async function PlayerDetailPage({
       }
     }
   } catch (err) {
-    console.warn("[player-detail] Supabase query failed, falling back to mock data:", err);
+    console.warn("[player-detail] Supabase query failed:", err);
   }
 
-  // ---- Fallback to mock data if Supabase returned empty ----
+  // Show 404 if athlete not found
   if (!athlete) {
-    const mockAthlete = mockAthletes.find((a) => a.id === id) ?? mockAthletes[0];
-    athlete = mockAthlete;
-  }
-
-  if (chartData.length === 0) {
-    const mockMetricArray = mockMetrics[id] ?? mockMetrics["athlete-1"] ?? [];
-    chartData = mockMetricArray.map((m) => ({
-      date: formatDate(m.date),
-      NRS: parseFloat(m.nrs.toFixed(1)),
-      HRV: parseFloat(m.hrv.toFixed(1)),
-      ACWR: parseFloat(m.acwr.toFixed(2)),
-    }));
-  }
-
-  if (differentials.length === 0) {
-    differentials = mockActiveAssessment.differentials;
-  }
-
-  if (!workout) {
-    workout = mockRehabWorkout;
+    notFound();
   }
 
   return (

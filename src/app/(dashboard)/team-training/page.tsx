@@ -76,12 +76,6 @@ function rpeLabel(rpe?: number): string {
   return `RPE ${rpe} 低〜中`;
 }
 
-function acwrBarColor(acwr: number): string {
-  if (acwr >= 1.5) return "#ef4444";
-  if (acwr >= 1.3) return "#f59e0b";
-  return "#22c55e";
-}
-
 // ─── Periodization config ─────────────────────────────────────
 type MesocyclePhase = "accumulation" | "intensification" | "realization" | "taper";
 

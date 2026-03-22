@@ -151,7 +151,8 @@ export function KarteClient({ athlete, soapNotes, rehabProgram }: KarteClientPro
     }
   };
 
-  const handleSaveSoap = () => {
+  const handleSaveSoap = async () => {
+    // Save to localStorage first
     try {
       const existing = JSON.parse(
         localStorage.getItem(`karte-soap-${athleteId}`) ?? "[]"
@@ -167,10 +168,36 @@ export function KarteClient({ athlete, soapNotes, rehabProgram }: KarteClientPro
         JSON.stringify(existing.slice(0, 20))
       );
       setLocalSoapNotes([newNote, ...existing.slice(1)]);
-      setSoap({ subjective: "", objective: "", assessment: "", plan: "" });
-      showToast("保存しました（β版: ローカルのみ）");
     } catch {
-      showToast("保存に失敗しました");
+      // continue even if localStorage fails
+    }
+
+    // POST to Supabase via API
+    try {
+      const res = await fetch("/api/soap-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          subjective: soap.subjective,
+          objective: soap.objective,
+          assessment: soap.assessment,
+          plan: soap.plan,
+        }),
+      });
+
+      if (res.ok) {
+        setSoap({ subjective: "", objective: "", assessment: "", plan: "" });
+        showToast("保存しました");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error("[handleSaveSoap] API error:", err);
+        setSoap({ subjective: "", objective: "", assessment: "", plan: "" });
+        showToast("保存しました（ローカルのみ）");
+      }
+    } catch {
+      setSoap({ subjective: "", objective: "", assessment: "", plan: "" });
+      showToast("保存しました（ローカルのみ）");
     }
   };
 

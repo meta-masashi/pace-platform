@@ -31,7 +31,21 @@ export default async function SchedulePage() {
       .order("start_time");
 
     if (!eventError && eventRows && eventRows.length > 0) {
-      scheduleEvents = eventRows as ScheduleEvent[];
+      // Normalize DB rows: start_time/end_time are TIMESTAMPTZ, extract date + HH:MM
+      scheduleEvents = eventRows.map((row) => {
+        const startDt = new Date(row.start_time as string);
+        const endDt = row.end_time ? new Date(row.end_time as string) : startDt;
+        const dateStr = startDt.toISOString().slice(0, 10);
+        const startTimeStr = `${String(startDt.getHours()).padStart(2, "0")}:${String(startDt.getMinutes()).padStart(2, "0")}`;
+        const endTimeStr = `${String(endDt.getHours()).padStart(2, "0")}:${String(endDt.getMinutes()).padStart(2, "0")}`;
+        return {
+          ...row,
+          date: dateStr,
+          start_time: startTimeStr,
+          end_time: endTimeStr,
+          created_by_staff_id: (row.created_by_staff_id ?? row.created_by ?? "") as string,
+        } as ScheduleEvent;
+      });
     }
 
     // Fetch active staff

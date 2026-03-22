@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
-import { mockMetrics, mockTriageEntries } from "@/lib/mock-data";
 import { formatDate } from "@/lib/utils";
 import { DashboardClient } from "./DashboardClient";
 import type { DailyMetric, TriageEntry } from "@/types";
@@ -28,7 +27,7 @@ export default async function DashboardPage() {
 
   // ---- Try Supabase ----
   let chartData: { date: string; ACWR: number; NRS: number; HRV: number }[] = [];
-  let triageEntries: TriageEntry[] = [];
+  const triageEntries: TriageEntry[] = [];
   let criticalCount = 0;
   let watchlistCount = 0;
   let avgHp = 0;
@@ -147,32 +146,7 @@ export default async function DashboardPage() {
       }
     }
   } catch (err) {
-    console.warn("[dashboard] Supabase query failed, falling back to mock data:", err);
-  }
-
-  // ---- Fallback to mock data if Supabase returned empty ----
-  if (chartData.length === 0) {
-    const mockMetricArray = mockMetrics["athlete-1"] ?? [];
-    chartData = mockMetricArray.map((m) => ({
-      date: formatDate(m.date),
-      ACWR: parseFloat(m.acwr.toFixed(2)),
-      NRS: parseFloat(m.nrs.toFixed(1)),
-      HRV: parseFloat((m.hrv / 10).toFixed(2)),
-    }));
-  }
-
-  if (triageEntries.length === 0) {
-    triageEntries = mockTriageEntries;
-    criticalCount = mockTriageEntries.filter((e) => e.priority === "critical").length;
-    watchlistCount = mockTriageEntries.filter((e) => e.priority === "watchlist").length;
-  }
-
-  if (totalAthletes === 0) {
-    totalAthletes = 6; // mock athlete count
-  }
-
-  if (avgHp === 0) {
-    avgHp = 72; // mock average
+    console.warn("[dashboard] Supabase query failed:", err);
   }
 
   return (

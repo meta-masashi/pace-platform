@@ -106,7 +106,7 @@ export function TriageClient({
     }
   }, [triageIdMap]);
 
-  function handleSendEscalation() {
+  async function handleSendEscalation() {
     if (!escalationTarget) return;
     const newEsc: EscalationRecord = {
       id: `esc-${Date.now()}`,
@@ -123,6 +123,22 @@ export function TriageClient({
     };
     setEscalations((prev) => [newEsc, ...prev]);
     setSent(true);
+
+    // Persist to escalation_records table
+    try {
+      await fetch("/api/escalations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          athlete_id: escalationTarget.athleteId,
+          severity,
+          reason: `トリアージにてCritical判定 — ${escalationTarget.athleteName}`,
+          recommended_action: `${toRoles.join("・")} への緊急連絡`,
+        }),
+      });
+    } catch (e) {
+      console.error("[escalation persist] failed:", e);
+    }
   }
 
   function closeModal() {

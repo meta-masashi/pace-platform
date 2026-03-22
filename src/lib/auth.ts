@@ -1,6 +1,5 @@
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { mockStaff } from "@/lib/mock-data";
 import type { Staff } from "@/types";
 
 /**
@@ -35,12 +34,12 @@ export async function getCurrentUser(): Promise<User | null> {
  * dev experience without a live Supabase project remains intact.
  */
 export async function getCurrentStaff(): Promise<Staff | null> {
-  // Dev fallback: if Supabase env vars are not set, use mock data
+  // If Supabase env vars are not set, return null
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   ) {
-    return mockStaff[0];
+    return null;
   }
 
   try {
@@ -74,7 +73,7 @@ export async function getCurrentStaff(): Promise<Staff | null> {
 
     return staffRow as Staff;
   } catch {
-    // If anything goes wrong (network, missing table, etc.) fall back to mock
-    return mockStaff[0];
+    // If anything goes wrong (network, missing table, etc.) return null
+    return null;
   }
 }

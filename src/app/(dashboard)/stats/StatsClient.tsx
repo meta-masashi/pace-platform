@@ -9,30 +9,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { ShieldCheck, CheckCircle, Clock } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 import type { Athlete, AuditLog, EscalationRecord } from "@/types";
-
-// ─── Static chart data (not from DB yet) ──────────────────────
-const injuryByBodyPart = [
-  { part: "下肢（足関節）", count: 4, color: "#ef4444" },
-  { part: "下肢（膝関節）", count: 3, color: "#f97316" },
-  { part: "下肢（股関節）", count: 2, color: "#f59e0b" },
-  { part: "体幹・腰部", count: 2, color: "#84cc16" },
-  { part: "上肢（肩）", count: 1, color: "#22c55e" },
-  { part: "頭部・頸部", count: 1, color: "#06b6d4" },
-];
-
-const injuryByPosition = [
-  { position: "FW", count: 4 },
-  { position: "MF", count: 5 },
-  { position: "DF", count: 3 },
-  { position: "GK", count: 1 },
-];
-
-const teamACWRTrend = [
-  { week: "2/23週", acwr: 1.02 },
-  { week: "3/2週",  acwr: 1.18 },
-  { week: "3/9週",  acwr: 1.28 },
-  { week: "3/16週", acwr: 1.35 },
-];
+import type { InjuryDistributionItem, ACWRTrendItem, HPDistributionItem } from "./page";
 
 const rtpData = [
   { name: "田中 健太",  position: "FW", diagnosis: "足関節可動域制限", days: 12, phase: 1, status: "active" },
@@ -55,24 +32,74 @@ const monthlyActivity = [
   { date: "3/21", assessments: 2, approvals: 2, notes: 3 },
 ];
 
-const hpTrend = [
-  { week: "2/23週", avg: 72 },
-  { week: "3/2週",  avg: 68 },
-  { week: "3/9週",  avg: 65 },
-  { week: "3/16週", avg: 61 },
-];
-
 interface StatsClientProps {
   athletes: Athlete[];
   auditLogs: AuditLog[];
   escalations: EscalationRecord[];
+  injuryDistribution: InjuryDistributionItem[];
+  acwrTrend: ACWRTrendItem[];
+  hpDistribution: HPDistributionItem[];
 }
 
-export function StatsClient({ athletes, auditLogs, escalations }: StatsClientProps) {
+export function StatsClient({ athletes, auditLogs, escalations, injuryDistribution, acwrTrend, hpDistribution }: StatsClientProps) {
   const criticalCount = athletes.filter(a => a.status === "critical").length;
   const watchlistCount = athletes.filter(a => a.status === "watchlist").length;
   const activeRTP = rtpData.filter(r => r.status === "active").length;
   const avgRTPDays = Math.round(rtpData.filter(r => r.status === "active").reduce((s, r) => s + r.days, 0) / activeRTP);
+
+  // Use real data if available, otherwise fall back to static placeholders
+  const injuryByStatusData: Array<{ part: string; count: number; color: string }> =
+    injuryDistribution.length > 0
+      ? injuryDistribution.map((item, i) => ({
+          part: item.label,
+          count: item.count,
+          color: ["#ef4444", "#f97316", "#22c55e"][i % 3],
+        }))
+      : [
+          { part: "下肢（足関節）", count: 4, color: "#ef4444" },
+          { part: "下肢（膝関節）", count: 3, color: "#f97316" },
+          { part: "下肢（股関節）", count: 2, color: "#f59e0b" },
+          { part: "体幹・腰部", count: 2, color: "#84cc16" },
+          { part: "上肢（肩）", count: 1, color: "#22c55e" },
+          { part: "頭部・頸部", count: 1, color: "#06b6d4" },
+        ];
+
+  const teamACWRTrendData =
+    acwrTrend.length > 0
+      ? acwrTrend
+      : [
+          { week: "2/23週", acwr: 1.02 },
+          { week: "3/2週", acwr: 1.18 },
+          { week: "3/9週", acwr: 1.28 },
+          { week: "3/16週", acwr: 1.35 },
+        ];
+
+  const latestACWR = teamACWRTrendData[teamACWRTrendData.length - 1]?.acwr ?? 0;
+  const acwrWarning = latestACWR >= 1.5 ? "危険域" : latestACWR >= 1.3 ? "注意域" : "安全域";
+
+  const hpDistributionData =
+    hpDistribution.length > 0
+      ? hpDistribution.map(({ range, count }) => ({ position: range, count }))
+      : [
+          { position: "FW", count: 4 },
+          { position: "MF", count: 5 },
+          { position: "DF", count: 3 },
+          { position: "GK", count: 1 },
+        ];
+
+  // HP average trend: derive from athletes list or fall back to static values
+  const hpTrendData: Array<{ week: string; avg: number }> =
+    athletes.length > 0
+      ? (() => {
+          const avg = Math.round(athletes.reduce((s, a) => s + a.hp, 0) / athletes.length);
+          return [{ week: "今週", avg }];
+        })()
+      : [
+          { week: "2/23週", avg: 72 },
+          { week: "3/2週", avg: 68 },
+          { week: "3/9週", avg: 65 },
+          { week: "3/16週", avg: 61 },
+        ];
 
   return (
     <div className="space-y-6">
@@ -97,13 +124,13 @@ export function StatsClient({ athletes, auditLogs, escalations }: StatsClientPro
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={injuryByBodyPart} layout="vertical" margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
+              <BarChart data={injuryByStatusData} layout="vertical" margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
                 <YAxis type="category" dataKey="part" tick={{ fontSize: 11 }} width={140} />
                 <Tooltip />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-                  {injuryByBodyPart.map((entry, i) => (
+                  {injuryByStatusData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
                   ))}
                 </Bar>
@@ -121,7 +148,7 @@ export function StatsClient({ athletes, auditLogs, escalations }: StatsClientPro
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
-                  data={injuryByPosition}
+                  data={hpDistributionData}
                   dataKey="count"
                   nameKey="position"
                   cx="50%"
@@ -130,8 +157,8 @@ export function StatsClient({ athletes, auditLogs, escalations }: StatsClientPro
                   outerRadius={85}
                   isAnimationActive={false}
                 >
-                  {injuryByPosition.map((_, i) => (
-                    <Cell key={i} fill={["#ef4444","#f59e0b","#22c55e","#06b6d4"][i]} />
+                  {hpDistributionData.map((_, i) => (
+                    <Cell key={i} fill={["#ef4444","#f59e0b","#22c55e","#06b6d4","#8b5cf6"][i % 5]} />
                   ))}
                 </Pie>
                 <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-gray-600">{v}</span>} />
@@ -148,14 +175,14 @@ export function StatsClient({ athletes, auditLogs, escalations }: StatsClientPro
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>チーム ACWR 週次推移</CardTitle>
-              <span className="text-xs text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded">
-                現在 1.35 — 注意域
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${latestACWR >= 1.5 ? "text-red-600 bg-red-50" : latestACWR >= 1.3 ? "text-amber-600 bg-amber-50" : "text-green-600 bg-green-50"}`}>
+                現在 {latestACWR.toFixed(2)} — {acwrWarning}
               </span>
             </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={teamACWRTrend} margin={{ top: 4, right: 20, left: -20, bottom: 4 }}>
+              <LineChart data={teamACWRTrendData} margin={{ top: 4, right: 20, left: -20, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="week" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} domain={[0.8, 1.8]} />
@@ -183,7 +210,7 @@ export function StatsClient({ athletes, auditLogs, escalations }: StatsClientPro
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={hpTrend} margin={{ top: 4, right: 20, left: -20, bottom: 4 }}>
+              <LineChart data={hpTrendData} margin={{ top: 4, right: 20, left: -20, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="week" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} domain={[40, 100]} />

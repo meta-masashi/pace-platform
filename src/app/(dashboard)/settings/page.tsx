@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
-import { mockStaff } from "@/lib/mock-data";
 import { SettingsClient } from "./SettingsClient";
 import type { Staff } from "@/types";
 
@@ -20,11 +19,8 @@ export default async function SettingsPage() {
       staff = staffRows as Staff[];
     }
   } catch (err) {
-    console.warn("[settings] Supabase query failed, falling back to mock data:", err);
+    console.warn("[settings] Supabase query failed:", err);
   }
-
-  // Fall back to mock data if Supabase returned empty
-  if (staff.length === 0) staff = mockStaff;
 
   return <SettingsClient staff={staff} />;
 }

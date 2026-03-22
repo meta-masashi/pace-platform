@@ -1,0 +1,23 @@
+-- Storage RLS for diagnosis-documents bucket
+-- The bucket 'diagnosis-documents' must be created via Supabase Dashboard
+-- (Storage > New Bucket, private, 10MB limit, allowed MIME types: application/pdf, image/jpeg, image/png)
+--
+-- Manual setup required in Supabase Dashboard > Storage > diagnosis-documents > Policies:
+--
+-- 1. Upload policy (INSERT) for authenticated staff:
+--    Policy name: staff_upload
+--    Allowed operation: INSERT
+--    Policy definition: auth.role() = 'authenticated'
+--
+-- 2. Read policy (SELECT) for authenticated staff (signed URL access):
+--    Policy name: staff_read
+--    Allowed operation: SELECT
+--    Policy definition: auth.role() = 'authenticated'
+--
+-- Note: Since the bucket is private, use supabase.storage.createSignedUrl()
+-- to generate temporary download URLs rather than getPublicUrl().
+-- The diagnosis_document_url column in rehab_programs stores the storage object path
+-- (e.g. "diagnoses/1234567890-abc123.pdf"), not a full URL.
+--
+-- To retrieve a file, call:
+--   supabase.storage.from('diagnosis-documents').createSignedUrl(path, 3600)

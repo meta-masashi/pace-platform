@@ -5,10 +5,28 @@ import { createClient } from "@/lib/supabase/server";
 import { StatsClient } from "./StatsClient";
 import type { Athlete, AuditLog, EscalationRecord, Role } from "@/types";
 
+export interface InjuryDistributionItem {
+  label: string;
+  count: number;
+}
+
+export interface ACWRTrendItem {
+  week: string;
+  acwr: number;
+}
+
+export interface HPDistributionItem {
+  range: string;
+  count: number;
+}
+
 export default async function StatsPage() {
   let athletes: Athlete[] = [];
   let auditLogs: AuditLog[] = [];
   let escalations: EscalationRecord[] = [];
+  let injuryDistribution: InjuryDistributionItem[] = [];
+  let acwrTrend: ACWRTrendItem[] = [];
+  let hpDistribution: HPDistributionItem[] = [];
 
   try {
     const supabase = await createClient();
@@ -60,6 +78,71 @@ export default async function StatsPage() {
         acknowledged_by_name: row.resolved_by ?? undefined,
       }));
     }
+
+    // ── Injury distribution: count athletes by status ──────────────────
+    if (athletes.length > 0) {
+      const statusCounts: Record<string, number> = {};
+      for (const a of athletes) {
+        statusCounts[a.status] = (statusCounts[a.status] ?? 0) + 1;
+      }
+      const labelMap: Record<string, string> = {
+        critical: "Critical（要対応）",
+        watchlist: "Watchlist（観察中）",
+        normal: "Normal（問題なし）",
+      };
+      injuryDistribution = Object.entries(statusCounts).map(([status, count]) => ({
+        label: labelMap[status] ?? status,
+        count,
+      }));
+    }
+
+    // ── ACWR trend: last 8 weeks average acwr per week ─────────────────
+    const eightWeeksAgo = new Date();
+    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+    const cutoff = eightWeeksAgo.toISOString().split("T")[0];
+
+    const { data: acwrRows } = await supabase
+      .from("daily_metrics")
+      .select("date, acwr")
+      .gte("date", cutoff)
+      .order("date", { ascending: true });
+
+    if (acwrRows && acwrRows.length > 0) {
+      // Group by week (ISO week label)
+      const weekMap: Record<string, { sum: number; count: number }> = {};
+      for (const row of acwrRows) {
+        const d = new Date(row.date);
+        // Use Monday-based week start
+        const dayOfWeek = d.getDay() === 0 ? 6 : d.getDay() - 1;
+        const monday = new Date(d);
+        monday.setDate(d.getDate() - dayOfWeek);
+        const weekLabel = `${monday.getMonth() + 1}/${monday.getDate()}週`;
+        if (!weekMap[weekLabel]) weekMap[weekLabel] = { sum: 0, count: 0 };
+        weekMap[weekLabel].sum += Number(row.acwr ?? 0);
+        weekMap[weekLabel].count += 1;
+      }
+      acwrTrend = Object.entries(weekMap)
+        .slice(-8)
+        .map(([week, { sum, count }]) => ({
+          week,
+          acwr: Math.round((sum / count) * 100) / 100,
+        }));
+    }
+
+    // ── HP distribution: count athletes by hp ranges ───────────────────
+    if (athletes.length > 0) {
+      const ranges = [
+        { range: "0-39", min: 0, max: 39 },
+        { range: "40-59", min: 40, max: 59 },
+        { range: "60-74", min: 60, max: 74 },
+        { range: "75-89", min: 75, max: 89 },
+        { range: "90-100", min: 90, max: 100 },
+      ];
+      hpDistribution = ranges.map(({ range, min, max }) => ({
+        range,
+        count: athletes.filter((a) => a.hp >= min && a.hp <= max).length,
+      }));
+    }
   } catch (err) {
     console.error("[stats] Supabase query failed:", err);
     // Return empty arrays — no mock fallback
@@ -70,6 +153,9 @@ export default async function StatsPage() {
       athletes={athletes}
       auditLogs={auditLogs}
       escalations={escalations}
+      injuryDistribution={injuryDistribution}
+      acwrTrend={acwrTrend}
+      hpDistribution={hpDistribution}
     />
   );
 }

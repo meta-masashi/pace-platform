@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import type { RehabProgram, RehabPhase, Athlete } from "@/types";
 
 const phaseColors: Record<RehabPhase, string> = {
@@ -74,16 +75,22 @@ function NewRehabModal({
     estimated_rtp_date: "",
   });
   const [fileName, setFileName] = useState<string | null>(null);
+  const [docFile, setDocFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      setDocFile(null);
+      setFileName(null);
+      return;
+    }
     if (file.size > 10 * 1024 * 1024) {
       setError("ファイルサイズは10MB以内にしてください");
       return;
     }
+    setDocFile(file);
     setFileName(file.name);
     setError(null);
   };
@@ -99,12 +106,29 @@ function NewRehabModal({
 
     setSubmitting(true);
     try {
+      // Upload diagnosis document to Supabase Storage if provided
+      let diagnosis_document_url: string | null = null;
+      if (docFile) {
+        const supabase = createClient();
+        const ext = docFile.name.split(".").pop();
+        const path = `diagnoses/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("diagnosis-documents")
+          .upload(path, docFile, { contentType: docFile.type });
+        if (uploadError) {
+          setError(`ファイルのアップロードに失敗しました: ${uploadError.message}`);
+          setSubmitting(false);
+          return;
+        }
+        diagnosis_document_url = path;
+      }
+
       const res = await fetch("/api/rehabilitation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          diagnosis_document_url: null, // file upload not implemented yet
+          diagnosis_document_url,
         }),
       });
 
@@ -257,16 +281,17 @@ function NewRehabModal({
           {/* 診断書アップロード */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              診断書アップロード（任意・PDF/画像 最大10MB）
+              診断書（PDF・画像）
             </label>
             <input
               type="file"
-              accept=".pdf,image/*"
-              className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-gray-200 file:text-xs file:font-medium file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100"
+              accept="application/pdf,image/jpeg,image/png"
               onChange={handleFile}
+              className="w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
             />
+            <p className="text-xs text-gray-400 mt-1">PDF・JPG・PNG、最大10MB</p>
             {fileName && (
-              <p className="mt-1 text-xs text-gray-500">📄 選択済み: {fileName}</p>
+              <p className="mt-1 text-xs text-gray-500">選択済み: {fileName}</p>
             )}
           </div>
 
@@ -331,8 +356,13 @@ export function RehabilitationClient({ items, athletes }: RehabilitationClientPr
         <td className="px-4 py-3 font-medium text-gray-900">{athleteName}</td>
         <td className="px-4 py-3 text-gray-700">
           <div>{displayLabel}</div>
-          <div className="mt-1">
+          <div className="mt-1 flex flex-wrap items-center gap-1">
             <ApprovalBadge status={program.approval_status} />
+            {program.diagnosis_document_url && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                診断書あり
+              </span>
+            )}
           </div>
           {program.approval_status === "rejected" && program.rejection_reason && (
             <div className="mt-1 text-xs text-red-600">理由: {program.rejection_reason}</div>

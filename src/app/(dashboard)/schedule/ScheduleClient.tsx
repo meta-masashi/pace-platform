@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, MapPin, Clock, Users, X, Calendar, TrendingUp, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ function computeACWR(baseDate: string, events: ScheduleEvent[]): { acute: number
 }
 
 function buildWeeklyACWRChart(weekDates: Date[], events: ScheduleEvent[]): Array<{ day: string; acwr: number; projected: boolean }> {
-  return weekDates.map((d, i) => {
+  return weekDates.map((d) => {
     const ymd = toYMD(d);
     const today = "2026-03-22";
     const isToday = ymd === today;
@@ -109,10 +110,66 @@ interface ScheduleClientProps {
 
 export function ScheduleClient({ scheduleEvents, attendance, staff }: ScheduleClientProps) {
   const today = "2026-03-22";
+  const router = useRouter();
   const [anchor, setAnchor] = useState(new Date(today));
   const [selected, setSelected] = useState<ScheduleEvent | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showACWR, setShowACWR] = useState(true);
+
+  // Form state
+  const [title, setTitle] = useState("");
+  const [eventType, setEventType] = useState<string>("practice");
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function openAddModal() {
+    const anchorYMD = toYMD(anchor);
+    setTitle("");
+    setEventType("practice");
+    setStartsAt(`${anchorYMD}T16:00`);
+    setEndsAt(`${anchorYMD}T18:00`);
+    setLocation("");
+    setDescription("");
+    setFormError(null);
+    setSaving(false);
+    setShowAddModal(true);
+  }
+
+  async function handleSave() {
+    if (!title.trim()) { setFormError("タイトルを入力してください"); return; }
+    if (!startsAt) { setFormError("開始日時を入力してください"); return; }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const res = await fetch("/api/schedule-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          event_type: eventType,
+          starts_at: new Date(startsAt).toISOString(),
+          ends_at: endsAt ? new Date(endsAt).toISOString() : undefined,
+          location: location.trim() || undefined,
+          description: description.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "保存に失敗しました" }));
+        setFormError(err.error ?? "保存に失敗しました");
+        return;
+      }
+      setShowAddModal(false);
+      router.refresh();
+    } catch {
+      setFormError("ネットワークエラーが発生しました");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const weekDates = getWeekDates(anchor);
   const weeklyACWR = buildWeeklyACWRChart(weekDates, scheduleEvents);
@@ -153,7 +210,7 @@ export function ScheduleClient({ scheduleEvents, attendance, staff }: ScheduleCl
             <TrendingUp className="w-3.5 h-3.5" />
             ACWR予測
           </button>
-          <Button variant="primary" onClick={() => setShowAddModal(true)}>
+          <Button variant="primary" onClick={openAddModal}>
             <Plus className="w-4 h-4 mr-1" />
             イベント追加
           </Button>
@@ -199,8 +256,6 @@ export function ScheduleClient({ scheduleEvents, attendance, staff }: ScheduleCl
               const isSun = i === 6;
               const dayACWR = weeklyACWR[i];
               const dayZone = acwrZone(dayACWR.acwr);
-              const hasFutureLoad = ymd > today && dayEvents.some(e => e.estimated_rpe);
-
               return (
                 <div key={ymd} className="min-h-[180px]">
                   <div className={`text-center py-2 mb-1 rounded-t-lg ${
@@ -501,58 +556,75 @@ export function ScheduleClient({ scheduleEvents, attendance, staff }: ScheduleCl
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">タイトル</label>
-                <input type="text" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="チーム練習" />
+                <label className="block text-xs font-medium text-gray-700 mb-1">タイトル *</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="チーム練習"
+                />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">種別</label>
-                  <select className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <option value="practice">練習</option>
-                    <option value="match">試合</option>
-                    <option value="recovery">回復</option>
-                    <option value="meeting">ミーティング</option>
-                    <option value="off">OFF</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">日付</label>
-                  <input type="date" defaultValue={toYMD(anchor)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">種類 *</label>
+                <select
+                  value={eventType}
+                  onChange={e => setEventType(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="practice">練習</option>
+                  <option value="match">試合</option>
+                  <option value="recovery">回復</option>
+                  <option value="meeting">ミーティング</option>
+                  <option value="off">OFF</option>
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">開始</label>
-                  <input type="time" defaultValue="16:00" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">終了</label>
-                  <input type="time" defaultValue="18:00" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">開始日時 *</label>
+                <input
+                  type="datetime-local"
+                  value={startsAt}
+                  onChange={e => setStartsAt(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">予想 RPE（6-20）</label>
-                  <input type="number" min={6} max={20} placeholder="13" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">時間（分）</label>
-                  <input type="number" min={10} placeholder="120" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">終了日時</label>
+                <input
+                  type="datetime-local"
+                  value={endsAt}
+                  onChange={e => setEndsAt(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">場所</label>
-                <input type="text" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="メインフィールド" />
+                <input
+                  type="text"
+                  value={location}
+                  onChange={e => setLocation(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="メインフィールド"
+                />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">メモ</label>
-                <textarea rows={2} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 resize-none" />
+                <label className="block text-xs font-medium text-gray-700 mb-1">説明</label>
+                <textarea
+                  rows={2}
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                />
               </div>
-              <p className="text-xs text-gray-400">RPEと時間を入力すると、セッション負荷とACWR予測が自動計算されます</p>
+              {formError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{formError}</p>
+              )}
             </div>
             <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowAddModal(false)}>キャンセル</Button>
-              <Button variant="primary" className="flex-1" onClick={() => setShowAddModal(false)}>保存</Button>
+              <Button variant="outline" className="flex-1" onClick={() => setShowAddModal(false)} disabled={saving}>キャンセル</Button>
+              <Button variant="primary" className="flex-1" onClick={handleSave} disabled={saving}>
+                {saving ? "保存中…" : "保存"}
+              </Button>
             </div>
           </div>
         </div>

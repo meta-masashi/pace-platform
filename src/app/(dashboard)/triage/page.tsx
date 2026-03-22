@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
-import { mockTriageEntries, mockEscalations, mockStaff } from "@/lib/mock-data";
 import { TriageClient } from "./TriageClient";
 import type { TriageEntry, TriggerType, Priority, DailyMetric } from "@/types";
 
@@ -195,24 +194,13 @@ export default async function TriagePage() {
       }
     }
   } catch (err) {
-    console.warn("[triage-page] Supabase query failed, falling back to mock data:", err);
-  }
-
-  // Fallback to mock data if Supabase returned empty
-  if (triageEntries.length === 0) {
-    triageEntries = mockTriageEntries;
-  }
-
-  if (staffMembers.length === 0) {
-    staffMembers = mockStaff.map((s) => ({ role: s.role, name: s.name }));
-    currentStaffName = mockStaff[1]?.name ?? "スタッフ";
-    currentStaffRole = mockStaff[1]?.role ?? "AT";
+    console.warn("[triage-page] Supabase query failed:", err);
   }
 
   return (
     <TriageClient
       initialEntries={triageEntries}
-      initialEscalations={mockEscalations}
+      initialEscalations={[]}
       staffMembers={staffMembers}
       currentStaffName={currentStaffName}
       currentStaffRole={currentStaffRole}

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Hash, Send, Link2, ShieldCheck, CheckCheck, Check, Filter } from "lucide-react";
-import { mockChannels, mockMessages, mockStaff } from "@/lib/mock-data";
+import { mockStaff } from "@/lib/mock-data";
 import { formatDateTime } from "@/lib/utils";
 import type { Channel, Message, Staff } from "@/types";
 import { createClient } from "@/lib/supabase/client";
@@ -23,11 +23,7 @@ const roleLabels: Record<string, string> = {
 
 const CDS_DISCLAIMER = "\n\n---\n⚠️ 本メッセージはPACE判断支援システム（CDS）による補助情報を含みます。最終判断は必ず有資格者が行ってください。";
 
-const SOAP_TEMPLATE = `【SOAPより】田中 健太 — 2026/03/21
-S: 「足首が痛くて体重をかけられない。昨日より少し楽」
-O: ROM背屈5°。腫脹2+。荷重時NRS 7→5に改善
-A: 足関節可動域制限パターンA 継続。Stage1クリア基準（ROM15°）未達
-P: 荷重テスト明日実施。アイシング継続。Hard Lock延長`;
+const SOAP_TEMPLATE = "";
 
 type FilterRole = "all" | "AT" | "PT" | "S&C" | "master";
 
@@ -35,8 +31,8 @@ type FilterRole = "all" | "AT" | "PT" | "S&C" | "master";
 const MOCK_STAFF_ID = "staff-2";
 
 export default function CommunityPage() {
-  const [channels, setChannels] = useState<Channel[]>(mockChannels);
-  const [activeChannel, setActiveChannel] = useState<Channel>(mockChannels[0]);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
   const [messageText, setMessageText] = useState("");
   const [cdsEnabled, setCdsEnabled] = useState(false);
   const [roleFilter, setRoleFilter] = useState<FilterRole>("all");
@@ -75,9 +71,9 @@ export default function CommunityPage() {
           setChannels(data as Channel[]);
           setActiveChannel(data[0] as Channel);
         }
-        // else keep mockChannels already set as initial state
+        // else channels remain empty []
       } catch {
-        console.warn("[community] Failed to fetch channels, using mock data");
+        console.warn("[community] Failed to fetch channels");
       }
     }
 
@@ -87,6 +83,11 @@ export default function CommunityPage() {
 
   // ── Fetch messages whenever activeChannel changes ──────────────────────────
   useEffect(() => {
+    if (!activeChannel) {
+      setLoading(false);
+      return;
+    }
+    const channelId = activeChannel.id;
     let cancelled = false;
     const supabase = createClient();
 
@@ -96,7 +97,7 @@ export default function CommunityPage() {
         const { data, error } = await supabase
           .from("messages")
           .select("*, staff:staff_id(id, name, role, email, is_leader, is_active, org_id, team_id)")
-          .eq("channel_id", activeChannel.id)
+          .eq("channel_id", channelId)
           .order("created_at", { ascending: true })
           .limit(100);
 
@@ -110,13 +111,12 @@ export default function CommunityPage() {
           }));
           setMessages(mapped);
         } else {
-          // Fall back to mock messages for this channel
-          setMessages(mockMessages.filter((m) => m.channel_id === activeChannel.id));
+          setMessages([]);
         }
       } catch {
-        console.warn("[community] Failed to fetch messages, using mock data");
+        console.warn("[community] Failed to fetch messages");
         if (!cancelled) {
-          setMessages(mockMessages.filter((m) => m.channel_id === activeChannel.id));
+          setMessages([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -125,10 +125,11 @@ export default function CommunityPage() {
 
     fetchMessages();
     return () => { cancelled = true; };
-  }, [activeChannel.id]);
+  }, [activeChannel?.id]);
 
   // ── Realtime subscription ──────────────────────────────────────────────────
   useEffect(() => {
+    if (!activeChannel) return;
     const supabase = createClient();
 
     const realtimeChannel = supabase
@@ -166,7 +167,7 @@ export default function CommunityPage() {
     return () => {
       supabase.removeChannel(realtimeChannel);
     };
-  }, [activeChannel.id]);
+  }, [activeChannel?.id]);
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   const channelMessages = messages; // already filtered to activeChannel by fetch
@@ -176,11 +177,11 @@ export default function CommunityPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [filteredMessages.length, activeChannel.id]);
+  }, [filteredMessages.length, activeChannel?.id]);
 
   // ── Send message ───────────────────────────────────────────────────────────
   async function handleSend() {
-    if (!messageText.trim()) return;
+    if (!messageText.trim() || !activeChannel) return;
     const content = cdsEnabled ? messageText + CDS_DISCLAIMER : messageText;
 
     if (currentUserId) {
@@ -252,7 +253,7 @@ export default function CommunityPage() {
                   key={channel.id}
                   onClick={() => setActiveChannel(channel)}
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                    activeChannel.id === channel.id
+                    activeChannel?.id === channel.id
                       ? "bg-green-50 text-green-700 font-medium"
                       : "text-gray-600 hover:bg-gray-50"
                   }`}
@@ -276,7 +277,7 @@ export default function CommunityPage() {
           <div className="px-3 py-3 border-t border-gray-100 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">クイックアクション</p>
             <button
-              onClick={() => { setActiveChannel(channels[0]); handleSOAPQuote(); }}
+              onClick={() => { if (channels[0]) setActiveChannel(channels[0]); handleSOAPQuote(); }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs text-left bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
             >
               <Link2 className="w-3.5 h-3.5 flex-shrink-0" />
@@ -302,8 +303,8 @@ export default function CommunityPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Hash className="w-4 h-4 text-gray-400" />
-                <h1 className="font-semibold text-gray-900">{activeChannel.name}</h1>
-                <span className="text-xs text-gray-400 ml-1">{activeChannel.member_count}名</span>
+                <h1 className="font-semibold text-gray-900">{activeChannel?.name ?? "チャンネルを選択"}</h1>
+                <span className="text-xs text-gray-400 ml-1">{activeChannel?.member_count ?? 0}名</span>
               </div>
               {/* Role filter */}
               <div className="flex items-center gap-1">
@@ -424,7 +425,7 @@ export default function CommunityPage() {
             )}
             <div className="flex items-end gap-2">
               <textarea
-                placeholder={`#${activeChannel.name} にメッセージを送信`}
+                placeholder={`#${activeChannel?.name ?? "チャンネル"} にメッセージを送信`}
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}

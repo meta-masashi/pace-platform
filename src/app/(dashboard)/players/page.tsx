@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
-import { mockAthletes } from "@/lib/mock-data";
 import { PlayersClient } from "./PlayersClient";
 import type { Athlete, Priority } from "@/types";
 
@@ -93,12 +92,7 @@ export default async function PlayersPage() {
       }
     }
   } catch (err) {
-    console.warn("[players] Supabase query failed, falling back to mock data:", err);
-  }
-
-  // Fallback to mock data if Supabase returned empty
-  if (athletes.length === 0) {
-    athletes = mockAthletes;
+    console.warn("[players] Supabase query failed:", err);
   }
 
   return <PlayersClient athletes={athletes} />;
