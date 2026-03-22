@@ -8,32 +8,9 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  deploy-supabase-migrations:
-    name: Deploy Supabase DB Migrations
-    runs-on: ubuntu-latest
-    # Skip if Supabase secrets are not configured (migrations applied manually)
-    if: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_PROJECT_REF != '' }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Link Supabase project
-        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Apply DB migrations to production
-        run: supabase db push
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
   deploy-frontend:
     name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
-    needs: []
     steps:
       - uses: actions/checkout@v4
 
@@ -59,7 +36,7 @@ jobs:
     steps:
       - name: Summary
         run: |
-          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Complete ✅" >> $GITHUB_STEP_SUMMARY
           echo "- **Frontend**: https://hachi-riskon.com" >> $GITHUB_STEP_SUMMARY
           echo "- **Timestamp**: $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
 
@@ -71,7 +48,5 @@ jobs:
     steps:
       - name: Failure summary
         run: |
-          echo "## Deployment FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment FAILED ❌" >> $GITHUB_STEP_SUMMARY
           echo "Check the failed job above and review logs." >> $GITHUB_STEP_SUMMARY
-          echo "- DB migration failures: check for schema conflicts or RLS policy errors." >> $GITHUB_STEP_SUMMARY
-          echo "- Frontend failures: check Next.js build output and env var availability." >> $GITHUB_STEP_SUMMARY
