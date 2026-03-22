@@ -46,8 +46,22 @@ export async function POST(req: NextRequest) {
       (10 - (nrs ?? 0)) * 5 + (sleep_score ?? 3) * 5 + (subjective_condition ?? 3) * 5
     );
 
-    // 3. Upsert using service role (bypasses RLS — athlete identity validated above)
+    // 3. Verify athlete record exists (FK check)
     const serviceSupabase = getServiceClient();
+    const { data: athleteRecord } = await serviceSupabase
+      .from("athletes")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!athleteRecord) {
+      return NextResponse.json(
+        { error: "ATHLETE_NOT_REGISTERED", message: "選手登録が完了していません。スタッフから招待コードを受け取り、新規登録画面から登録してください。" },
+        { status: 403, headers: CORS_HEADERS }
+      );
+    }
+
+    // 4. Upsert using service role (bypasses RLS — athlete identity validated above)
     const { error: dbError } = await serviceSupabase
       .from("daily_metrics")
       .upsert(
