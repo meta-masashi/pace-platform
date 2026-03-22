@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
 
     // ── Rate limiting ──────────────────────────────────────────────────────
     const userId = extractUserId(request);
-    const rl = checkRateLimit(userId, "rehab-menu");
+    const rl = await checkRateLimit(userId, "rehab-menu");
     if (!rl.allowed) {
       return NextResponse.json(
         { error: "レート制限: 1分あたり10回まで。しばらく待ってから再試行してください。" },
