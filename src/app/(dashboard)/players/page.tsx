@@ -1,133 +1,103 @@
-"use client";
-
-import { useState } from "react";
-import Link from "next/link";
-import { Search } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/server";
 import { mockAthletes } from "@/lib/mock-data";
-import {
-  getACWRColor,
-  getNRSColor,
-  getHRVColor,
-  getHPBarColor,
-  formatDateTime,
-} from "@/lib/utils";
-import type { Priority } from "@/types";
+import { PlayersClient } from "./PlayersClient";
+import type { Athlete, Priority } from "@/types";
 
-const statusLabel: Record<Priority, string> = {
-  critical: "Critical",
-  watchlist: "Watchlist",
-  normal: "Normal",
-};
+// Thresholds for computing status from daily_metrics
+const NRS_CRITICAL = 6;
+const ACWR_CRITICAL = 1.5;
+const NRS_WATCHLIST = 4;
+const ACWR_WATCHLIST = 1.3;
 
-export default function PlayersPage() {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<Priority | "all">("all");
+function computeStatus(nrs: number, acwr: number): Priority {
+  if (nrs >= NRS_CRITICAL || acwr > ACWR_CRITICAL) return "critical";
+  if (nrs >= NRS_WATCHLIST || acwr > ACWR_WATCHLIST) return "watchlist";
+  return "normal";
+}
 
-  const filtered = mockAthletes.filter((a) => {
-    const matchSearch =
-      a.name.includes(search) || a.position.includes(search) || String(a.number).includes(search);
-    const matchStatus = statusFilter === "all" || a.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+export default async function PlayersPage() {
+  let athletes: Athlete[] = [];
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">選手一覧</h1>
-        <span className="text-sm text-gray-500">{mockAthletes.length}名登録</span>
-      </div>
+  try {
+    if (
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      const supabase = await createClient();
 
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="選手名・ポジション・番号で検索"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as Priority | "all")}
-          className="text-sm border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-        >
-          <option value="all">全ステータス</option>
-          <option value="critical">Critical</option>
-          <option value="watchlist">Watchlist</option>
-          <option value="normal">Normal</option>
-        </select>
-      </div>
+      // Fetch active athletes
+      const { data: rows, error } = await supabase
+        .from("athletes")
+        .select("id, org_id, team_id, name, position, number, age, sex, profile_photo, is_active")
+        .eq("is_active", true)
+        .order("number", { ascending: true });
 
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-4 py-3 font-medium text-gray-600">選手名</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">ポジション</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">背番号</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">ステータス</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 min-w-[120px]">HP</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">NRS</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">HRV</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">ACWR</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">最終更新</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">アクション</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {filtered.map((athlete) => (
-                <tr
-                  key={athlete.id}
-                  className="hover:bg-gray-50 transition-colors cursor-pointer"
-                >
-                  <td className="px-4 py-3 font-medium text-gray-900">{athlete.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{athlete.position}</td>
-                  <td className="px-4 py-3 text-center text-gray-600">#{athlete.number}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={athlete.status}>{statusLabel[athlete.status]}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${getHPBarColor(athlete.hp)}`}
-                          style={{ width: `${athlete.hp}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-gray-600 w-8 text-right">{athlete.hp}</span>
-                    </div>
-                  </td>
-                  <td className={`px-4 py-3 text-center font-semibold ${getNRSColor(athlete.nrs)}`}>
-                    {athlete.nrs}
-                  </td>
-                  <td className={`px-4 py-3 text-center font-semibold ${getHRVColor(athlete.hrv)}`}>
-                    {athlete.hrv}
-                  </td>
-                  <td className={`px-4 py-3 text-center font-semibold ${getACWRColor(athlete.acwr)}`}>
-                    {athlete.acwr.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
-                    {formatDateTime(athlete.last_updated)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/players/${athlete.id}`}
-                      className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                      詳細
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
+      if (error) throw error;
+
+      if (rows && rows.length > 0) {
+        const athleteIds = rows.map((r) => r.id);
+
+        // Fetch the most recent daily_metrics per athlete
+        const { data: metricsRows } = await supabase
+          .from("daily_metrics")
+          .select("athlete_id, date, nrs, hrv, acwr, hp_computed")
+          .in("athlete_id", athleteIds)
+          .order("date", { ascending: false });
+
+        // Keep only the latest metric per athlete
+        const latestMetric: Record<
+          string,
+          { nrs: number; hrv: number; acwr: number; hp_computed: number; date: string }
+        > = {};
+
+        for (const m of metricsRows ?? []) {
+          if (!latestMetric[m.athlete_id]) {
+            latestMetric[m.athlete_id] = {
+              nrs: Number(m.nrs ?? 0),
+              hrv: Number(m.hrv ?? 0),
+              acwr: Number(m.acwr ?? 0),
+              hp_computed: Number(m.hp_computed ?? 0),
+              date: m.date,
+            };
+          }
+        }
+
+        athletes = rows.map((r) => {
+          const latest = latestMetric[r.id];
+          const nrs = latest?.nrs ?? 0;
+          const hrv = latest?.hrv ?? 0;
+          const acwr = latest?.acwr ?? 0;
+          const hp = latest?.hp_computed ?? 0;
+          const status = computeStatus(nrs, acwr);
+
+          return {
+            id: r.id,
+            org_id: r.org_id,
+            team_id: r.team_id ?? "",
+            name: r.name,
+            position: r.position ?? "",
+            number: r.number ?? 0,
+            age: r.age ?? 0,
+            sex: r.sex ?? "male",
+            profile_photo: r.profile_photo ?? undefined,
+            status,
+            hp,
+            nrs,
+            hrv,
+            acwr,
+            last_updated: latest?.date ?? new Date().toISOString(),
+          } satisfies Athlete;
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[players] Supabase query failed, falling back to mock data:", err);
+  }
+
+  // Fallback to mock data if Supabase returned empty
+  if (athletes.length === 0) {
+    athletes = mockAthletes;
+  }
+
+  return <PlayersClient athletes={athletes} />;
 }

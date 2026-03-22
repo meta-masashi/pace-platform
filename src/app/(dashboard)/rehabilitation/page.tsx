@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/server";
 import { mockRehabPrograms, mockAthletes } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import type { RehabPhase } from "@/types";
+import type { RehabProgram, RehabPhase } from "@/types";
 
 const phaseColors: Record<RehabPhase, string> = {
   1: "text-red-700 bg-red-50 border-red-200",
@@ -18,8 +19,71 @@ const statusLabel = {
   on_hold: "保留中",
 } as const;
 
-export default function RehabilitationPage() {
-  const active = mockRehabPrograms.filter((p) => p.status === "active").length;
+interface ProgramWithAthlete {
+  program: RehabProgram;
+  athleteName: string;
+}
+
+export default async function RehabilitationPage() {
+  let items: ProgramWithAthlete[] = [];
+
+  try {
+    if (
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      const supabase = await createClient();
+
+      // Fetch rehab programs with athlete info
+      const { data: rows, error } = await supabase
+        .from("rehab_programs")
+        .select("id, athlete_id, diagnosis_code, diagnosis_label, current_phase, start_date, estimated_rtp_date, status, rom, swelling_grade, lsi_percent")
+        .order("start_date", { ascending: false });
+
+      if (!error && rows && rows.length > 0) {
+        const athleteIds = [...new Set(rows.map((r) => r.athlete_id))];
+
+        const { data: athleteRows } = await supabase
+          .from("athletes")
+          .select("id, name")
+          .in("id", athleteIds);
+
+        const athleteMap: Record<string, string> = {};
+        for (const a of athleteRows ?? []) {
+          athleteMap[a.id] = a.name;
+        }
+
+        items = rows.map((r) => ({
+          program: {
+            id: r.id,
+            athlete_id: r.athlete_id,
+            diagnosis_code: r.diagnosis_code ?? "",
+            diagnosis_label: r.diagnosis_label,
+            current_phase: r.current_phase as RehabPhase,
+            start_date: r.start_date,
+            estimated_rtp_date: r.estimated_rtp_date ?? "",
+            status: r.status as RehabProgram["status"],
+            rom: r.rom != null ? Number(r.rom) : undefined,
+            swelling_grade: r.swelling_grade != null ? r.swelling_grade : undefined,
+            lsi_percent: r.lsi_percent != null ? Number(r.lsi_percent) : undefined,
+          },
+          athleteName: athleteMap[r.athlete_id] ?? "—",
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn("[rehabilitation] Supabase query failed, falling back to mock data:", err);
+  }
+
+  // Fallback to mock data if Supabase returned empty
+  if (items.length === 0) {
+    items = mockRehabPrograms.map((program) => ({
+      program,
+      athleteName: mockAthletes.find((a) => a.id === program.athlete_id)?.name ?? "—",
+    }));
+  }
+
+  const active = items.filter((item) => item.program.status === "active").length;
 
   return (
     <div className="space-y-6">
@@ -46,17 +110,14 @@ export default function RehabilitationPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {mockRehabPrograms.map((program) => {
-                const athlete = mockAthletes.find((a) => a.id === program.athlete_id);
+              {items.map(({ program, athleteName }) => {
                 const startDate = new Date(program.start_date);
                 const elapsed = Math.floor(
                   (new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
                 );
                 return (
                   <tr key={program.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      {athlete?.name ?? "—"}
-                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{athleteName}</td>
                     <td className="px-4 py-3 text-gray-700">{program.diagnosis_label}</td>
                     <td className="px-4 py-3">
                       <span
@@ -70,10 +131,12 @@ export default function RehabilitationPage() {
                     </td>
                     <td className="px-4 py-3 text-center text-gray-600">{elapsed}日</td>
                     <td className="px-4 py-3 text-gray-600">
-                      {new Date(program.estimated_rtp_date).toLocaleDateString("ja-JP", {
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {program.estimated_rtp_date
+                        ? new Date(program.estimated_rtp_date).toLocaleDateString("ja-JP", {
+                            month: "short",
+                            day: "numeric",
+                          })
+                        : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <Badge
@@ -99,6 +162,13 @@ export default function RehabilitationPage() {
                   </tr>
                 );
               })}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                    リハビリプログラムがありません
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

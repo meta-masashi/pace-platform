@@ -1,157 +1,187 @@
-"use client";
-
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ReferenceLine,
-} from "recharts";
-import { Bell } from "lucide-react";
-import { KpiCard } from "@/components/ui/kpi-card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/server";
 import { mockMetrics, mockTriageEntries } from "@/lib/mock-data";
 import { formatDate } from "@/lib/utils";
+import { DashboardClient } from "./DashboardClient";
+import type { DailyMetric, TriageEntry } from "@/types";
 
-function buildChartData() {
-  const metrics = mockMetrics["athlete-1"];
-  return metrics.map((m) => ({
-    date: formatDate(m.date),
-    ACWR: parseFloat(m.acwr.toFixed(2)),
-    NRS: parseFloat(m.nrs.toFixed(1)),
-    HRV: parseFloat((m.hrv / 10).toFixed(2)),
-  }));
+// Thresholds
+const NRS_CRITICAL = 6;
+const ACWR_CRITICAL = 1.5;
+const NRS_WATCHLIST = 4;
+const ACWR_WATCHLIST = 1.3;
+
+function computePriority(nrs: number, acwr: number): "critical" | "watchlist" | "normal" {
+  if (nrs >= NRS_CRITICAL || acwr > ACWR_CRITICAL) return "critical";
+  if (nrs >= NRS_WATCHLIST || acwr > ACWR_WATCHLIST) return "watchlist";
+  return "normal";
 }
 
-export default function DashboardPage() {
-  const chartData = buildChartData();
-  const criticalEntries = mockTriageEntries.filter((e) => e.priority === "critical");
-  const watchlistEntries = mockTriageEntries.filter((e) => e.priority === "watchlist");
+export default async function DashboardPage() {
+  const todayLabel = new Date().toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
+
+  // ---- Try Supabase ----
+  let chartData: { date: string; ACWR: number; NRS: number; HRV: number }[] = [];
+  let triageEntries: TriageEntry[] = [];
+  let criticalCount = 0;
+  let watchlistCount = 0;
+  let avgHp = 0;
+  let totalAthletes = 0;
+
+  try {
+    if (
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      const supabase = await createClient();
+
+      // Fetch active athletes count
+      const { data: athletes } = await supabase
+        .from("athletes")
+        .select("id, name, position")
+        .eq("is_active", true);
+
+      if (athletes && athletes.length > 0) {
+        totalAthletes = athletes.length;
+        const athleteIds = athletes.map((a) => a.id);
+
+        // Fetch last 14 days of metrics
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 13);
+        const cutoff = cutoffDate.toISOString().split("T")[0];
+
+        const { data: metricsRows } = await supabase
+          .from("daily_metrics")
+          .select("athlete_id, date, nrs, hrv, acwr, hp_computed")
+          .in("athlete_id", athleteIds)
+          .gte("date", cutoff)
+          .order("date", { ascending: true });
+
+        if (metricsRows && metricsRows.length > 0) {
+          // Group by date for team averages
+          const byDate: Record<
+            string,
+            { nrsSum: number; acwrSum: number; hrvSum: number; hpSum: number; count: number }
+          > = {};
+
+          for (const row of metricsRows) {
+            const d = row.date as string;
+            if (!byDate[d]) {
+              byDate[d] = { nrsSum: 0, acwrSum: 0, hrvSum: 0, hpSum: 0, count: 0 };
+            }
+            byDate[d].nrsSum += Number(row.nrs ?? 0);
+            byDate[d].acwrSum += Number(row.acwr ?? 0);
+            byDate[d].hrvSum += Number(row.hrv ?? 0);
+            byDate[d].hpSum += Number(row.hp_computed ?? 0);
+            byDate[d].count += 1;
+          }
+
+          chartData = Object.entries(byDate)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([date, vals]) => ({
+              date: formatDate(date),
+              ACWR: parseFloat((vals.acwrSum / vals.count).toFixed(2)),
+              NRS: parseFloat((vals.nrsSum / vals.count).toFixed(1)),
+              HRV: parseFloat(((vals.hrvSum / vals.count) / 10).toFixed(2)),
+            }));
+
+          // Compute avgHp from last available data
+          const allHpVals = metricsRows.map((r) => Number(r.hp_computed ?? 0)).filter((v) => v > 0);
+          avgHp = allHpVals.length > 0
+            ? Math.round(allHpVals.reduce((s, v) => s + v, 0) / allHpVals.length)
+            : 0;
+
+          // Build triage entries from latest metric per athlete
+          const latestByAthlete: Record<string, DailyMetric> = {};
+          for (const row of metricsRows) {
+            const existing = latestByAthlete[row.athlete_id];
+            if (!existing || row.date > existing.date) {
+              latestByAthlete[row.athlete_id] = {
+                id: "",
+                athlete_id: row.athlete_id,
+                date: row.date,
+                nrs: Number(row.nrs ?? 0),
+                hrv: Number(row.hrv ?? 0),
+                acwr: Number(row.acwr ?? 0),
+                sleep_score: 0,
+                subjective_condition: 3,
+                hp_computed: Number(row.hp_computed ?? 0),
+              };
+            }
+          }
+
+          for (const athlete of athletes) {
+            const latest = latestByAthlete[athlete.id];
+            if (!latest) continue;
+            const priority = computePriority(latest.nrs, latest.acwr);
+            if (priority === "critical") criticalCount++;
+            else if (priority === "watchlist") watchlistCount++;
+
+            if (priority !== "normal") {
+              triageEntries.push({
+                athlete_id: athlete.id,
+                athlete_name: athlete.name,
+                position: athlete.position ?? "",
+                priority,
+                triggers: [],
+                nrs: latest.nrs,
+                hrv: latest.hrv,
+                acwr: latest.acwr,
+                last_updated: latest.date,
+              });
+            }
+          }
+
+          // Sort: critical first
+          triageEntries.sort((a, b) => {
+            const order: Record<string, number> = { critical: 0, watchlist: 1, normal: 2 };
+            return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[dashboard] Supabase query failed, falling back to mock data:", err);
+  }
+
+  // ---- Fallback to mock data if Supabase returned empty ----
+  if (chartData.length === 0) {
+    const mockMetricArray = mockMetrics["athlete-1"] ?? [];
+    chartData = mockMetricArray.map((m) => ({
+      date: formatDate(m.date),
+      ACWR: parseFloat(m.acwr.toFixed(2)),
+      NRS: parseFloat(m.nrs.toFixed(1)),
+      HRV: parseFloat((m.hrv / 10).toFixed(2)),
+    }));
+  }
+
+  if (triageEntries.length === 0) {
+    triageEntries = mockTriageEntries;
+    criticalCount = mockTriageEntries.filter((e) => e.priority === "critical").length;
+    watchlistCount = mockTriageEntries.filter((e) => e.priority === "watchlist").length;
+  }
+
+  if (totalAthletes === 0) {
+    totalAthletes = 6; // mock athlete count
+  }
+
+  if (avgHp === 0) {
+    avgHp = 72; // mock average
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">ダッシュボード</h1>
-          <p className="text-sm text-gray-500 mt-0.5">2026年3月21日（土）</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600 bg-blue-50 border border-blue-100 px-3 py-1 rounded-md">
-            本日のチェックイン: 16/18名 (09:30時点)
-          </span>
-          <Button variant="primary">
-            <Bell className="w-4 h-4 mr-1.5" />
-            一括配信
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-4 gap-4">
-        <KpiCard
-          title="チェックイン率"
-          value="89"
-          unit="%"
-          trend="up"
-          trendLabel="前日比 +3%"
-          color="green"
-        />
-        <KpiCard
-          title="At-Risk 選手"
-          value="3"
-          unit="名"
-          color="red"
-          subtitle="Critical 1名 / Watchlist 2名"
-          trend="stable"
-          trendLabel="変化なし"
-        />
-        <KpiCard
-          title="チーム平均 HP"
-          value="72"
-          unit=""
-          trend="stable"
-          trendLabel="先週比 ±0"
-          color="amber"
-        />
-        <KpiCard
-          title="重要アラート"
-          value="2"
-          unit="件"
-          color="red"
-          trend="up"
-          trendLabel="本日新規"
-        />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>14日間トレンド（田中 健太 / チーム平均）</CardTitle>
-            <span className="text-xs text-gray-400">HRV は ÷10 スケール表示</span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={chartData} margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} domain={[0, 2.5]} />
-              <Tooltip />
-              <Legend />
-              <ReferenceLine y={1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "ACWR 1.5", fill: "#ef4444", fontSize: 10 }} />
-              <Line type="monotone" dataKey="ACWR" stroke="#f59e0b" strokeWidth={2} dot={false} name="ACWR" />
-              <Line type="monotone" dataKey="NRS" stroke="#ef4444" strokeWidth={2} dot={false} name="NRS" />
-              <Line type="monotone" dataKey="HRV" stroke="#3b82f6" strokeWidth={2} dot={false} name="HRV (÷10)" />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>本日のアクション</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y divide-gray-50">
-            {[...criticalEntries, ...watchlistEntries].map((entry) => (
-              <div key={entry.athlete_id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Badge variant={entry.priority}>
-                    {entry.priority === "critical" ? "Critical" : "Watchlist"}
-                  </Badge>
-                  <span className="font-medium text-sm text-gray-900">{entry.athlete_name}</span>
-                  <span className="text-xs text-gray-500">{entry.position}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-600">
-                    {entry.pace_inference_label}{" "}
-                    <span className="text-gray-400">{entry.pace_inference_confidence}%</span>
-                  </span>
-                  <div className="flex gap-2">
-                    <a
-                      href={`/players/${entry.athlete_id}`}
-                      className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                      詳細
-                    </a>
-                    <a
-                      href={`/assessment/${entry.athlete_id}`}
-                      className="text-xs px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
-                    >
-                      アセスメント開始
-                    </a>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <DashboardClient
+      chartData={chartData}
+      triageEntries={triageEntries}
+      criticalCount={criticalCount}
+      watchlistCount={watchlistCount}
+      avgHp={avgHp}
+      totalAthletes={totalAthletes}
+      todayLabel={todayLabel}
+    />
   );
 }

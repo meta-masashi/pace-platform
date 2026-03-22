@@ -1,227 +1,108 @@
-"use client";
-
-import { useState } from "react";
-import { use } from "react";
-import { ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
-import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { KpiCard } from "@/components/ui/kpi-card";
+import { createClient } from "@/lib/supabase/server";
 import { mockRehabPrograms, mockAthletes, mockRehabWorkout } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
-import type { RehabPhase } from "@/types";
+import { RehabDetailClient } from "./RehabDetailClient";
+import type { RehabProgram, Workout, RehabPhase } from "@/types";
 
-const phaseColors: Record<RehabPhase, string> = {
-  1: "text-red-700 bg-red-50 border-red-200",
-  2: "text-amber-700 bg-amber-50 border-amber-200",
-  3: "text-blue-700 bg-blue-50 border-blue-200",
-  4: "text-green-700 bg-green-50 border-green-200",
-};
+export default async function RehabDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
 
-const phaseNames: Record<RehabPhase, string> = {
-  1: "急性期管理",
-  2: "組織修復",
-  3: "機能回復",
-  4: "スポーツ復帰",
-};
+  let program: RehabProgram | null = null;
+  let athleteName = "—";
+  let workout: Workout | null = null;
 
-export default function RehabDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const [activeTab, setActiveTab] = useState<"status" | "menu">("status");
-  const [openReasons, setOpenReasons] = useState<Record<string, boolean>>({});
+  try {
+    if (
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      const supabase = await createClient();
 
-  const program = mockRehabPrograms.find((p) => p.id === id) ?? mockRehabPrograms[0];
-  const athlete = mockAthletes.find((a) => a.id === program.athlete_id);
+      // Fetch the rehab program
+      const { data: row, error } = await supabase
+        .from("rehab_programs")
+        .select("id, athlete_id, diagnosis_code, diagnosis_label, current_phase, start_date, estimated_rtp_date, status, rom, swelling_grade, lsi_percent")
+        .eq("id", id)
+        .single();
 
-  const startDate = new Date(program.start_date);
-  const rtpDate = new Date(program.estimated_rtp_date);
-  const elapsed = Math.floor((new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const totalDays = Math.floor((rtpDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const remaining = Math.max(0, Math.floor((rtpDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-  const rtpProgress = Math.min(100, Math.round((elapsed / totalDays) * 100));
+      if (!error && row) {
+        program = {
+          id: row.id,
+          athlete_id: row.athlete_id,
+          diagnosis_code: row.diagnosis_code ?? "",
+          diagnosis_label: row.diagnosis_label,
+          current_phase: row.current_phase as RehabPhase,
+          start_date: row.start_date,
+          estimated_rtp_date: row.estimated_rtp_date ?? "",
+          status: row.status as RehabProgram["status"],
+          rom: row.rom != null ? Number(row.rom) : undefined,
+          swelling_grade: row.swelling_grade != null ? row.swelling_grade : undefined,
+          lsi_percent: row.lsi_percent != null ? Number(row.lsi_percent) : undefined,
+        };
 
-  const toggleReason = (exId: string) => {
-    setOpenReasons((prev) => ({ ...prev, [exId]: !prev[exId] }));
-  };
+        // Fetch athlete name
+        const { data: athleteRow } = await supabase
+          .from("athletes")
+          .select("name")
+          .eq("id", row.athlete_id)
+          .single();
+
+        if (athleteRow) {
+          athleteName = athleteRow.name;
+        }
+
+        // Fetch latest workout for this athlete
+        // TODO: Link rehab_programs to workouts via athlete_id when data exists
+        const { data: workoutRows } = await supabase
+          .from("workouts")
+          .select("id, athlete_id, team_id, workout_type, generated_by_ai, menu, total_duration_min, notes, approved_by_staff_id, approved_at, distributed_at, generated_at")
+          .eq("athlete_id", row.athlete_id)
+          .order("generated_at", { ascending: false })
+          .limit(1);
+
+        if (workoutRows && workoutRows.length > 0) {
+          const w = workoutRows[0];
+          workout = {
+            id: w.id,
+            athlete_id: w.athlete_id ?? undefined,
+            team_id: w.team_id ?? undefined,
+            type: w.workout_type as "individual" | "team",
+            generated_by_ai: w.generated_by_ai,
+            generated_at: w.generated_at,
+            approved_by_staff_id: w.approved_by_staff_id ?? undefined,
+            approved_at: w.approved_at ?? undefined,
+            distributed_at: w.distributed_at ?? undefined,
+            menu: (w.menu as Workout["menu"]) ?? [],
+            total_duration_min: w.total_duration_min ?? 0,
+            notes: w.notes ?? undefined,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[rehab-detail] Supabase query failed, falling back to mock data:", err);
+  }
+
+  // Fallback to mock data if Supabase returned empty
+  if (!program) {
+    const mockProgram = mockRehabPrograms.find((p) => p.id === id) ?? mockRehabPrograms[0];
+    program = mockProgram;
+    athleteName =
+      mockAthletes.find((a) => a.id === mockProgram.athlete_id)?.name ?? "—";
+  }
+
+  if (!workout) {
+    workout = mockRehabWorkout;
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/rehabilitation" className="text-gray-400 hover:text-gray-600 transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div className="flex items-center gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-gray-900">{athlete?.name ?? "—"}</h1>
-              <span
-                className={cn(
-                  "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border",
-                  phaseColors[program.current_phase]
-                )}
-              >
-                Phase {program.current_phase}
-              </span>
-            </div>
-            <p className="text-sm text-gray-500">
-              {program.diagnosis_label} / RTP予定:{" "}
-              {rtpDate.toLocaleDateString("ja-JP", { month: "short", day: "numeric" })}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex gap-1 border-b border-gray-200">
-        {(["status", "menu"] as const).map((tab) => {
-          const labels = { status: "傷害状況", menu: "リハビリメニュー承認" };
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
-                  ? "border-green-600 text-green-700"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {labels[tab]}
-            </button>
-          );
-        })}
-      </div>
-
-      {activeTab === "status" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-3 gap-4">
-            <KpiCard
-              title="ROM（背屈）"
-              value={program.rom ?? "—"}
-              unit="°"
-              color={program.rom && program.rom < 10 ? "red" : program.rom && program.rom < 15 ? "amber" : "green"}
-              trend="up"
-              trendLabel="改善傾向"
-            />
-            <KpiCard
-              title="腫脹グレード"
-              value={program.swelling_grade ?? "—"}
-              color={program.swelling_grade && program.swelling_grade >= 2 ? "red" : program.swelling_grade && program.swelling_grade >= 1 ? "amber" : "green"}
-              subtitle="0=正常 / 1=軽度 / 2=中等度 / 3=重度"
-            />
-            <KpiCard
-              title="LSI"
-              value={program.lsi_percent ?? "—"}
-              unit="%"
-              color={program.lsi_percent && program.lsi_percent < 60 ? "red" : program.lsi_percent && program.lsi_percent < 80 ? "amber" : "green"}
-              trend="up"
-              trendLabel="RTP目標: 90%"
-            />
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>RTP プログレス</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                <span>開始: {startDate.toLocaleDateString("ja-JP")}</span>
-                <span className="font-medium text-gray-700">残り {remaining} 日</span>
-                <span>RTP予定: {rtpDate.toLocaleDateString("ja-JP")}</span>
-              </div>
-              <div className="relative">
-                <div className="w-full bg-gray-100 rounded-full h-3">
-                  <div
-                    className="h-3 rounded-full bg-green-500 transition-all"
-                    style={{ width: `${rtpProgress}%` }}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-4 gap-2 mt-4">
-                {([1, 2, 3, 4] as RehabPhase[]).map((phase) => (
-                  <div
-                    key={phase}
-                    className={cn(
-                      "rounded-lg border p-3 text-center",
-                      program.current_phase === phase
-                        ? phaseColors[phase]
-                        : phase < program.current_phase
-                        ? "bg-gray-50 border-gray-200 text-gray-400"
-                        : "bg-white border-gray-100 text-gray-400"
-                    )}
-                  >
-                    <p className="text-xs font-bold">Phase {phase}</p>
-                    <p className="text-xs mt-0.5">{phaseNames[phase]}</p>
-                    {phase < program.current_phase && (
-                      <p className="text-xs mt-1 text-green-600">✓ 通過</p>
-                    )}
-                    {phase === program.current_phase && (
-                      <p className="text-xs mt-1 font-semibold">現在</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {activeTab === "menu" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              AI生成メニュー — {mockRehabWorkout.total_duration_min}分 / {mockRehabWorkout.menu.length}種目
-            </p>
-            <Button variant="secondary">AIメニュー再生成</Button>
-          </div>
-
-          <div className="space-y-3">
-            {mockRehabWorkout.menu.map((item, i) => (
-              <Card key={item.exercise_id}>
-                <CardContent className="py-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                        {i + 1}
-                      </span>
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">{item.exercise_name}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {item.sets}セット × {item.reps_or_time}
-                          {item.unit === "reps" ? "回" : item.unit === "sec" ? "秒" : "分"}
-                          {item.rpe && (
-                            <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
-                              RPE {item.rpe}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => toggleReason(item.exercise_id)}
-                      className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 flex-shrink-0 ml-4"
-                    >
-                      理由
-                      {openReasons[item.exercise_id] ? (
-                        <ChevronUp className="w-3 h-3" />
-                      ) : (
-                        <ChevronDown className="w-3 h-3" />
-                      )}
-                    </button>
-                  </div>
-                  {openReasons[item.exercise_id] && (
-                    <p className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2">{item.reason}</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <Button variant="outline">修正</Button>
-            <Button variant="primary">承認・配信</Button>
-          </div>
-        </div>
-      )}
-    </div>
+    <RehabDetailClient
+      program={program}
+      athleteName={athleteName}
+      workout={workout}
+    />
   );
 }
