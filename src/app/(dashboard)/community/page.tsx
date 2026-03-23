@@ -23,7 +23,7 @@ const roleLabels: Record<string, string> = {
 
 const CDS_DISCLAIMER = "\n\n---\n⚠️ 本メッセージはPACE判断支援システム（CDS）による補助情報を含みます。最終判断は必ず有資格者が行ってください。";
 
-const SOAP_TEMPLATE = "";
+const BLANK_SOAP_TEMPLATE = `【S】主訴・自覚症状\n\n【O】客観的所見\n\n【A】評価・解釈\n\n【P】プラン・対応`;
 
 type FilterRole = "all" | "AT" | "PT" | "S&C" | "master";
 
@@ -215,9 +215,38 @@ export default function CommunityPage() {
     setMessageText("");
   }
 
-  function handleSOAPQuote() {
-    setMessageText(SOAP_TEMPLATE);
+  async function handleSOAPQuote() {
     setCdsEnabled(true);
+
+    // Attempt to fetch the most recent SOAP note for the current user
+    if (currentUserId) {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("soap_notes")
+          .select("s_text, o_text, a_text, p_text, created_at")
+          .eq("staff_id", currentUserId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && data) {
+          const note = data as { s_text: string | null; o_text: string | null; a_text: string | null; p_text: string | null; created_at: string };
+          const date = new Date(note.created_at).toLocaleDateString("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          });
+          const template = `【S】主訴・自覚症状\n${note.s_text ?? ""}\n\n【O】客観的所見\n${note.o_text ?? ""}\n\n【A】評価・解釈\n${note.a_text ?? ""}\n\n【P】プラン・対応\n${note.p_text ?? ""}\n\n（${date} 記録より）`;
+          setMessageText(template);
+          return;
+        }
+      } catch {
+        // fall through to blank template
+      }
+    }
+
+    setMessageText(BLANK_SOAP_TEMPLATE);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -277,7 +306,7 @@ export default function CommunityPage() {
           <div className="px-3 py-3 border-t border-gray-100 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">クイックアクション</p>
             <button
-              onClick={() => { if (channels[0]) setActiveChannel(channels[0]); handleSOAPQuote(); }}
+              onClick={() => { if (channels[0]) setActiveChannel(channels[0]); void handleSOAPQuote(); }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs text-left bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
             >
               <Link2 className="w-3.5 h-3.5 flex-shrink-0" />
@@ -331,8 +360,8 @@ export default function CommunityPage() {
             {loading ? (
               /* Loading skeleton */
               <div className="space-y-4 pt-2">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-start gap-3 animate-pulse">
+                {[1, 2, 3].map((_i) => (
+                  <div key={_i} className="flex items-start gap-3 animate-pulse">
                     <div className="w-9 h-9 rounded-full bg-gray-200 flex-shrink-0" />
                     <div className="flex-1 space-y-2">
                       <div className="h-3 bg-gray-200 rounded w-32" />

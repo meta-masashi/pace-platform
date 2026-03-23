@@ -77,6 +77,7 @@ function NewRehabModal({
   const [fileName, setFileName] = useState<string | null>(null);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,6 +85,7 @@ function NewRehabModal({
     if (!file) {
       setDocFile(null);
       setFileName(null);
+      setUploadStatus("idle");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -92,6 +94,7 @@ function NewRehabModal({
     }
     setDocFile(file);
     setFileName(file.name);
+    setUploadStatus("idle");
     setError(null);
   };
 
@@ -109,6 +112,7 @@ function NewRehabModal({
       // Upload diagnosis document to Supabase Storage if provided
       let diagnosis_document_url: string | null = null;
       if (docFile) {
+        setUploadStatus("uploading");
         const supabase = createClient();
         const ext = docFile.name.split(".").pop();
         const path = `diagnoses/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -116,10 +120,12 @@ function NewRehabModal({
           .from("diagnosis-documents")
           .upload(path, docFile, { contentType: docFile.type });
         if (uploadError) {
+          setUploadStatus("error");
           setError(`ファイルのアップロードに失敗しました: ${uploadError.message}`);
           setSubmitting(false);
           return;
         }
+        setUploadStatus("done");
         diagnosis_document_url = path;
       }
 
@@ -292,6 +298,18 @@ function NewRehabModal({
             <p className="text-xs text-gray-400 mt-1">PDF・JPG・PNG、最大10MB</p>
             {fileName && (
               <p className="mt-1 text-xs text-gray-500">選択済み: {fileName}</p>
+            )}
+            {uploadStatus === "uploading" && (
+              <p className="mt-1 text-xs text-blue-600 flex items-center gap-1">
+                <span className="inline-block w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                アップロード中...
+              </p>
+            )}
+            {uploadStatus === "done" && (
+              <p className="mt-1 text-xs text-green-600">✓ アップロード完了</p>
+            )}
+            {uploadStatus === "error" && (
+              <p className="mt-1 text-xs text-red-600">アップロードに失敗しました</p>
             )}
           </div>
 
