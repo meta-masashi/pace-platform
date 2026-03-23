@@ -1,0 +1,68 @@
+{
+  "family": "pace-cv-engine",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["EC2"],
+  "cpu": "4096",
+  "memory": "16384",
+  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/pace-cv-engine-execution-role",
+  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/pace-cv-engine-task-role",
+  "containerDefinitions": [
+    {
+      "name": "pace-cv-engine",
+      "image": "${ECR_REGISTRY}/pace-cv-engine:${IMAGE_TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "ENVIRONMENT", "value": "production"},
+        {"name": "LOG_LEVEL", "value": "INFO"},
+        {"name": "AWS_REGION", "value": "ap-northeast-1"},
+        {"name": "POSE_MODEL_COMPLEXITY", "value": "1"},
+        {"name": "FACE_BLUR_KERNEL", "value": "99"},
+        {"name": "MAX_VIDEO_DURATION_SEC", "value": "300"},
+        {"name": "WORKER_CONCURRENCY", "value": "1"},
+        {"name": "SQS_VISIBILITY_TIMEOUT", "value": "300"},
+        {"name": "SQS_MAX_MESSAGES", "value": "1"}
+      ],
+      "secrets": [
+        {"name": "S3_RAW_BUCKET", "valueFrom": "arn:aws:ssm:ap-northeast-1:${AWS_ACCOUNT_ID}:parameter/pace/cv/S3_RAW_BUCKET"},
+        {"name": "S3_MASKED_BUCKET", "valueFrom": "arn:aws:ssm:ap-northeast-1:${AWS_ACCOUNT_ID}:parameter/pace/cv/S3_MASKED_BUCKET"},
+        {"name": "SQS_JOB_QUEUE_URL", "valueFrom": "arn:aws:ssm:ap-northeast-1:${AWS_ACCOUNT_ID}:parameter/pace/cv/SQS_JOB_QUEUE_URL"},
+        {"name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:ap-northeast-1:${AWS_ACCOUNT_ID}:parameter/pace/cv/SUPABASE_URL"},
+        {"name": "SUPABASE_SERVICE_ROLE_KEY", "valueFrom": "arn:aws:ssm:ap-northeast-1:${AWS_ACCOUNT_ID}:parameter/pace/cv/SUPABASE_SERVICE_ROLE_KEY"},
+        {"name": "CV_INTERNAL_TOKEN", "valueFrom": "arn:aws:ssm:ap-northeast-1:${AWS_ACCOUNT_ID}:parameter/pace/cv/CV_INTERNAL_TOKEN"},
+        {"name": "SENTRY_DSN", "valueFrom": "arn:aws:ssm:ap-northeast-1:${AWS_ACCOUNT_ID}:parameter/pace/cv/SENTRY_DSN"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/pace-cv-engine",
+          "awslogs-region": "ap-northeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "resourceRequirements": [
+        {
+          "type": "GPU",
+          "value": "1"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {"key": "Project", "value": "PACE"},
+    {"key": "Service", "value": "cv-engine"},
+    {"key": "Phase", "value": "3"}
+  ]
+}

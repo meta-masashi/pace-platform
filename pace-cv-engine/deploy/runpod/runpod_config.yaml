@@ -1,0 +1,64 @@
+# RunPod POC deployment configuration (P3-03, ADR-005)
+# Phase 3: Dynamic provisioning for CV job processing
+# Phase 4: Migrate to AWS ECS g4dn.xlarge
+
+pod:
+  name: pace-cv-engine-poc
+  
+  # GPU configuration
+  gpu:
+    type: "NVIDIA RTX 3090"      # Fallback options: RTX 4090, A5000, A6000
+    count: 1
+    vram_min_gb: 16              # MediaPipe needs minimal VRAM; 16GB for future SMPLify-X
+  
+  # Container config
+  container:
+    image: "${ECR_REGISTRY}/pace-cv-engine:${IMAGE_TAG}"
+    disk_gb: 50
+    
+  # Environment variables
+  env:
+    ENVIRONMENT: "staging"
+    LOG_LEVEL: "INFO"
+    AWS_REGION: "ap-northeast-1"
+    S3_RAW_BUCKET: "${S3_RAW_BUCKET}"
+    S3_MASKED_BUCKET: "${S3_MASKED_BUCKET}"
+    SQS_JOB_QUEUE_URL: "${SQS_JOB_QUEUE_URL}"
+    SUPABASE_URL: "${SUPABASE_URL}"
+    SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+    CV_INTERNAL_TOKEN: "${CV_INTERNAL_TOKEN}"
+    SENTRY_DSN: "${SENTRY_DSN}"
+    POSE_MODEL_COMPLEXITY: "1"
+    FACE_BLUR_KERNEL: "99"
+    MAX_VIDEO_DURATION_SEC: "300"
+    WORKER_CONCURRENCY: "1"
+    SQS_VISIBILITY_TIMEOUT: "300"
+    SQS_MAX_MESSAGES: "1"
+  
+  # Ports
+  ports:
+    - containerPort: 8080
+      protocol: TCP
+  
+  # Health check
+  healthCheck:
+    path: "/health"
+    port: 8080
+    initialDelaySeconds: 60
+    periodSeconds: 30
+  
+  # Worker mode: run SQS consumer (not API server)
+  command: ["python", "-m", "app.worker"]
+  
+  # Scaling: start pods when SQS queue depth > 0
+  scaling:
+    minReplicas: 0              # Scale to zero when queue is empty (cost control)
+    maxReplicas: 3              # Max 3 concurrent processing pods
+    scaleUpThreshold:
+      sqsQueueDepth: 1          # Start 1 pod per job
+    scaleDownAfterIdleSec: 300  # Terminate after 5 min idle
+
+# Cost estimate (POC phase)
+# RTX 3090: ~$0.44/hr on RunPod spot
+# Avg job: 90s → ~$0.011/job
+# 1000 jobs/month → ~$11/month GPU cost

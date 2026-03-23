@@ -3,12 +3,23 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { DiagnosisResult, DailyMetric } from "@/types";
 import { checkRateLimit, extractUserId } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
+import { logAiAction } from "@/lib/audit";
+import { buildCdsSystemPrefix } from "@/lib/gemini-client";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 const CDS_DISCLAIMER =
   "※ このSOAPノート下書きはAI生成による臨床意思決定支援情報です。医療専門家による判断を優先し、最終記録は必ず担当スタッフが確認・編集してください。";
+
+/** Phase 3 ADR-016: CV kinematic error for LLM context injection */
+interface CVErrorMetric {
+  error_type: string;
+  severity: number;       // 0.0 – 1.0
+  affected_frames: number;
+  description: string;
+  recommendation: string;
+}
 
 interface SoapAssistRequest {
   athlete_id: string;
@@ -21,6 +32,10 @@ interface SoapAssistRequest {
   };
   daily_metrics?: DailyMetric;
   existing_notes?: string;
+  /** Phase 3: Top-5 CV kinematic errors from latest CV analysis job (ADR-016) */
+  cv_errors?: CVErrorMetric[];
+  /** Phase 3: Kinematics analysis confidence (0.0 – 1.0) */
+  cv_kinematics_confidence?: number;
 }
 
 interface SoapDraft {
@@ -50,7 +65,7 @@ function buildSoapPrompt(req: SoapAssistRequest, retryHint = false): string {
     ? `【重要】前回の出力がJSON形式ではありませんでした。今回は必ず指定されたJSONオブジェクトのみを出力してください。説明文・マークダウン・コードブロックは一切不要です。\n\n`
     : "";
 
-  return `${retryPrefix}あなたはスポーツ医学専門のSOAPノート作成AIアシスタントです。
+  return `${retryPrefix}${buildCdsSystemPrefix()}あなたはスポーツ医学専門のSOAPノート作成AIアシスタントです。
 以下の情報をもとに、日本語でSOAPノートの各セクションの下書きを作成してください。
 
 ## アセスメント結果
@@ -71,16 +86,24 @@ ${daily_metrics ? `- NRS（疼痛）: ${daily_metrics.nrs}/10
 ## 既存メモ
 ${existing_notes || "なし"}
 
+## CV動作解析（AI姿勢推定）
+${req.cv_errors && req.cv_errors.length > 0
+  ? `解析信頼度: ${req.cv_kinematics_confidence !== undefined ? `${(req.cv_kinematics_confidence * 100).toFixed(0)}%` : "不明"}
+動作エラー Top-${req.cv_errors.length}:
+${req.cv_errors.map((e, i) => `${i + 1}. [重症度 ${(e.severity * 100).toFixed(0)}%] ${e.description}\n   推奨: ${e.recommendation}`).join("\n")}`
+  : "CV解析データなし（動画未提出または処理中）"}
+
 ## 出力形式
 必ず以下のJSONのみを出力してください（コードブロックや説明文は不要）:
 {
   "s_draft": "S（Subjective）セクション: 選手の主訴・自覚症状・訴え",
-  "o_draft": "O（Objective）セクション: 客観的所見・測定値・テスト結果",
+  "o_draft": "O（Objective）セクション: 客観的所見・測定値・テスト結果（CV動作解析結果を含む場合は必ずここに記載）",
   "a_draft": "A（Assessment）セクション: 評価・判断・診断根拠",
-  "p_draft": "P（Plan）セクション: 今後の治療計画・禁忌事項・次回評価予定"
+  "p_draft": "P（Plan）セクション: 今後の治療計画・禁忌事項・次回評価予定（CV動作エラーへの対処を含む）"
 }
 
 各セクションは2〜4文の簡潔な日本語で記述してください。
+CV動作解析データがある場合は、Objectiveセクションに動作エラーの要約を必ず含めてください。
 臨床的に正確で、他のスタッフが即座に理解できる内容にしてください。`.trim();
 }
 
@@ -184,6 +207,12 @@ export async function POST(request: NextRequest) {
       soapDraft = FALLBACK_SOAP_DRAFT;
       usedFallback = true;
     }
+
+    // Audit log: AI SOAP generation
+    await logAiAction(userId, "soap_saved", {
+      athlete_id,
+      details: { fallback_used: usedFallback, endpoint: "soap-assist" },
+    });
 
     return NextResponse.json(
       {
