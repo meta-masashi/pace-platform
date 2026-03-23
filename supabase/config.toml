@@ -18,12 +18,6 @@ pool_mode = "transaction"
 default_pool_size = 20
 max_client_conn = 100
 
-# Required extensions for PACE Platform
-# pgvector: vector similarity search for future RAG/AI embedding features
-# pgcrypto: gen_random_uuid() for primary keys
-# uuid-ossp: uuid_generate_v4() fallback
-[db.extensions.vector]
-schema = "extensions"
 
 [studio]
 port = 54323

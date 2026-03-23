@@ -60,27 +60,14 @@ Resources:
         Rules:
           - Id: DeleteRawAfter7Days
             Status: Enabled
-            Filter:
-              Prefix: "raw/"
-            Transitions: []
-            Expiration:
-              Days: 7
+            ExpirationInDays: 7
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
-          # Tagged as 'raw-7d' are deleted after 7 days
-          - Id: DeleteTaggedRaw7d
-            Status: Enabled
-            Filter:
-              TagFilters:
-                - Key: pace-lifecycle
-                  Value: raw-7d
-            Expiration:
-              Days: 7
       # CORS for presigned URL upload from browser (ADR-007)
       CorsConfiguration:
         CorsRules:
           - AllowedOrigins:
-              - !If [IsProduction, "https://pace-platform.vercel.app", "*"]
+              - "*"
             AllowedMethods: [PUT]
             AllowedHeaders: ["*"]
             ExposedHeaders: [ETag]
@@ -134,22 +121,21 @@ Resources:
       # Lifecycle: masked videos → Glacier after 90 days, delete after 365 days (ADR-008)
       LifecycleConfiguration:
         Rules:
-          - Id: MaskedVideosRetention
+          - Id: MaskedVideosGlacier90d
             Status: Enabled
-            Filter:
-              Prefix: "masked/"
-            Transitions:
+            NoncurrentVersionTransitions:
               - TransitionInDays: 90
                 StorageClass: GLACIER
-            Expiration:
-              Days: 365
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+          - Id: MaskedVideosExpire365d
+            Status: Enabled
+            ExpirationInDays: 365
       # CORS for presigned GET URL (Before/After UI streaming)
       CorsConfiguration:
         CorsRules:
           - AllowedOrigins:
-              - !If [IsProduction, "https://pace-platform.vercel.app", "*"]
+              - "*"
             AllowedMethods: [GET, HEAD]
             AllowedHeaders: ["*"]
             ExposedHeaders: [Content-Length, Content-Type, ETag]
@@ -190,7 +176,7 @@ Resources:
       FifoQueue: true
       ContentBasedDeduplication: true
       MessageRetentionPeriod: 1209600  # 14 days
-      KmsMasterKeyId: alias/aws/sqs
+      SqsManagedSseEnabled: true
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -208,7 +194,7 @@ Resources:
       VisibilityTimeout: !Ref VisibilityTimeoutSeconds
       MessageRetentionPeriod: 86400  # 24 hours
       ReceiveMessageWaitTimeSeconds: 20  # Long polling
-      KmsMasterKeyId: alias/aws/sqs
+      SqsManagedSseEnabled: true
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt CVJobDLQ.Arn
         maxReceiveCount: !Ref MaxReceiveCount
@@ -223,7 +209,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub "${ProjectName}-cv-engine-task-role-${Environment}"
-      Description: "PACE CV Engine ECS Task Role — S3 + SQS access"
+      Description: "PACE CV Engine ECS Task Role - S3 + SQS access"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -273,7 +259,7 @@ Resources:
                 Action:
                   - ssm:GetParameter
                   - ssm:GetParameters
-                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/*"
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/${Environment}/cv/*"
         - PolicyName: CVEngineCloudWatchLogs
           PolicyDocument:
             Version: '2012-10-17'
@@ -283,7 +269,7 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/pace-cv-engine:*"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/pace-cv-engine-${Environment}:*"
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -313,7 +299,7 @@ Resources:
                 Action:
                   - ssm:GetParameters
                   - ssm:GetParameter
-                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/*"
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/${Environment}/cv/*"
               - Effect: Allow
                 Action:
                   - kms:Decrypt
@@ -327,7 +313,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub "${ProjectName}-nextjs-api-role-${Environment}"
-      Description: "PACE Next.js API — S3 presigned URL generation + SQS submit"
+      Description: "PACE Next.js API - S3 presigned URL generation + SQS submit"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -370,7 +356,7 @@ Resources:
   CVEngineLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /ecs/pace-cv-engine
+      LogGroupName: !Sub "/ecs/pace-cv-engine-${Environment}"
       RetentionInDays: 30
       Tags:
         - Key: Project
@@ -378,46 +364,50 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
-  # ── SSM Parameters (values set manually after stack creation) ─────────────
+  # ── SSM Parameters: パス に /{Environment}/ を含めて環境ごとに分離 ──────────
   SSMSupabaseUrl:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /pace/cv/SUPABASE_URL
+      Name: !Sub "/pace/${Environment}/cv/SUPABASE_URL"
       Type: String
       Value: "REPLACE_WITH_YOUR_SUPABASE_URL"
-      Description: "Supabase project URL for PACE CV Engine"
+      Description: !Sub "Supabase project URL for PACE CV Engine (${Environment})"
       Tags:
         Project: !Ref ProjectName
+        Environment: !Ref Environment
 
   SSMSQSQueueUrl:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /pace/cv/SQS_JOB_QUEUE_URL
+      Name: !Sub "/pace/${Environment}/cv/SQS_JOB_QUEUE_URL"
       Type: String
       Value: !Ref CVJobQueue
-      Description: "SQS FIFO Queue URL for CV jobs"
+      Description: !Sub "SQS FIFO Queue URL for CV jobs (${Environment})"
       Tags:
         Project: !Ref ProjectName
+        Environment: !Ref Environment
 
   SSMRawBucket:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /pace/cv/S3_RAW_BUCKET
+      Name: !Sub "/pace/${Environment}/cv/S3_RAW_BUCKET"
       Type: String
       Value: !Ref RawVideosBucket
-      Description: "S3 bucket name for raw videos"
+      Description: !Sub "S3 bucket name for raw videos (${Environment})"
       Tags:
         Project: !Ref ProjectName
+        Environment: !Ref Environment
 
   SSMMaskedBucket:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /pace/cv/S3_MASKED_BUCKET
+      Name: !Sub "/pace/${Environment}/cv/S3_MASKED_BUCKET"
       Type: String
       Value: !Ref MaskedVideosBucket
-      Description: "S3 bucket name for masked videos"
+      Description: !Sub "S3 bucket name for masked videos (${Environment})"
       Tags:
         Project: !Ref ProjectName
+        Environment: !Ref Environment
 
 # ─────────────────────────────────────────────────────────────────────────────
 Outputs:

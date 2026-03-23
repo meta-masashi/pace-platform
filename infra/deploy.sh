@@ -23,20 +23,32 @@ echo "=============================================="
 export AWS_DEFAULT_REGION="${AWS_REGION}"
 export AWS_PROFILE="${AWS_PROFILE}"
 
-# ── 1. ECR Repository ──────────────────────────────────────────────────────
+# ── 1. ECR Repository (共有リソース: 環境をまたいで1つだけ作成) ──────────────
+# ECR リポジトリは staging/production で共有するため、スタック名に環境を含めない
+ECR_STACK_NAME="${PROJECT_NAME}-ecr"
 echo ""
-echo "▶ [1/3] Creating ECR Repository..."
-aws cloudformation deploy \
-  --template-file infra/cloudformation/ecr-repository.yaml \
-  --stack-name "${PROJECT_NAME}-ecr-${ENVIRONMENT}" \
-  --parameter-overrides \
-    Environment="${ENVIRONMENT}" \
-    ProjectName="${PROJECT_NAME}" \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --no-fail-on-empty-changeset
+echo "▶ [1/3] Creating ECR Repository (shared across environments)..."
+
+ECR_STATUS=$(aws cloudformation describe-stacks \
+  --stack-name "${ECR_STACK_NAME}" \
+  --query "Stacks[0].StackStatus" \
+  --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+
+if [ "${ECR_STATUS}" = "CREATE_COMPLETE" ] || [ "${ECR_STATUS}" = "UPDATE_COMPLETE" ]; then
+  echo "  ℹ️  ECR スタックは既に存在します。スキップします。"
+else
+  aws cloudformation deploy \
+    --template-file infra/cloudformation/ecr-repository.yaml \
+    --stack-name "${ECR_STACK_NAME}" \
+    --parameter-overrides \
+      Environment="${ENVIRONMENT}" \
+      ProjectName="${PROJECT_NAME}" \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --no-fail-on-empty-changeset
+fi
 
 ECR_URI=$(aws cloudformation describe-stacks \
-  --stack-name "${PROJECT_NAME}-ecr-${ENVIRONMENT}" \
+  --stack-name "${ECR_STACK_NAME}" \
   --query "Stacks[0].Outputs[?OutputKey=='RepositoryUri'].OutputValue" \
   --output text)
 echo "✅ ECR Repository: ${ECR_URI}"
