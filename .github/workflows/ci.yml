@@ -160,11 +160,6 @@ jobs:
   cv-docker-build:
     name: CV Docker Build (CPU mode + size gate)
     runs-on: ubuntu-latest
-    # pace-cv-engine/ に変更がある場合のみ実行（コスト最適化）
-    # main/develop への push・PR 時は常時実行
-    defaults:
-      run:
-        working-directory: ../pace-cv-engine
 
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +187,7 @@ jobs:
             --tag pace-cv-engine:ci-test \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             .
-        working-directory: ${{ github.workspace }}/../pace-cv-engine
+        working-directory: ${{ github.workspace }}/pace-cv-engine
         env:
           DOCKER_BUILDKIT: '1'
 

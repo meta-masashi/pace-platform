@@ -1,52 +1,187 @@
-name: Deploy to Production
+name: Deploy to Vercel
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main      # 本番環境へデプロイ
+      - develop   # ステージング環境へデプロイ
 
 env:
-  NODE_VERSION: '20'
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  deploy-frontend:
-    name: Deploy Frontend to Vercel
+  db-migrate:
+    name: DB Migration (supabase db push)
     runs-on: ubuntu-latest
+    # main ブランチのプッシュ時のみ実行（Vercel デプロイの前提条件）
+    if: github.ref == 'refs/heads/main'
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          version: latest
+
+      - name: Run DB migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase db push --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: db-migrate
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
           cache: 'npm'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Deploy to Vercel (Production)
-        run: npx vercel --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
+      - name: TypeScript check (pre-deploy gate)
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          INFERENCE_MODE: ${{ secrets.INFERENCE_MODE }}
+        run: npx tsc --noEmit
 
-  notify-success:
-    name: Deployment Summary
-    runs-on: ubuntu-latest
-    needs: [deploy-frontend]
-    if: success()
-    steps:
-      - name: Summary
-        run: |
-          echo "## Deployment Complete ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- **Frontend**: https://hachi-riskon.com" >> $GITHUB_STEP_SUMMARY
-          echo "- **Timestamp**: $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+      - name: Deploy to Production (main branch)
+        if: github.ref == 'refs/heads/main'
+        run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
 
-  notify-failure:
-    name: Notify on Failure
+      - name: Deploy to Staging (develop branch)
+        if: github.ref == 'refs/heads/develop'
+        run: vercel deploy --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Comment deployment URL on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = require('child_process').execSync('cat /tmp/vercel-url.txt').toString();
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `Deployment URL: ${output}`
+            });
+
+  # ── Phase 3: CV Engine → ECR Push → ECS Rolling Update ──────────────────
+  cv-deploy:
+    name: CV Engine Deploy (ECR → ECS Rolling Update)
     runs-on: ubuntu-latest
-    needs: [deploy-frontend]
-    if: failure()
+    needs: deploy
+    # main ブランチへの push 時のみ実行
+    if: github.ref == 'refs/heads/main'
+
+    env:
+      AWS_REGION: ap-northeast-1
+      ECR_REPOSITORY: pace-cv-engine
+      ECS_CLUSTER: pace-platform-cluster
+      ECS_SERVICE: pace-cv-engine-service
+      CONTAINER_NAME: cv-engine
+
     steps:
-      - name: Failure summary
+      - uses: actions/checkout@v4
+
+      - name: Check if pace-cv-engine exists
+        id: cv_exists
         run: |
-          echo "## Deployment FAILED ❌" >> $GITHUB_STEP_SUMMARY
-          echo "Check the failed job above and review logs." >> $GITHUB_STEP_SUMMARY
+          if [ -d "${{ github.workspace }}/../pace-cv-engine" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "::warning::pace-cv-engine not found. Skipping CV deploy."
+          fi
+
+      - name: Configure AWS credentials
+        if: steps.cv_exists.outputs.exists == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: steps.cv_exists.outputs.exists == 'true'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push GPU image to ECR
+        if: steps.cv_exists.outputs.exists == 'true'
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --target gpu \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        working-directory: ${{ github.workspace }}/pace-cv-engine
+        env:
+          DOCKER_BUILDKIT: '1'
+
+      - name: Download current ECS task definition
+        if: steps.cv_exists.outputs.exists == 'true'
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition pace-cv-engine \
+            --query taskDefinition \
+            > task-definition.json
+
+      - name: Update ECS task definition with new image
+        if: steps.cv_exists.outputs.exists == 'true'
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name:  ${{ env.CONTAINER_NAME }}
+          image:           ${{ steps.build-image.outputs.image }}
+
+      - name: Deploy to ECS (Rolling Update)
+        if: steps.cv_exists.outputs.exists == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          ${{ env.ECS_SERVICE }}
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Verify deployment health
+        if: steps.cv_exists.outputs.exists == 'true'
+        run: |
+          RUNNING=$(aws ecs describe-services \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --query 'services[0].runningCount' \
+            --output text)
+          echo "Running tasks: $RUNNING"
+          if [ "$RUNNING" -lt "1" ]; then
+            echo "::error::ECS service has 0 running tasks after deployment!"
+            exit 1
+          fi
+          echo "::notice::CV Engine deployment successful. Running tasks: $RUNNING"
