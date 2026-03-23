@@ -1,0 +1,465 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  PACE Platform — S3 Video Pipeline Infrastructure (ADR-007, ADR-008)
+  
+  Creates:
+    - S3 Raw Videos Bucket (7-day lifecycle + 90-day Glacier)
+    - S3 Masked Videos Bucket (90-day lifecycle + 365-day Glacier)
+    - SQS FIFO Job Queue + Dead Letter Queue
+    - IAM Role for CV Engine (ECS Task Role)
+    - IAM Role for Next.js API (Lambda/Edge Function Role)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [development, staging, production]
+    Description: Deployment environment
+
+  ProjectName:
+    Type: String
+    Default: pace-platform
+    Description: Project name prefix for resource naming
+
+  # SQS
+  MaxReceiveCount:
+    Type: Number
+    Default: 3
+    Description: Max SQS receive count before DLQ
+
+  VisibilityTimeoutSeconds:
+    Type: Number
+    Default: 300
+    Description: SQS message visibility timeout (should match ECS task max duration)
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, production]
+
+# ─────────────────────────────────────────────────────────────────────────────
+Resources:
+# ─────────────────────────────────────────────────────────────────────────────
+
+  # ── S3: Raw Videos Bucket ─────────────────────────────────────────────────
+  RawVideosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-raw-videos-${Environment}"
+      # Encryption
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # Block all public access (videos are private)
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # Lifecycle: raw videos expire after 7 days (ADR-008)
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteRawAfter7Days
+            Status: Enabled
+            ExpirationInDays: 7
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      # CORS for presigned URL upload from browser (ADR-007)
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods: [PUT]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 3600
+      # Versioning disabled (videos are immutable after upload)
+      VersioningConfiguration:
+        Status: Suspended
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: DataRetention
+          Value: 7d-raw
+
+  # Raw bucket policy: deny non-HTTPS access
+  RawVideosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref RawVideosBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyHTTP
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt RawVideosBucket.Arn
+              - !Sub "${RawVideosBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  # ── S3: Masked Videos Bucket ──────────────────────────────────────────────
+  MaskedVideosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-masked-videos-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # Lifecycle: masked videos → Glacier after 90 days, delete after 365 days (ADR-008)
+      LifecycleConfiguration:
+        Rules:
+          - Id: MaskedVideosGlacier90d
+            Status: Enabled
+            NoncurrentVersionTransitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: MaskedVideosExpire365d
+            Status: Enabled
+            ExpirationInDays: 365
+      # CORS for presigned GET URL (Before/After UI streaming)
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods: [GET, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [Content-Length, Content-Type, ETag]
+            MaxAge: 3600
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: DataRetention
+          Value: 90d-masked
+
+  MaskedVideosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MaskedVideosBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyHTTP
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt MaskedVideosBucket.Arn
+              - !Sub "${MaskedVideosBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  # ── SQS: Dead Letter Queue ────────────────────────────────────────────────
+  CVJobDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${ProjectName}-cv-jobs-dlq-${Environment}.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      MessageRetentionPeriod: 1209600  # 14 days
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── SQS: CV Job FIFO Queue ────────────────────────────────────────────────
+  CVJobQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${ProjectName}-cv-jobs-${Environment}.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      # Visibility timeout matches max ECS task processing time (ADR-005)
+      VisibilityTimeout: !Ref VisibilityTimeoutSeconds
+      MessageRetentionPeriod: 86400  # 24 hours
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CVJobDLQ.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── IAM: CV Engine Task Role (ECS / RunPod) ───────────────────────────────
+  CVEngineTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-cv-engine-task-role-${Environment}"
+      Description: "PACE CV Engine ECS Task Role - S3 + SQS access"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CVEngineS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Read raw videos
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:HeadObject
+                Resource: !Sub "${RawVideosBucket.Arn}/raw/*"
+              # Write masked videos
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectTagging
+                Resource: !Sub "${MaskedVideosBucket.Arn}/masked/*"
+              # Tag raw videos for deletion tracking
+              - Effect: Allow
+                Action:
+                  - s3:PutObjectTagging
+                  - s3:GetObjectTagging
+                Resource: !Sub "${RawVideosBucket.Arn}/raw/*"
+        - PolicyName: CVEngineSQSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:ChangeMessageVisibility
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt CVJobQueue.Arn
+        - PolicyName: CVEngineSSMAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/${Environment}/cv/*"
+        - PolicyName: CVEngineCloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/pace-cv-engine-${Environment}:*"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── IAM: ECS Execution Role (for ECR pull + SSM secrets) ─────────────────
+  CVEngineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-cv-engine-execution-role-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: CVEngineSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameters
+                  - ssm:GetParameter
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/${Environment}/cv/*"
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "kms:ViaService": !Sub "ssm.${AWS::Region}.amazonaws.com"
+
+  # ── IAM: Next.js API Role (presigned URL generation) ─────────────────────
+  NextJSApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-nextjs-api-role-${Environment}"
+      Description: "PACE Next.js API - S3 presigned URL generation + SQS submit"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # For Vercel/Lambda
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+          # For local dev (EC2/IAM user)
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: NextJSS3PresignAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Generate presigned PUT URL for raw videos
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub "${RawVideosBucket.Arn}/raw/*"
+              # Generate presigned GET URL for masked videos (Before/After UI)
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "${MaskedVideosBucket.Arn}/masked/*"
+        - PolicyName: NextJSSQSSubmit
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:GetQueueUrl
+                Resource: !GetAtt CVJobQueue.Arn
+
+  # ── CloudWatch: Log Group for CV Engine ──────────────────────────────────
+  CVEngineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/pace-cv-engine-${Environment}"
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── SSM Parameters: パス に /{Environment}/ を含めて環境ごとに分離 ──────────
+  SSMSupabaseUrl:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/pace/${Environment}/cv/SUPABASE_URL"
+      Type: String
+      Value: "REPLACE_WITH_YOUR_SUPABASE_URL"
+      Description: !Sub "Supabase project URL for PACE CV Engine (${Environment})"
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+
+  SSMSQSQueueUrl:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/pace/${Environment}/cv/SQS_JOB_QUEUE_URL"
+      Type: String
+      Value: !Ref CVJobQueue
+      Description: !Sub "SQS FIFO Queue URL for CV jobs (${Environment})"
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+
+  SSMRawBucket:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/pace/${Environment}/cv/S3_RAW_BUCKET"
+      Type: String
+      Value: !Ref RawVideosBucket
+      Description: !Sub "S3 bucket name for raw videos (${Environment})"
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+
+  SSMMaskedBucket:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/pace/${Environment}/cv/S3_MASKED_BUCKET"
+      Type: String
+      Value: !Ref MaskedVideosBucket
+      Description: !Sub "S3 bucket name for masked videos (${Environment})"
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+
+# ─────────────────────────────────────────────────────────────────────────────
+Outputs:
+# ─────────────────────────────────────────────────────────────────────────────
+
+  RawVideosBucketName:
+    Description: "S3 Raw Videos Bucket Name"
+    Value: !Ref RawVideosBucket
+    Export:
+      Name: !Sub "${ProjectName}-raw-videos-bucket-${Environment}"
+
+  MaskedVideosBucketName:
+    Description: "S3 Masked Videos Bucket Name"
+    Value: !Ref MaskedVideosBucket
+    Export:
+      Name: !Sub "${ProjectName}-masked-videos-bucket-${Environment}"
+
+  CVJobQueueUrl:
+    Description: "SQS CV Job Queue URL"
+    Value: !Ref CVJobQueue
+    Export:
+      Name: !Sub "${ProjectName}-cv-job-queue-url-${Environment}"
+
+  CVJobQueueArn:
+    Description: "SQS CV Job Queue ARN"
+    Value: !GetAtt CVJobQueue.Arn
+
+  CVJobDLQUrl:
+    Description: "SQS Dead Letter Queue URL"
+    Value: !Ref CVJobDLQ
+
+  CVEngineTaskRoleArn:
+    Description: "IAM Role ARN for CV Engine ECS Task"
+    Value: !GetAtt CVEngineTaskRole.Arn
+    Export:
+      Name: !Sub "${ProjectName}-cv-engine-task-role-arn-${Environment}"
+
+  CVEngineExecutionRoleArn:
+    Description: "IAM Role ARN for CV Engine ECS Execution"
+    Value: !GetAtt CVEngineExecutionRole.Arn
+    Export:
+      Name: !Sub "${ProjectName}-cv-engine-execution-role-arn-${Environment}"
+
+  NextJSApiRoleArn:
+    Description: "IAM Role ARN for Next.js API"
+    Value: !GetAtt NextJSApiRole.Arn
+
+  # ── GitHub Actions Secrets reference ──────────────────────────────────────
+  # After stack deployment, set these GitHub Secrets:
+  # AWS_ACCESS_KEY_ID    = (create IAM user with this role attached)
+  # AWS_SECRET_ACCESS_KEY = (above user's secret key)
+  # S3_RAW_BUCKET        = !Ref RawVideosBucket (see above)
+  # S3_MASKED_BUCKET     = !Ref MaskedVideosBucket (see above)
+  # SQS_JOB_QUEUE_URL    = !Ref CVJobQueue (see above)
+  # CV_INTERNAL_TOKEN    = (generate: openssl rand -hex 32)

@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  PACE Platform — ECR Repository for CV Engine Docker image
+  Deploys: pace-cv-engine ECR repo + image scanning + lifecycle policy
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+  ProjectName:
+    Type: String
+    Default: pace-platform
+
+Resources:
+
+  CVEngineECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: pace-cv-engine
+      # Scan on push (detect OS/library vulnerabilities)
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      # Immutable tags prevent accidental overwrites in production
+      ImageTagMutability: !If
+        - IsProduction
+        - IMMUTABLE
+        - MUTABLE
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      # Lifecycle: keep latest 10 images, delete untagged after 7 days
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Delete untagged images after 7 days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 7
+                },
+                "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Keep only latest 10 tagged images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["sha-"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, production]
+
+Outputs:
+  RepositoryUri:
+    Description: "ECR Repository URI"
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/pace-cv-engine"
+    Export:
+      Name: !Sub "${ProjectName}-cv-engine-ecr-uri"
+  
+  RepositoryArn:
+    Description: "ECR Repository ARN"
+    Value: !GetAtt CVEngineECRRepository.Arn
