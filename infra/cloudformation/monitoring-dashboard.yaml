@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  PACE Platform — CloudWatch Monitoring Dashboard
+  KPIs: CV success rate ≥85%, avg processing ≤90s, face masking ≥99%
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+  ProjectName:
+    Type: String
+    Default: pace-platform
+
+Resources:
+
+  PACEDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${ProjectName}-cv-pipeline-${Environment}"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "title": "CV Job Queue Depth",
+                "metrics": [
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible",
+                   "QueueName", "${ProjectName}-cv-jobs-${Environment}.fifo",
+                   {"label": "Pending Jobs", "color": "#ff7f0e"}],
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible",
+                   "QueueName", "${ProjectName}-cv-jobs-dlq-${Environment}.fifo",
+                   {"label": "DLQ (Failed)", "color": "#d62728"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "view": "timeSeries",
+                "yAxis": {"left": {"min": 0}},
+                "annotations": {
+                  "horizontal": [{"value": 10, "label": "Scale Up Threshold", "color": "#ff7f0e"}]
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "SQS Message Processing Rate",
+                "metrics": [
+                  ["AWS/SQS", "NumberOfMessagesSent",
+                   "QueueName", "${ProjectName}-cv-jobs-${Environment}.fifo",
+                   {"label": "Jobs Submitted", "color": "#1f77b4"}],
+                  ["AWS/SQS", "NumberOfMessagesDeleted",
+                   "QueueName", "${ProjectName}-cv-jobs-${Environment}.fifo",
+                   {"label": "Jobs Completed", "color": "#2ca02c"}]
+                ],
+                "period": 3600,
+                "stat": "Sum",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "S3 Video Upload Volume",
+                "metrics": [
+                  ["AWS/S3", "NumberOfObjects", "BucketName",
+                   "${ProjectName}-raw-videos-${Environment}", "StorageType", "AllStorageTypes",
+                   {"label": "Raw Videos"}],
+                  ["AWS/S3", "NumberOfObjects", "BucketName",
+                   "${ProjectName}-masked-videos-${Environment}", "StorageType", "AllStorageTypes",
+                   {"label": "Masked Videos"}]
+                ],
+                "period": 86400,
+                "stat": "Average",
+                "view": "singleValue"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "ECS CV Engine — CPU & Memory",
+                "metrics": [
+                  ["AWS/ECS", "CPUUtilization",
+                   "ClusterName", "${ProjectName}-cluster-${Environment}",
+                   "ServiceName", "${ProjectName}-cv-engine-service-${Environment}",
+                   {"label": "CPU %", "color": "#1f77b4"}],
+                  ["AWS/ECS", "MemoryUtilization",
+                   "ClusterName", "${ProjectName}-cluster-${Environment}",
+                   "ServiceName", "${ProjectName}-cv-engine-service-${Environment}",
+                   {"label": "Memory %", "color": "#ff7f0e"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "view": "timeSeries",
+                "yAxis": {"left": {"min": 0, "max": 100}}
+              }
+            },
+            {
+              "type": "log",
+              "properties": {
+                "title": "CV Engine Errors (last 1h)",
+                "query": "SOURCE '/ecs/pace-cv-engine' | fields @timestamp, @message | filter @message like /ERROR|FAIL|Exception/ | sort @timestamp desc | limit 20",
+                "region": "${AWS::Region}",
+                "view": "table"
+              }
+            },
+            {
+              "type": "log",
+              "properties": {
+                "title": "CV Job Completion Rate (last 24h)",
+                "query": "SOURCE '/ecs/pace-cv-engine' | fields @timestamp, @message | filter @message like /job_completed|job_failed|job_rejected/ | stats count() as total, sum(strcontains(@message, 'job_completed')) as completed by bin(1h) | sort @timestamp asc",
+                "region": "${AWS::Region}",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DashboardUrl:
+    Description: "CloudWatch Dashboard URL"
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${ProjectName}-cv-pipeline-${Environment}"
