@@ -1,0 +1,215 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  PACE Platform — ECS Service for CV Engine (Production)
+  ADR-005: RunPod POC → AWS ECS g4dn.xlarge rolling upgrade
+  
+  前提: s3-video-pipeline.yaml が先にデプロイ済みであること
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+  ProjectName:
+    Type: String
+    Default: pace-platform
+  ImageTag:
+    Type: String
+    Default: latest
+    Description: Docker image tag to deploy
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: ECS service desired task count
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for ECS service
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnet IDs for ECS tasks (private subnets recommended)
+
+Resources:
+
+  # ── ECS Cluster ────────────────────────────────────────────────────────────
+  CVEngineCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ProjectName}-cluster-${Environment}"
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── ECS Task Definition ───────────────────────────────────────────────────
+  CVEngineTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: pace-cv-engine
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [EC2]
+      Cpu: "4096"
+      Memory: "16384"
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub "${ProjectName}-cv-engine-execution-role-arn-${Environment}"
+      TaskRoleArn:
+        Fn::ImportValue: !Sub "${ProjectName}-cv-engine-task-role-arn-${Environment}"
+      ContainerDefinitions:
+        - Name: cv-engine
+          Image: !Sub
+            - "${ECRRegistry}/pace-cv-engine:${Tag}"
+            - ECRRegistry: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com"
+              Tag: !Ref ImageTag
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+            - Name: LOG_LEVEL
+              Value: INFO
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: POSE_MODEL_COMPLEXITY
+              Value: "1"
+            - Name: FACE_BLUR_KERNEL
+              Value: "99"
+            - Name: MAX_VIDEO_DURATION_SEC
+              Value: "300"
+            - Name: WORKER_CONCURRENCY
+              Value: "1"
+            - Name: SQS_VISIBILITY_TIMEOUT
+              Value: "300"
+            - Name: SQS_MAX_MESSAGES
+              Value: "1"
+          Secrets:
+            - Name: S3_RAW_BUCKET
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/S3_RAW_BUCKET"
+            - Name: S3_MASKED_BUCKET
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/S3_MASKED_BUCKET"
+            - Name: SQS_JOB_QUEUE_URL
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/SQS_JOB_QUEUE_URL"
+            - Name: SUPABASE_URL
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/SUPABASE_URL"
+            - Name: SUPABASE_SERVICE_ROLE_KEY
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/SUPABASE_SERVICE_ROLE_KEY"
+            - Name: CV_INTERNAL_TOKEN
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/CV_INTERNAL_TOKEN"
+            - Name: SENTRY_DSN
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pace/cv/SENTRY_DSN"
+          ResourceRequirements:
+            - Type: GPU
+              Value: "1"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/pace-cv-engine
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+            Interval: 30
+            Timeout: 10
+            Retries: 3
+            StartPeriod: 60
+          StopTimeout: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── Security Group ────────────────────────────────────────────────────────
+  CVEngineSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "PACE CV Engine ECS Tasks"
+      VpcId: !Ref VpcId
+      # No inbound (worker mode — SQS polling only)
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: "Allow all outbound (S3, SQS, Supabase)"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-cv-engine-sg-${Environment}"
+
+  # ── ECS Service ───────────────────────────────────────────────────────────
+  CVEngineService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub "${ProjectName}-cv-engine-service-${Environment}"
+      Cluster: !Ref CVEngineCluster
+      TaskDefinition: !Ref CVEngineTaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: EC2
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref SubnetIds
+          SecurityGroups:
+            - !Ref CVEngineSecurityGroup
+          AssignPublicIp: DISABLED
+      # Application Auto Scaling based on SQS queue depth
+      # (configured separately via Application Auto Scaling)
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── CloudWatch Alarms ─────────────────────────────────────────────────────
+  # DLQ messages alarm: triggers when CV jobs exceed max retries
+  DLQMessageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-cv-dlq-messages-${Environment}"
+      AlarmDescription: "CV Jobs reaching Dead Letter Queue — investigate failures"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub "${ProjectName}-cv-jobs-dlq-${Environment}.fifo"
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  # Job queue depth alarm: too many unprocessed jobs
+  QueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-cv-queue-depth-${Environment}"
+      AlarmDescription: "CV Job queue depth high — consider scaling up ECS"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub "${ProjectName}-cv-jobs-${Environment}.fifo"
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  ClusterName:
+    Value: !Ref CVEngineCluster
+    Export:
+      Name: !Sub "${ProjectName}-cv-cluster-name-${Environment}"
+
+  ServiceName:
+    Value: !GetAtt CVEngineService.Name
+    Export:
+      Name: !Sub "${ProjectName}-cv-service-name-${Environment}"
