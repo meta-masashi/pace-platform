@@ -235,3 +235,49 @@ CREATE POLICY "telehealth_consent_delete_deny"
 -- SELECT table_name, row_security
 -- FROM information_schema.tables
 -- WHERE table_name IN ('telehealth_sessions', 'telehealth_consent_records');
+
+-- -----------------------------------------------------------------------------
+-- 7. telehealth_audit_log テーブル (P6-012)
+-- TeleHealth 通話イベントの不変監査ログ
+-- 追記のみ（UPDATE/DELETE は RLS で禁止）
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS telehealth_audit_log (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id   UUID        NOT NULL REFERENCES telehealth_sessions(id) ON DELETE CASCADE,
+  user_id      UUID        NOT NULL,
+  user_role    TEXT        NOT NULL CHECK (user_role IN ('staff', 'athlete')),
+  event_type   TEXT        NOT NULL,
+  ip_address   INET,
+  user_agent   TEXT,
+  metadata     JSONB       NOT NULL DEFAULT '{}',
+  occurred_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_telehealth_audit_session
+  ON telehealth_audit_log(session_id, occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_telehealth_audit_user
+  ON telehealth_audit_log(user_id, occurred_at DESC);
+
+ALTER TABLE telehealth_audit_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "telehealth_audit_select"
+  ON telehealth_audit_log FOR SELECT TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM telehealth_sessions ts
+    WHERE ts.id = session_id AND ts.org_id = get_my_org_id()
+  ));
+
+CREATE POLICY "telehealth_audit_insert"
+  ON telehealth_audit_log FOR INSERT TO authenticated
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM telehealth_sessions ts
+    WHERE ts.id = session_id AND ts.org_id = get_my_org_id()
+  ));
+
+CREATE POLICY "telehealth_audit_update_deny"
+  ON telehealth_audit_log FOR UPDATE TO authenticated USING (FALSE);
+
+CREATE POLICY "telehealth_audit_delete_deny"
+  ON telehealth_audit_log FOR DELETE TO authenticated USING (FALSE);

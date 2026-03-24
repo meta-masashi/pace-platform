@@ -55,6 +55,8 @@ interface TeamConditionSummary {
   avgReadiness: number;
   criticalCount: number;
   athleteCount: number;
+  /** P6-015: ACWR > 1.5 (Danger Zone) の選手数 — Hard Lock Context */
+  dangerZoneCount: number;
 }
 
 async function getTeamConditionForWeek(
@@ -78,7 +80,7 @@ async function getTeamConditionForWeek(
     .eq("is_active", true);
 
   if (!athletes || athletes.length === 0) {
-    return { avgAcwr: 1.0, avgReadiness: 50, criticalCount: 0, athleteCount: 0 };
+    return { avgAcwr: 1.0, avgReadiness: 50, criticalCount: 0, dangerZoneCount: 0, athleteCount: 0 };
   }
 
   const athleteIds = athletes.map((a: { id: string }) => a.id);
@@ -97,6 +99,7 @@ async function getTeamConditionForWeek(
       avgAcwr: 1.0,
       avgReadiness: 50,
       criticalCount: 0,
+      dangerZoneCount: 0,
       athleteCount: athletes.length,
     };
   }
@@ -115,11 +118,14 @@ async function getTeamConditionForWeek(
   const avgReadiness =
     entries.reduce((s, e) => s + (e.readiness_score ?? 50), 0) / entries.length;
   const criticalCount = entries.filter((e) => (e.readiness_score ?? 50) < 40).length;
+  // P6-015 Hard Lock Context: ACWR > 1.5 は危険ゾーン
+  const dangerZoneCount = entries.filter((e) => (e.acwr ?? 1.0) > 1.5).length;
 
   return {
     avgAcwr: Math.round(avgAcwr * 1000) / 1000,
     avgReadiness: Math.round(avgReadiness * 10) / 10,
     criticalCount,
+    dangerZoneCount,
     athleteCount: athletes.length,
   };
 }
@@ -134,6 +140,7 @@ interface PlanPromptInput {
   avgAcwr: number;
   avgReadiness: number;
   criticalCount: number;
+  dangerZoneCount: number;
   athleteCount: number;
   notes?: string;
 }
@@ -144,6 +151,7 @@ function buildTrainingPlanPrompt(input: PlanPromptInput): string {
     avgAcwr,
     avgReadiness,
     criticalCount,
+    dangerZoneCount,
     athleteCount,
     notes,
   } = input;
@@ -163,6 +171,7 @@ function buildTrainingPlanPrompt(input: PlanPromptInput): string {
 - チーム平均ACWR: ${avgAcwr.toFixed(3)}
 - チーム平均Readiness: ${avgReadiness.toFixed(1)}/100
 - 要注意選手数（Readiness < 40）: ${criticalCount}名
+- 危険ゾーン選手数（ACWR > 1.5）: ${dangerZoneCount}名${dangerZoneCount > 0 ? " ⚠️ Hard Lock: intensity_target は 'low' のみ" : ""}
 ${notes ? `\n【スタッフメモ】\n${notes}` : ""}
 
 【出力形式（必ずこのJSONのみ返答）】
@@ -189,6 +198,7 @@ ${notes ? `\n【スタッフメモ】\n${notes}` : ""}
 - トレーニング強度はACWRとReadinessに基づいて科学的に調整すること
   - ACWR > 1.3 または criticalCount > 0 の場合は intensity_target を "low" または "moderate" にすること
   - ACWR < 0.8 の場合はトレーニング量不足を示唆してよい
+  - dangerZoneCount > 0 の場合: intensity_target は必ず "low" に設定し days の全 intensity も "low" または "rest" のみ使用すること（Hard Lock 強制）
 - 必ずJSON形式のみ返答（コードブロック・説明文は不要）
 - days 配列は必ず7要素（月〜日）含めること
 `;
@@ -297,7 +307,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const promptInput: PlanPromptInput = {
       orgId: staff.org_id,
       weekStartDate: week_start_date,
-      ...teamCondition,
+      avgAcwr: teamCondition.avgAcwr,
+      avgReadiness: teamCondition.avgReadiness,
+      criticalCount: teamCondition.criticalCount,
+      dangerZoneCount: teamCondition.dangerZoneCount,
+      athleteCount: teamCondition.athleteCount,
       notes: notes?.trim(),
     };
 

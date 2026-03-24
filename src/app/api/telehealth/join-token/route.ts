@@ -200,6 +200,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // 同意記録失敗はトークン発行をブロックしない（ログのみ）
     }
 
+    // ── 監査ログ (P6-012): token_issued イベント ─────────────────────────────
+    const userAgent = req.headers.get("user-agent") ?? undefined;
+    const forwardedFor = req.headers.get("x-forwarded-for");
+    const ipStr = forwardedFor?.split(",")[0]?.trim() ?? undefined;
+
+    await db.from("telehealth_audit_log").insert({
+      session_id,
+      user_id: userId,
+      user_role: role,
+      event_type: "token_issued",
+      user_agent: userAgent,
+      ip_address: ipStr ?? null,
+      metadata: {
+        room_name: session.room_name,
+        is_owner: role === "staff",
+      },
+    }).then(({ error }) => {
+      if (error) console.error("[telehealth/join-token] Audit log error:", error.message);
+    });
+
     return NextResponse.json({
       token: meetingToken,
       room_url: session.room_url,

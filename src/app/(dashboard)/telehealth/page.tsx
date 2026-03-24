@@ -2,8 +2,11 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useRef } from "react";
-import { Video, Plus, Clock, User, CheckCircle, XCircle, PhoneOff } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Video, Plus, Clock, User, CheckCircle, XCircle, PhoneOff,
+  FileText, Activity, ChevronDown, ChevronUp, PanelRight, PanelRightClose,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
@@ -26,6 +29,38 @@ interface Athlete {
   id: string;
   name: string;
   position: string | null;
+}
+
+interface SoapNote {
+  id: string;
+  s_text: string;
+  o_text: string;
+  a_text: string;
+  p_text: string;
+  ai_assisted: boolean;
+  created_at: string;
+}
+
+interface AssessmentRecord {
+  id: string;
+  assessment_type: string;
+  primary_diagnosis: { diagnosis_code: string; label: string; probability: number } | null;
+  differentials: { diagnosis_code: string; label: string; probability: number }[];
+  completed_at: string | null;
+}
+
+interface ConditionRecord {
+  date: string;
+  acwr: number;
+  readiness_score: number;
+  daily_load: number;
+}
+
+interface SessionContext {
+  athlete: { id: string; name: string; position: string | null; jersey_number: number | null } | null;
+  soap_notes: SoapNote[];
+  assessments: AssessmentRecord[];
+  condition_history: ConditionRecord[];
 }
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
@@ -91,41 +126,240 @@ function ConsentModal({
   );
 }
 
-// ─── 通話画面（Daily.co Prebuilt UI） ─────────────────────────────────────────
+// ─── コンテキストパネル (P6-011) ──────────────────────────────────────────────
+
+function ContextPanel({
+  sessionId,
+  token,
+}: {
+  sessionId: string;
+  token: string;
+}) {
+  const [ctx, setCtx] = useState<SessionContext | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [soapOpen, setSoapOpen] = useState(true);
+  const [assessOpen, setAssessOpen] = useState(false);
+  const [condOpen, setCondOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/telehealth/context/${sessionId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setCtx(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [sessionId, token]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-slate-400 text-xs">
+        コンテキスト読み込み中...
+      </div>
+    );
+  }
+
+  if (!ctx) return null;
+
+  const latestCond = ctx.condition_history[0];
+
+  return (
+    <div className="h-full overflow-y-auto bg-slate-900 text-slate-200 text-xs space-y-1 p-2">
+      {/* 選手情報 */}
+      {ctx.athlete && (
+        <div className="bg-slate-800 rounded-lg px-3 py-2 mb-2">
+          <p className="font-700 text-sm text-white">{ctx.athlete.name}</p>
+          <p className="text-slate-400 mt-0.5">{ctx.athlete.position ?? ""}{ctx.athlete.jersey_number ? ` #${ctx.athlete.jersey_number}` : ""}</p>
+          {latestCond && (
+            <div className="flex gap-3 mt-2">
+              <span className={`px-1.5 py-0.5 rounded font-600 ${latestCond.acwr > 1.3 ? "bg-red-900/60 text-red-300" : latestCond.acwr < 0.8 ? "bg-amber-900/60 text-amber-300" : "bg-emerald-900/60 text-emerald-300"}`}>
+                ACWR {latestCond.acwr?.toFixed(2)}
+              </span>
+              <span className={`px-1.5 py-0.5 rounded font-600 ${latestCond.readiness_score < 40 ? "bg-red-900/60 text-red-300" : latestCond.readiness_score < 60 ? "bg-amber-900/60 text-amber-300" : "bg-emerald-900/60 text-emerald-300"}`}>
+                Readiness {Math.round(latestCond.readiness_score)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SOAPノート */}
+      <div className="bg-slate-800 rounded-lg overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700 transition-colors"
+          onClick={() => setSoapOpen((v) => !v)}
+        >
+          <span className="flex items-center gap-2 font-600 text-slate-200">
+            <FileText className="w-3.5 h-3.5 text-emerald-400" />
+            SOAPノート ({ctx.soap_notes.length})
+          </span>
+          {soapOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+        </button>
+        {soapOpen && (
+          <div className="px-3 pb-2 space-y-2">
+            {ctx.soap_notes.length === 0 ? (
+              <p className="text-slate-500 py-2 text-center">SOAPノートなし</p>
+            ) : (
+              ctx.soap_notes.map((note) => (
+                <div key={note.id} className="border border-slate-700 rounded-md p-2 space-y-1.5">
+                  <p className="text-slate-500 text-[10px]">{new Date(note.created_at).toLocaleDateString("ja-JP")}</p>
+                  {note.s_text && <div><span className="text-emerald-400 font-700">S: </span>{note.s_text}</div>}
+                  {note.o_text && <div><span className="text-sky-400 font-700">O: </span>{note.o_text}</div>}
+                  {note.a_text && <div><span className="text-amber-400 font-700">A: </span>{note.a_text}</div>}
+                  {note.p_text && <div><span className="text-violet-400 font-700">P: </span>{note.p_text}</div>}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* アセスメント */}
+      <div className="bg-slate-800 rounded-lg overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700 transition-colors"
+          onClick={() => setAssessOpen((v) => !v)}
+        >
+          <span className="flex items-center gap-2 font-600 text-slate-200">
+            <Activity className="w-3.5 h-3.5 text-sky-400" />
+            アセスメント ({ctx.assessments.length})
+          </span>
+          {assessOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+        </button>
+        {assessOpen && (
+          <div className="px-3 pb-2 space-y-2">
+            {ctx.assessments.length === 0 ? (
+              <p className="text-slate-500 py-2 text-center">アセスメントなし</p>
+            ) : (
+              ctx.assessments.map((a) => (
+                <div key={a.id} className="border border-slate-700 rounded-md p-2">
+                  <p className="text-slate-400 text-[10px] mb-1">{a.assessment_type} — {a.completed_at ? new Date(a.completed_at).toLocaleDateString("ja-JP") : "未完了"}</p>
+                  {a.primary_diagnosis && (
+                    <div>
+                      <span className="text-amber-400 font-700">主診断: </span>
+                      <span className="text-slate-200">{a.primary_diagnosis.label}</span>
+                      <span className="text-slate-500 ml-1">({Math.round(a.primary_diagnosis.probability * 100)}%)</span>
+                    </div>
+                  )}
+                  {a.differentials?.length > 0 && (
+                    <div className="mt-1 text-[10px] text-slate-400">
+                      鑑別: {a.differentials.slice(0, 2).map((d) => `${d.label}(${Math.round(d.probability * 100)}%)`).join(", ")}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* コンディション履歴 */}
+      <div className="bg-slate-800 rounded-lg overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700 transition-colors"
+          onClick={() => setCondOpen((v) => !v)}
+        >
+          <span className="flex items-center gap-2 font-600 text-slate-200">
+            <Activity className="w-3.5 h-3.5 text-violet-400" />
+            直近コンディション ({ctx.condition_history.length}日)
+          </span>
+          {condOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+        </button>
+        {condOpen && (
+          <div className="px-3 pb-2">
+            {ctx.condition_history.length === 0 ? (
+              <p className="text-slate-500 py-2 text-center">データなし</p>
+            ) : (
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="text-slate-500">
+                    <th className="text-left py-1">日付</th>
+                    <th className="text-right py-1">ACWR</th>
+                    <th className="text-right py-1">Readiness</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ctx.condition_history.map((c) => (
+                    <tr key={c.date} className="border-t border-slate-700">
+                      <td className="py-1 text-slate-400">{c.date}</td>
+                      <td className={`py-1 text-right font-600 ${c.acwr > 1.3 ? "text-red-400" : c.acwr < 0.8 ? "text-amber-400" : "text-emerald-400"}`}>{c.acwr?.toFixed(2)}</td>
+                      <td className={`py-1 text-right font-600 ${c.readiness_score < 40 ? "text-red-400" : c.readiness_score < 60 ? "text-amber-400" : "text-emerald-400"}`}>{Math.round(c.readiness_score)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── 通話画面（Daily.co + SOAPコンテキストパネル） ─────────────────────────────
 
 function VideoCallFrame({
   roomUrl,
   token,
+  sessionId,
   onLeave,
 }: {
   roomUrl: string;
   token: string;
+  sessionId: string;
   onLeave: () => void;
 }) {
+  const [showPanel, setShowPanel] = useState(true);
   const url = `${roomUrl}?t=${token}`;
+
   return (
     <div className="fixed inset-0 z-40 bg-slate-900 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-800">
+      {/* ヘッダーバー */}
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Video className="w-5 h-5 text-emerald-400" />
           <span className="text-white font-600 text-sm">PACE TeleHealth — 通話中</span>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-red-400 hover:text-red-300 hover:bg-red-900/30 gap-2"
-          onClick={onLeave}
-        >
-          <PhoneOff className="w-4 h-4" />
-          通話を終了
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-slate-400 hover:text-slate-200 hover:bg-slate-700 gap-1.5"
+            onClick={() => setShowPanel((v) => !v)}
+            title={showPanel ? "パネルを閉じる" : "コンテキストパネルを開く"}
+          >
+            {showPanel ? <PanelRightClose className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
+            <span className="text-xs">{showPanel ? "パネルを隠す" : "SOAP/アセスメント"}</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-400 hover:text-red-300 hover:bg-red-900/30 gap-2"
+            onClick={onLeave}
+          >
+            <PhoneOff className="w-4 h-4" />
+            通話を終了
+          </Button>
+        </div>
       </div>
-      <iframe
-        src={url}
-        allow="camera; microphone; fullscreen; speaker; display-capture"
-        className="flex-1 w-full border-0"
-        title="TeleHealth Video Call"
-      />
+
+      {/* メインコンテンツ */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* ビデオ */}
+        <iframe
+          src={url}
+          allow="camera; microphone; fullscreen; speaker; display-capture"
+          className="flex-1 border-0"
+          title="TeleHealth Video Call"
+        />
+
+        {/* SOAPコンテキストパネル (P6-011) */}
+        {showPanel && (
+          <div className="w-72 flex-shrink-0 border-l border-slate-700 overflow-hidden">
+            <ContextPanel sessionId={sessionId} token={token} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -224,7 +458,7 @@ export default function TeleHealthPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [consentSession, setConsentSession] = useState<TeleHealthSession | null>(null);
-  const [callInfo, setCallInfo] = useState<{ roomUrl: string; token: string } | null>(null);
+  const [callInfo, setCallInfo] = useState<{ roomUrl: string; token: string; sessionId: string } | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
   const fetchSessions = async () => {
@@ -250,7 +484,7 @@ export default function TeleHealthPage() {
 
   useEffect(() => {
     Promise.all([fetchSessions(), fetchAthletes()]).finally(() => setLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = async (athleteId: string, scheduledAt: string, notes: string) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -279,7 +513,7 @@ export default function TeleHealthPage() {
     setJoiningId(null);
     if (!res.ok) return;
     const { token, room_url } = await res.json();
-    setCallInfo({ roomUrl: room_url, token });
+    setCallInfo({ roomUrl: room_url, token, sessionId });
     setConsentSession(null);
   };
 
@@ -291,6 +525,7 @@ export default function TeleHealthPage() {
       <VideoCallFrame
         roomUrl={callInfo.roomUrl}
         token={callInfo.token}
+        sessionId={callInfo.sessionId}
         onLeave={() => { setCallInfo(null); fetchSessions(); }}
       />
     );
