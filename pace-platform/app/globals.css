@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* PACE Design Tokens */
+    --background: 0 0% 100%;
+    --foreground: 160 10% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 160 10% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 10% 10%;
+
+    /* Primary: Emerald */
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 160 20% 95%;
+    --secondary-foreground: 160 10% 15%;
+
+    --muted: 160 10% 96%;
+    --muted-foreground: 160 5% 45%;
+
+    --accent: 160 20% 93%;
+    --accent-foreground: 160 10% 15%;
+
+    /* Status Colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --critical: 0 84% 60%;
+    --watchlist: 38 92% 50%;
+    --optimal: 168 76% 42%;
+
+    --border: 160 15% 90%;
+    --input: 160 15% 90%;
+    --ring: 160 84% 39%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 160 10% 5%;
+    --foreground: 160 5% 95%;
+
+    --card: 160 10% 8%;
+    --card-foreground: 160 5% 95%;
+
+    --popover: 160 10% 8%;
+    --popover-foreground: 160 5% 95%;
+
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 160 15% 15%;
+    --secondary-foreground: 160 5% 90%;
+
+    --muted: 160 10% 15%;
+    --muted-foreground: 160 5% 60%;
+
+    --accent: 160 15% 15%;
+    --accent-foreground: 160 5% 90%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --critical: 0 62% 50%;
+    --watchlist: 38 92% 50%;
+    --optimal: 168 76% 42%;
+
+    --border: 160 10% 18%;
+    --input: 160 10% 18%;
+    --ring: 160 84% 39%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "palt";
+  }
+}
+
+/* Conditioning Score status colors */
+@layer utilities {
+  .status-optimal {
+    --status-color: theme('colors.optimal.500');
+    --status-bg: theme('colors.optimal.50');
+    --status-ring: theme('colors.optimal.400');
+  }
+
+  .status-caution {
+    --status-color: theme('colors.watchlist.500');
+    --status-bg: theme('colors.watchlist.50');
+    --status-ring: theme('colors.watchlist.400');
+  }
+
+  .status-recovery {
+    --status-color: theme('colors.critical.500');
+    --status-bg: theme('colors.critical.50');
+    --status-ring: theme('colors.critical.400');
+  }
+}
+
+/* Scrollbar styling */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+  }
+}
