@@ -154,7 +154,8 @@ export function parseJsonWithRecovery<T>(rawText: string): T {
     return JSON.parse(extracted) as T;
   } catch (finalErr) {
     throw new SyntaxError(
-      `JSON パース完全失敗: ${finalErr instanceof Error ? finalErr.message : String(finalErr)}`
+      `JSON パース完全失敗: ${finalErr instanceof Error ? finalErr.message : String(finalErr)}`,
+      { cause: finalErr },
     );
   }
 }
