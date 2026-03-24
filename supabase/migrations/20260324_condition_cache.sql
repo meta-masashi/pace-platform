@@ -86,7 +86,7 @@ CREATE TRIGGER trg_condition_cache_updated_at
 
 ALTER TABLE athlete_condition_cache ENABLE ROW LEVEL SECURITY;
 
--- スタッフ: 同組織の選手データを参照可能
+-- スタッフ: 同組織の選手データを参照可能（staff.id = auth.uid()）
 CREATE POLICY "staff_read_condition_cache"
   ON athlete_condition_cache
   FOR SELECT
@@ -94,22 +94,16 @@ CREATE POLICY "staff_read_condition_cache"
     EXISTS (
       SELECT 1 FROM staff s
       JOIN athletes a ON a.org_id = s.org_id
-      WHERE s.auth_user_id = auth.uid()
+      WHERE s.id = auth.uid()
         AND a.id = athlete_condition_cache.athlete_id
     )
   );
 
--- 選手: 自分自身のデータのみ参照可能
+-- 選手: 自分自身のデータのみ参照可能（athletes.id = auth.uid()）
 CREATE POLICY "athlete_read_own_condition_cache"
   ON athlete_condition_cache
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM athletes a
-      WHERE a.auth_user_id = auth.uid()
-        AND a.id = athlete_condition_cache.athlete_id
-    )
-  );
+  USING (athlete_id = auth.uid());
 
 -- Service Role のみ INSERT/UPDATE（APIサーバーから実行）
 -- RLS は anon/authenticated のみ適用されるため service role は自動バイパス
