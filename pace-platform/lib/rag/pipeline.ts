@@ -82,7 +82,7 @@ export async function runRagPipeline(
     );
   } catch (err) {
     console.error("[rag:pipeline] ベクトル検索失敗:", err);
-    throw new Error(`RAG 検索エラー: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`RAG 検索エラー: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 
   const { documents, strategy } = retrievalResult;
