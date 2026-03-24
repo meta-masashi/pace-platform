@@ -215,15 +215,15 @@ export function DashboardClient({
       {/* ── ヘッダー ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">ダッシュボード</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{todayLabel}</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">ダッシュボード</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{todayLabel}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600 bg-blue-50 border border-blue-100 px-3 py-1 rounded-md">
+          <span className="text-sm text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-md font-medium">
             選手数: {totalAthletes}名
           </span>
-          <Button variant="primary">
-            <Bell className="w-4 h-4 mr-1.5" />
+          <Button variant="primary" aria-label="選手へ一括配信する">
+            <Bell className="w-4 h-4 mr-1.5" aria-hidden="true" />
             一括配信
           </Button>
         </div>
@@ -236,6 +236,7 @@ export function DashboardClient({
           value={String(criticalCount)}
           unit="名"
           color="red"
+          emphasis
           trend={criticalCount > 0 ? "up" : "stable"}
           trendLabel="要即対応"
           subtitle="NRS≥6 または ACWR>1.5"
@@ -263,6 +264,7 @@ export function DashboardClient({
           value={String(watchlistCount)}
           unit="名"
           color="amber"
+          emphasis
           trend={watchlistCount > 0 ? "up" : "stable"}
           trendLabel="要注意観察"
           subtitle="ACWR 1.3〜1.5 or NRS 4〜5"
@@ -275,16 +277,19 @@ export function DashboardClient({
           <div className="flex items-center justify-between">
             <CardTitle>チームトレンド（14日間）</CardTitle>
             {/* タブ切り替え */}
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
               {CHART_TABS.map((t) => (
                 <button
                   key={t.key}
                   onClick={() => setActiveTab(t.key)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                    activeTab === t.key
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors min-h-[32px]
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1
+                    ${
+                      activeTab === t.key
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  aria-pressed={activeTab === t.key}
                 >
                   {t.label}
                 </button>

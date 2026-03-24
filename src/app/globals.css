@@ -2,13 +2,152 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Webフォント読み込み ────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+/* ─── CSS カスタムプロパティ（デザイントークン） ─────────────────────── */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* サーフェス */
+  --background:    #f8fafc;
+  --foreground:    #0f172a;
+  --card:          #ffffff;
+  --card-border:   #e2e8f0;
+
+  /* ブランド */
+  --brand-500:     #10b981;
+  --brand-600:     #059669;
+
+  /* セマンティック（WCAG AA 4.5:1 準拠） */
+  --critical:      #dc2626;
+  --critical-bg:   #fef2f2;
+  --watchlist:     #d97706;
+  --watchlist-bg:  #fffbeb;
+  --normal:        #059669;
+  --normal-bg:     #ecfdf5;
+  --zone:          #2563eb;
+  --zone-bg:       #eff6ff;
+
+  /* サイドバー */
+  --sidebar-bg:    #0f172a;
+  --sidebar-width: 240px;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+/* ─── ベーススタイル ──────────────────────────────────────────────────── */
+@layer base {
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    /* Noto Sans JP（日本語）+ Inter（英数字）*/
+    font-family: 'Noto Sans JP', Inter, ui-sans-serif, system-ui, sans-serif;
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+
+  /* 日本語テキスト: 最小14px / line-height 1.65以上 */
+  p, li, td, th, span, label, div {
+    line-height: 1.65;
+  }
+
+  /* 見出し階層（h1 > h2 > h3 厳守） */
+  h1 {
+    font-size: 1.875rem;
+    line-height: 1.3;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+  }
+  h2 {
+    font-size: 1.5rem;
+    line-height: 1.4;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #0f172a;
+  }
+  h3 {
+    font-size: 1.125rem;
+    line-height: 1.5;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  h4 {
+    font-size: 1rem;
+    line-height: 1.6;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  /* フォーカス可視化（WCAG AA 準拠: outline 2px 以上） */
+  :focus-visible {
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* ─── コンポーネントユーティリティ ────────────────────────────────────── */
+@layer components {
+  /* KPIカード ステータス強調（左ボーダー + 薄背景） */
+  .kpi-critical {
+    border-left: 4px solid var(--critical) !important;
+    background-color: var(--critical-bg) !important;
+  }
+  .kpi-watchlist {
+    border-left: 4px solid var(--watchlist) !important;
+    background-color: var(--watchlist-bg) !important;
+  }
+  .kpi-normal {
+    border-left: 4px solid var(--normal) !important;
+    background-color: var(--normal-bg) !important;
+  }
+  .kpi-zone {
+    border-left: 4px solid var(--zone) !important;
+    background-color: var(--zone-bg) !important;
+  }
+
+  /* ステータスドット */
+  .status-dot-critical { @apply w-2 h-2 rounded-full bg-red-500 animate-pulse; }
+  .status-dot-watchlist { @apply w-2 h-2 rounded-full bg-amber-500; }
+  .status-dot-normal { @apply w-2 h-2 rounded-full bg-emerald-500; }
+  .status-dot-zone { @apply w-2 h-2 rounded-full bg-blue-500; }
+
+  /* 数値表示用（Inter フォント + 等幅数字） */
+  .font-numeric {
+    font-family: Inter, 'Noto Sans JP', sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+/* ─── ユーティリティ ─────────────────────────────────────────────────── */
+@layer utilities {
+  /* スクロールバー非表示 */
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ブランドテキストグラデーション */
+  .text-gradient-brand {
+    background: linear-gradient(135deg, #10b981, #059669);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* モバイルタッチターゲット最小サイズ確保 */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
