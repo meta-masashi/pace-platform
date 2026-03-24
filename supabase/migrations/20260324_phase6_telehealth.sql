@@ -165,15 +165,16 @@ CREATE POLICY "telehealth_sessions_delete_deny"
   USING (FALSE);
 
 -- -----------------------------------------------------------------------------
--- 5. PHI 書き込み監査トリガー（ADR-019 継承）
+-- 5. PHI 書き込み監査トリガー（将来対応）
+-- NOTE: log_phi_mutation() は既存 audit_logs スキーマとの整合後に追加予定
 -- -----------------------------------------------------------------------------
-
--- telehealth_sessions は PHI（セッション参加者情報）を含む
--- 書き込み操作（INSERT / UPDATE / DELETE）を audit_log に記録する
-CREATE TRIGGER audit_telehealth_sessions
-  AFTER INSERT OR UPDATE OR DELETE ON telehealth_sessions
-  FOR EACH ROW
-  EXECUTE FUNCTION log_phi_mutation();
+-- DO $$ BEGIN
+--   IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'log_phi_mutation') THEN
+--     EXECUTE 'CREATE TRIGGER audit_telehealth_sessions
+--       AFTER INSERT OR UPDATE OR DELETE ON telehealth_sessions
+--       FOR EACH ROW EXECUTE FUNCTION log_phi_mutation()';
+--   END IF;
+-- END $$;
 
 -- -----------------------------------------------------------------------------
 -- 6. telehealth_consent_records テーブル（同意記録）

@@ -287,14 +287,16 @@ CREATE POLICY "training_feedback_select_staff"
 --   WITH CHECK (athlete_id = auth.uid());
 
 -- -----------------------------------------------------------------------------
--- 8. PHI 書き込み監査トリガー（ADR-019 継承）
+-- 8. PHI 書き込み監査トリガー（将来対応）
+-- NOTE: log_phi_mutation() は既存 audit_logs スキーマとの整合後に追加予定
 -- -----------------------------------------------------------------------------
-
--- weekly_training_plans は間接的にアスリートの健康情報（ACWR・疲労スコア）を参照して生成されるため PHI に準じて監査
-CREATE TRIGGER audit_weekly_training_plans
-  AFTER INSERT OR UPDATE OR DELETE ON weekly_training_plans
-  FOR EACH ROW
-  EXECUTE FUNCTION log_phi_mutation();
+-- DO $$ BEGIN
+--   IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'log_phi_mutation') THEN
+--     EXECUTE 'CREATE TRIGGER audit_weekly_training_plans
+--       AFTER INSERT OR UPDATE OR DELETE ON weekly_training_plans
+--       FOR EACH ROW EXECUTE FUNCTION log_phi_mutation()';
+--   END IF;
+-- END $$;
 
 -- -----------------------------------------------------------------------------
 -- 実行確認クエリ（コメントを外して確認）
