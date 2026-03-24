@@ -1,48 +1,23 @@
-# 環境変数（実際の値 — 絶対にコミット禁止）
-.env
+# 環境変数（実際の値）
 .env.local
 .env.*.local
-.env.production
 pace-platform/.env.local
 
 # Node.js
 node_modules/
 pace-platform/node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Next.js
-.next/
 pace-platform/.next/
-out/
 pace-platform/out/
-build/
-pace-platform/dist/
+pace-platform/.turbo/
 
-# Supabase ローカル開発
+# Supabase
 supabase/.branches/
 supabase/.temp/
-
-# TypeScript
-tsconfig.tsbuildinfo
-*.tsbuildinfo
-
-# テスト / カバレッジ
-coverage/
-pace-platform/coverage/
-pace-platform/test-results/
-pace-platform/playwright-report/
-.nyc_output/
 
 # macOS
 .DS_Store
 .DS_Store?
 ._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
 
 # エディタ
 .vscode/
@@ -50,14 +25,12 @@ Thumbs.db
 *.swp
 *.swo
 
+# テスト出力
+pace-platform/coverage/
+pace-platform/test-results/
+pace-platform/playwright-report/
+
 # ログ
-logs/
 *.log
 npm-debug.log*
-
-# キャッシュ
-.cache/
-.eslintcache
-.turbo/
-pace-platform/.turbo/
-.vercel
+pace-platform/dist/

@@ -1,133 +1,80 @@
-# ADR-001: pace-platform システムアーキテクチャ
-
-**ステータス:** 承認済み
-**日付:** 2026-03-22
-**決定者:** 05-architect エージェント
-
----
-
-## 決定
-
-Next.js 15 (App Router) + Supabase + Gemini API を中核とした、
-4層レイヤー分離アーキテクチャを採用する。
-
----
+# ADR-001: システムアーキテクチャ — レイヤー分離方針と実装変更指示書の統合
 
 ## 状況
 
-スポーツ医科学プラットフォーム `pace-platform` は以下の要件を持つ:
+PACE Platform v3.2 の商用リリースに向け、以下を確定する必要がある:
 
-- 選手の身体データ・SOAP記録・トリアージ評価の管理
-- AI による評価支援（Gemini API）
-- チームトレーニング・リハビリ管理
-- 複数ユーザーロール（管理者・コーチ・トレーナー・選手）によるアクセス制御
+1. レイヤー分離方針（フロントエンド / API / データ / AI）
+2. 実装変更指示書（2026-03-25）による方針転換の反映
+3. Phase 6 計画機能（TeleHealth / 保険請求 / IMU）の正式な廃止記録
 
-モノリシック構成では認証・AI推論・データ永続化が密結合となりメンテナンス性が低下するため、
-レイヤー分離アーキテクチャの意思決定が必要となった。
+## 決定
 
----
+### レイヤー分離
+
+| レイヤー | 技術 | 責務 |
+|---------|------|------|
+| フロントエンド | Next.js 15 (App Router) → Vercel | UI / SSR / 静的アセット |
+| API 層 | Supabase Edge Functions (TypeScript) | ビジネスロジック / 認証 / レートリミット |
+| データ層 | Supabase PostgreSQL + pgvector | データ永続化 / RLS / ベクトル検索 |
+| AI 層 | Gemini API / LangChain / Dify | 推論 / RAG / プロンプト管理 |
+| CV 層 | FastAPI + Docker (GPU) | 動画解析 / SMPL / 顔マスキング（Phase 3） |
+
+### 実装変更指示書による方針変更
+
+#### 廃止（Phase 6 全機能）
+
+以下はコードベースに**実装されていない計画のみの機能**であり、正式に廃止とする:
+
+- `video_sessions` / `consultation_records` — TeleHealth 関連
+- `billing_codes` / `billing_claims` — 保険請求関連
+- `ai_plan_jobs` / `weekly_plans` — AIエージェント自律計画関連
+- `imu_devices` / `imu_sessions` — IMUセンサー関連
+
+**理由**: 現フェーズでは「ノイズ」。コアバリュー（コンディション管理 + ベイズ傷害評価）に集中する。
+
+#### 強化
+
+- **Googleカレンダー同期**: 試合・高負荷練習スケジュールを負荷予測のコンテキストとして活用
+- **コンディション・スコア（ハイブリッド・ピーキング）**: sRPE EWMA ベースの新指標を導入（ADR-002 参照）
+- **アラート第一主義**: Critical / Watchlist をすべてのUIの最優先トリガーとする
+
+### 新しい開発フェーズ
+
+旧 Phase 1-6 を Phase A-E に再編:
+
+| Phase | 名前 | 内容 |
+|-------|------|------|
+| A | Cleanup | 不要な計画の正式廃止・アーキテクチャ基盤構築 |
+| B | Engine | sRPE EWMA コンディション・スコア算出ロジック |
+| C | Athlete UI | Oura Ring スタイルのサークルUI |
+| D | Staff Dashboard | YouTube Analytics スタイルのKPI・チャート |
+| E | Calendar Hub | Googleカレンダー連携・負荷予測統合 |
 
 ## 選択肢
 
-### 案A（採用）: Vercel + Supabase + Gemini API の4層分離構成
+### レイヤー分離
 
-```
-[フロントエンド層: Vercel]
-  Next.js 15 App Router / Server Components / Streaming UI
-  ↓ HTTPS / JWT
-[API層: Next.js API Routes + Supabase Edge Functions]
-  ビジネスロジック / 認証ミドルウェア / レートリミット
-  ↓ PostgreSQL Protocol / REST
-[データ層: Supabase PostgreSQL]
-  RLS (Row Level Security) / pgvector / リアルタイムサブスクリプション
-  ↓ REST / gRPC
-[AI層: Gemini API / LangChain]
-  推論 / RAG / プロンプト管理 / ストリーミングレスポンス
-```
+- **案A（採用）**: Supabase Edge Functions を API 層に使用。Next.js API Routes は BFF（Backend for Frontend）として最小限に留める。
+  - メリット: RLS と同一ランタイムで動作、認証トークンの直接検証が可能
+  - デメリット: Deno ランタイムの制約（一部 Node.js ライブラリ非互換）
 
-**採用理由:**
-- Supabase の RLS により DB レベルでのアクセス制御が実現できる
-- Vercel の Edge Runtime により低レイテンシを確保できる
-- Gemini API のストリーミング対応により AI レスポンスのUXが向上する
+- **案B（不採用）**: Next.js API Routes を API 層として全面使用。
+  - 不採用理由: Supabase RLS との二重認証管理が発生、Edge Functions の既存実装（dunning-cron / stripe-webhook / embed-documents）との整合性が取れない
 
-### 案B（不採用）: AWS フルスタック構成（ECS + RDS + Bedrock）
+### Phase 6 の扱い
 
-**不採用理由:**
-- 初期コストと運用コストが大幅に増加する
-- Supabase の RLS・pgvector が既に実装済みのため移行コストが高い
-- チーム規模に対してオーバースペックである
+- **案A（採用）**: 正式廃止。DBテーブルは作成しない。
+  - メリット: スコープ明確化、開発リソース集中
+  - デメリット: 将来再実装時にゼロからの設計が必要
 
----
-
-## レイヤー分離方針
-
-### フロントエンド（Vercel）
-- **責務:** UI / UX / SSR / ISR / 静的アセット配信
-- **技術:** Next.js 15 App Router, Server Components, Tailwind CSS
-- **制約:** ビジネスロジックを含まない / Service Role Key を参照しない
-
-### API層（Next.js API Routes + Supabase Edge Functions）
-- **責務:** ビジネスロジック / JWT検証 / レートリミット / AI推論オーケストレーション
-- **技術:** Next.js Route Handlers, Supabase Edge Functions (Deno)
-- **制約:** DB直接アクセスは Supabase クライアント経由のみ
-
-### データ層（Supabase PostgreSQL）
-- **責務:** データ永続化 / RLS / pgvector によるベクトル検索
-- **技術:** PostgreSQL 17, pgvector, Supabase Realtime
-- **制約:** RLS を全テーブルに適用 / Service Role Key はサーバーサイドのみ
-
-### AI層（Gemini API / LangChain）
-- **責務:** AI推論 / RAG / プロンプトテンプレート管理
-- **技術:** @google/generative-ai, LangChain (将来導入)
-- **制約:** API Key はサーバーサイド環境変数のみ / コスト上限を設定する
-
----
+- **案B（不採用）**: 凍結（テーブルのみ作成、機能は実装しない）。
+  - 不採用理由: 使用されないテーブルがマイグレーションに混在し、メンテナンスコスト増
 
 ## 結果
 
-**メリット:**
-- RLS により SQL インジェクション・権限昇格リスクを DB レベルで防御できる
-- レイヤーごとに独立してスケールアウト・デプロイができる
-- Vercel + Supabase の無料枠から開始しコストを最小化できる
-
-**デメリット:**
-- Supabase Edge Functions (Deno) と Next.js API Routes の役割分担の判断が必要
-- コールドスタート問題（Edge Functions）が一部のエンドポイントで発生しうる
-
-**対策:**
-- コールドスタートが許容できないエンドポイントは Next.js API Routes に実装する
-- 非同期・バックグラウンド処理は Supabase Edge Functions に委譲する
-
----
-
-## セキュリティ方針（防壁）
-
-| 防壁 | 対策 |
-|------|------|
-| モック実装の排除 | 全 AI 呼び出しは実 Gemini API エンドポイントを使用 |
-| AIセキュリティ | プロンプトインジェクション対策・入力サニタイズ |
-| コスト保護 | Gemini API の `maxOutputTokens` 設定・月次上限アラート |
-| 耐障害性 | Supabase の Connection Pooling・Vercel の Edge キャッシュ |
-
----
-
-## 本番環境情報
-
-| 項目 | 値 |
-|------|-----|
-| GitHub リポジトリ | https://github.com/meta-masashi/pace-platform |
-| Vercel プロジェクト | pace-platform (`prj_GAHZ1R4k8UHBUi2hBogG6iBeTd6j`) |
-| Vercel 本番 URL | https://pace-platform-delta.vercel.app |
-| Vercel Org | `team_W3XNPycaKqK0PoJEoFLsUtA2` |
-
-## CI/CD パイプライン構成
-
-| ワークフロー | トリガー | 内容 |
-|-------------|---------|------|
-| `.github/workflows/ci.yml` | push/PR on main, develop | lint → type-check → migration validate → unit test → integration test → build |
-| `.github/workflows/deploy.yml` | push on main | supabase db push → vercel --prod |
-
-## 関連 ADR
-
-- ADR-002: Gemini モデル移行（gemini-1.5-flash → gemini-2.0-flash）
-- ADR-003: Supabase DB マイグレーション戦略（05-architect 担当）
+- Phase 6 関連の全テーブルは作成しない
+- 既存マイグレーション（001-014）に Phase 6 テーブルは含まれていないため、変更不要
+- `docs/specs/implementation-change-directive.md` を正式な方針文書として参照
+- Googleカレンダー OAuth 連携用の環境変数を `.env.example` に追加
+- コンディション・スコアの設計詳細は ADR-002 に記録

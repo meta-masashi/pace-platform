@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "type-check": "tsc --noEmit",
-    "lint": "eslint lib --ext .ts",
+    "lint": "next lint",
     "test": "vitest --config tests/vitest.config.ts run",
+    "test:unit": "vitest --config tests/vitest.config.ts run tests/unit",
     "test:watch": "vitest --config tests/vitest.config.ts",
     "test:coverage": "vitest --config tests/vitest.config.ts run --coverage",
     "test:e2e": "playwright test --config tests/playwright.config.ts",
@@ -17,14 +21,28 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "@sentry/nextjs": "^8.0.0",
+    "@supabase/ssr": "^0.5.0",
     "@supabase/supabase-js": "^2.45.0",
+    "@tanstack/react-query": "^5.60.0",
+    "googleapis": "^140.0.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.13.0",
     "stripe": "^17.7.0",
-    "web-vitals": "^3.5.0"
+    "web-vitals": "^3.5.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitest/coverage-v8": "^1.6.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.0",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.4.0",
     "vitest": "^1.6.1"
   }
