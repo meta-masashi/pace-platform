@@ -171,3 +171,112 @@ export function isEmptyResponse(text: string | null | undefined): boolean {
   const stripped = text.replace(/\s/g, "").replace(/```json?```/gi, "");
   return stripped.length === 0 || stripped === "{}" || stripped === "[]";
 }
+
+// ---------------------------------------------------------------------------
+// タイムアウト付き実行（防壁4）
+// ---------------------------------------------------------------------------
+
+/**
+ * 指定ミリ秒でタイムアウトする Promise ラッパー。
+ *
+ * @param fn        実行する非同期関数
+ * @param timeoutMs タイムアウト時間（ミリ秒）
+ * @throws Error("TIMEOUT") — タイムアウト発生時
+ */
+export async function withTimeout<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`TIMEOUT: ${timeoutMs}ms を超過しました`));
+    }, timeoutMs);
+
+    fn()
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// テキストフォールバック抽出（防壁4）
+// ---------------------------------------------------------------------------
+
+/** テキストフォールバックの戻り値型 */
+export interface TextFallbackResult<T> {
+  /** パース成功時の結果（フォールバック時は null）*/
+  parsed: T | null;
+  /** フォールバック時の生テキスト（パース成功時は null）*/
+  rawText: string | null;
+  /** フォールバックが使用されたか */
+  isFallback: boolean;
+}
+
+/**
+ * JSON パースをリトライし、全リトライ失敗時はテキストフォールバックを返す。
+ *
+ * Gemini が JSON 形式で返すことを期待するが、返せなかった場合に
+ * 有用なテキスト部分を抽出してフォールバック結果として返す。
+ *
+ * @param rawText   Gemini からの生レスポンステキスト
+ * @param parser    JSON パーサー関数
+ * @returns パース結果またはテキストフォールバック
+ */
+export function parseWithTextFallback<T>(
+  rawText: string,
+  parser?: (text: string) => T
+): TextFallbackResult<T> {
+  // 1. カスタムパーサーがある場合はそれを試行
+  if (parser) {
+    try {
+      const result = parser(rawText);
+      return { parsed: result, rawText: null, isFallback: false };
+    } catch {
+      // カスタムパーサー失敗 → parseJsonWithRecovery にフォールバック
+    }
+  }
+
+  // 2. parseJsonWithRecovery で回復を試行
+  try {
+    const result = parseJsonWithRecovery<T>(rawText);
+    return { parsed: result, rawText: null, isFallback: false };
+  } catch {
+    // JSON パース完全失敗 → テキストフォールバック
+  }
+
+  // 3. テキストフォールバック: 有用な部分を抽出
+  const extracted = extractUsableText(rawText);
+  console.warn(
+    `[retry-handler] JSON パース失敗 — テキストフォールバック使用（${extracted.length}文字）`
+  );
+
+  return { parsed: null, rawText: extracted, isFallback: true };
+}
+
+/**
+ * Gemini レスポンスから有用なテキスト部分を抽出する。
+ * コードフェンス・マークダウン装飾を除去し、日本語テキストを優先的に返す。
+ */
+function extractUsableText(raw: string): string {
+  let text = raw;
+
+  // コードフェンスを除去
+  text = text.replace(/```[\s\S]*?```/g, "");
+
+  // マークダウンの見出しマーカーを除去
+  text = text.replace(/^#{1,6}\s*/gm, "");
+
+  // 箇条書きマーカーを除去
+  text = text.replace(/^[\s]*[-*+]\s*/gm, "");
+
+  // 連続空行を圧縮
+  text = text.replace(/\n{3,}/g, "\n\n");
+
+  return text.trim();
+}

@@ -11,6 +11,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calculateConditioningScore } from "@/lib/conditioning/engine";
 import { callGeminiWithRetry, buildCdsSystemPrefix } from "@/lib/gemini/client";
+import { checkRateLimit, logTokenUsage, buildRateLimitResponse } from "@/lib/gemini/rate-limiter";
+import { sanitizeUserInput } from "@/lib/shared/security-helpers";
 import type {
   ConditioningInput,
   ConditioningResult,
@@ -91,8 +93,17 @@ async function generateInsight(
   userId: string
 ): Promise<string> {
   try {
+    // 防壁3: レートリミットチェック
+    const rateLimit = await checkRateLimit(userId, "conditioning-insight");
+    if (!rateLimit.allowed) {
+      console.warn("[conditioning] レートリミット超過 — フォールバック使用");
+      return generateFallbackInsight(data);
+    }
+
+    const prompt = buildInsightPrompt(data);
+
     const { result } = await callGeminiWithRetry<{ insight: string }>(
-      buildInsightPrompt(data),
+      prompt,
       (text) => {
         const match = text.match(/\{[\s\S]*\}/);
         if (!match) throw new Error("JSON not found in response");
@@ -100,6 +111,15 @@ async function generateInsight(
       },
       { userId, endpoint: "conditioning-insight" }
     );
+
+    // 防壁3: トークン使用量ログ
+    await logTokenUsage({
+      staffId: userId,
+      endpoint: "conditioning-insight",
+      inputChars: prompt.length,
+      estimatedTokens: Math.ceil(prompt.length / 4),
+    });
+
     return result.insight;
   } catch {
     return generateFallbackInsight(data);

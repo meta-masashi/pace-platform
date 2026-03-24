@@ -14,10 +14,7 @@ import {
   Calendar,
   BarChart2,
   LogOut,
-  Video,
   Sparkles,
-  Receipt,
-  Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -31,9 +28,7 @@ const navItems = [
   { href: "/assessment",     label: "アセスメント",         icon: ClipboardList   },
   { href: "/rehabilitation", label: "リハビリ",             icon: Activity        },
   { href: "/team-training",   label: "チームトレーニング",   icon: Dumbbell        },
-  { href: "/telehealth",      label: "TeleHealth",           icon: Video           },
   { href: "/training-plans",  label: "AI訓練計画",           icon: Sparkles        },
-  { href: "/billing",         label: "保険請求",             icon: Receipt         },
   { href: "/community",       label: "コミュニティ",         icon: MessageSquare   },
   { href: "/stats",          label: "統計",                 icon: BarChart2       },
   { href: "/settings",       label: "設定",                 icon: Settings        },

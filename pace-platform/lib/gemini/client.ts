@@ -18,7 +18,8 @@
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { sanitizeUserInput, detectHarmfulOutput, cleanJsonResponse } from "../shared/security-helpers";
+import { sanitizeUserInput, detectHarmfulOutput, validateAIOutput, cleanJsonResponse } from "../shared/security-helpers";
+import { checkRateLimit as checkRateLimitV2, logTokenUsage as logTokenUsageV2 } from "./rate-limiter";
 
 export { cleanJsonResponse };
 
@@ -28,9 +29,6 @@ export { cleanJsonResponse };
 
 const MODEL_ID = "gemini-2.0-flash";
 const MAX_RETRIES = 3;
-
-// 月次コール上限（環境変数で上書き可能）
-const MONTHLY_CALL_LIMIT = Number(process.env.GEMINI_MONTHLY_CALL_LIMIT ?? 10_000);
 
 // シングルトンインスタンス
 let _genAI: GoogleGenerativeAI | null = null;
@@ -52,95 +50,34 @@ function getModel() {
 }
 
 // ---------------------------------------------------------------------------
-// レートリミットチェック
+// レートリミット・トークン追跡（防壁3 — rate-limiter.ts に委譲）
 // ---------------------------------------------------------------------------
 
-/** ユーザー別のエンドポイントレートリミットをチェックする（Supabase ベース）*/
-async function checkRateLimit(userId: string, endpoint: string): Promise<void> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return;
-
-  try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(url, key);
-
-    const windowStart = new Date(Date.now() - 60_000).toISOString(); // 直近1分
-    const { count } = await supabase
-      .from("gemini_token_log")
-      .select("id", { count: "exact", head: true })
-      .eq("staff_id", userId)
-      .eq("endpoint", endpoint)
-      .gte("called_at", windowStart);
-
-    const RATE_LIMIT_PER_MIN = Number(process.env.GEMINI_RATE_LIMIT_PER_MIN ?? 20);
-    if ((count ?? 0) >= RATE_LIMIT_PER_MIN) {
-      throw new Error("RATE_LIMIT_EXCEEDED");
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message === "RATE_LIMIT_EXCEEDED") throw err;
-    // DB 接続不可の場合はフェイルオープン（リクエストをブロックしない）
+/**
+ * ユーザー別レートリミットチェック（毎分 + 日次上限）。
+ * 超過時は RATE_LIMIT_EXCEEDED をスローする。
+ */
+async function checkRateLimitInternal(userId: string, endpoint: string): Promise<void> {
+  const result = await checkRateLimitV2(userId, endpoint);
+  if (!result.allowed) {
+    throw new Error("RATE_LIMIT_EXCEEDED");
   }
 }
 
-// ---------------------------------------------------------------------------
-// 月次上限チェック（防壁3: コスト保護）
-// ---------------------------------------------------------------------------
-
-async function checkMonthlyCallLimit(userId: string): Promise<void> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return;
-
-  try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(url, key);
-
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-    const { count } = await supabase
-      .from("gemini_token_log")
-      .select("id", { count: "exact", head: true })
-      .eq("staff_id", userId)
-      .gte("called_at", monthStart);
-
-    if ((count ?? 0) >= MONTHLY_CALL_LIMIT) {
-      throw new Error("MONTHLY_LIMIT_EXCEEDED");
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message === "MONTHLY_LIMIT_EXCEEDED") throw err;
-    // DB 接続不可の場合はフェイルオープン
-  }
-}
-
-// ---------------------------------------------------------------------------
-// トークン使用量追跡（防壁3）
-// ---------------------------------------------------------------------------
-
+/**
+ * トークン使用量をログに記録する（ベストエフォート）。
+ */
 async function trackTokenUsage(
   userId: string,
   endpoint: string,
   inputChars: number
 ): Promise<void> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return;
-
-  try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(url, key);
-    await supabase.from("gemini_token_log").insert({
-      staff_id: userId,
-      endpoint,
-      input_chars: inputChars,
-      // 概算トークン数（4文字 ≈ 1トークン）
-      estimated_tokens: Math.ceil(inputChars / 4),
-      called_at: new Date().toISOString(),
-    });
-  } catch {
-    // トークンログ失敗はリクエストをブロックしない
-  }
+  await logTokenUsageV2({
+    staffId: userId,
+    endpoint,
+    inputChars,
+    estimatedTokens: Math.ceil(inputChars / 4),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -177,10 +114,9 @@ export async function callGeminiWithRetry<T>(
   parser: (text: string) => T,
   context?: GeminiCallContext
 ): Promise<GeminiResult<T>> {
-  // レートリミット + 月次上限チェック（防壁3）
+  // レートリミット + 日次上限チェック（防壁3 — rate-limiter.ts 経由）
   if (context) {
-    await checkRateLimit(context.userId, context.endpoint);
-    await checkMonthlyCallLimit(context.userId);
+    await checkRateLimitInternal(context.userId, context.endpoint);
   }
 
   // プロンプトサニタイズ（防壁2）
@@ -201,14 +137,23 @@ export async function callGeminiWithRetry<T>(
 
       const model = getModel();
       const response = await model.generateContent(sanitizedPrompt);
-      const text = response.response.text();
+      const rawText = response.response.text();
 
-      // 出力ガードレール（防壁2）
-      if (detectHarmfulOutput(text)) {
+      // 出力ガードレール（防壁2）— 有害コンテンツ検出
+      if (detectHarmfulOutput(rawText)) {
         throw new Error("GUARDRAIL_VIOLATION");
       }
 
-      return { result: parser(text), attemptNumber: attempt + 1 };
+      // 出力バリデーション（防壁2）— PII・URL・免責文チェック
+      const validation = validateAIOutput(rawText);
+      if (validation.warnings.length > 0) {
+        console.warn(
+          `[gemini:client] 出力バリデーション警告 (endpoint=${context?.endpoint}):`,
+          validation.warnings
+        );
+      }
+
+      return { result: parser(validation.sanitized), attemptNumber: attempt + 1 };
     } catch (err) {
       lastError = err;
 
