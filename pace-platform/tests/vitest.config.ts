@@ -52,7 +52,7 @@ export default defineConfig({
     },
 
     // テストレポーター
-    reporter: ['verbose'],
+    reporters: ['verbose'],
 
     // 環境変数の読み込み（.env.test があれば使用）
     env: {

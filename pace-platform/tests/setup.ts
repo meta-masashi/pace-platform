@@ -16,7 +16,7 @@ import { vi, beforeEach, afterEach } from 'vitest'
 // 環境変数のデフォルト値設定
 // ---------------------------------------------------------------------------
 
-process.env.NODE_ENV = 'test'
+(process.env as Record<string, string>).NODE_ENV = 'test'
 process.env.STRIPE_SECRET_KEY ??= 'sk_test_mock_key_for_testing'
 process.env.STRIPE_WEBHOOK_SECRET ??= 'whsec_test_mock_secret'
 process.env.STRIPE_STARTER_PRICE_ID ??= 'price_starter_test'
