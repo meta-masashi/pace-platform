@@ -21,6 +21,8 @@ import type {
   AthleteContext,
   RiskLevel,
   AnswerValue,
+  CausalEdge,
+  ActiveObservation,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -455,4 +457,169 @@ export function todiagnosisResult(
         : 0,
     context_modifier: output.contextModifier,
   };
+}
+
+// ===========================================================================
+// v3.1 因果グラフ（DAG）ベースの Causal Discounting 推論エンジン
+// ===========================================================================
+
+/**
+ * 確率をオッズに変換する。
+ *
+ * @param probability - 確率 (0.0 ~ 1.0)
+ * @returns オッズ値
+ * @throws RangeError - probability が 1.0 の場合（オッズ = 無限大）
+ */
+export function probabilityToOdds(probability: number): number {
+  const clamped = Math.max(1e-10, Math.min(1 - 1e-10, probability));
+  return clamped / (1 - clamped);
+}
+
+/**
+ * オッズを確率に変換する。
+ *
+ * @param odds - オッズ値 (>= 0)
+ * @returns 確率 (0.0 ~ 1.0)
+ */
+export function oddsToProbability(odds: number): number {
+  if (odds < 0) return 0;
+  if (!Number.isFinite(odds)) return 1.0;
+  return odds / (1 + odds);
+}
+
+/**
+ * 単一ノードの実効尤度比（Effective LR）を因果割引モデルに基づいて計算する。
+ *
+ * 数式:
+ *   Effective_LR = 1 + (LR_raw - 1) * (1 - gamma_cumulative)
+ *
+ * 複数の親ノードが発火している場合は累積割引を適用:
+ *   (1 - gamma_cumulative) = Product_i (1 - gamma_i)
+ *
+ * @param lrRaw              - ノードの生の尤度比
+ * @param activeParentEdges  - 発火している親ノードの CausalEdge 配列
+ * @returns 割引適用後の実効尤度比（常に >= 1.0 または元の LR が < 1.0 の場合はそちら側に収束）
+ */
+export function computeEffectiveLR(
+  lrRaw: number,
+  activeParentEdges: CausalEdge[]
+): number {
+  // LR が 1.0（情報なし）の場合、割引の必要なし
+  if (lrRaw === 1.0) return 1.0;
+
+  // 発火している親がない場合、割引なし
+  if (activeParentEdges.length === 0) return lrRaw;
+
+  // 累積割引率の計算: (1 - gamma_1) * (1 - gamma_2) * ...
+  // これは各親ノードが独立に「説明済み」とする分を掛け合わせる
+  let retainedFraction = 1.0;
+  for (const edge of activeParentEdges) {
+    // discountFactor のバリデーション: [0.0, 1.0] にクランプ
+    const gamma = Math.max(0, Math.min(1, edge.discountFactor));
+    retainedFraction *= (1 - gamma);
+  }
+
+  // Effective LR = 1 + (LR_raw - 1) * retainedFraction
+  return 1 + (lrRaw - 1) * retainedFraction;
+}
+
+/**
+ * 因果グラフ（DAG）の依存関係を考慮して、複数の発火ノードから最終的な事後確率を計算する。
+ *
+ * Causal Discounting Likelihood Ratio (CD-LR) モデル:
+ *   - 親ノードが発火している場合、子ノードの LR を割り引いて二重カウントを防止
+ *   - 親が複数発火している場合は累積割引: (1-γ1) * (1-γ2) * ... を適用
+ *
+ * アルゴリズム:
+ *   1. priorProbability を priorOdds に変換: odds = p / (1 - p)
+ *   2. observations をループし、各発火ノードの Effective LR を計算
+ *   3. Effective LR を全て掛け合わせる: posteriorOdds = priorOdds * Π Effective_LR
+ *   4. posteriorOdds を確率に戻す: p = odds / (1 + odds)
+ *
+ * @param priorProbability - ベースラインの事前確率 (0.0 ~ 1.0)
+ * @param nodes            - システムに定義された全ノードのマスターデータ（親子関係を含む）
+ * @param observations     - 実際にユーザーが発火させた(Yes と答えた)ノードの配列
+ * @returns posteriorProbability - 割引計算適用後の最終的な事後確率 (0.0 ~ 1.0)
+ *
+ * @throws Error - priorProbability が [0, 1] 範囲外の場合
+ */
+export function calculatePosteriorWithDAG(
+  priorProbability: number,
+  nodes: AssessmentNode[],
+  observations: ActiveObservation[]
+): number {
+  // --- バリデーション ---
+  if (priorProbability < 0 || priorProbability > 1) {
+    throw new Error(
+      `事前確率は [0, 1] の範囲でなければなりません。受け取った値: ${priorProbability}`
+    );
+  }
+
+  // 事前確率が 0 または 1 の場合、ベイズ更新は数学的に不可能
+  if (priorProbability === 0) return 0;
+  if (priorProbability === 1) return 1;
+
+  // 観測データがない場合は事前確率をそのまま返す
+  if (observations.length === 0) return priorProbability;
+
+  // --- データ準備 ---
+
+  // ノードを node_id → AssessmentNode の Map に変換（O(1) ルックアップ）
+  const nodeMap = new Map<string, AssessmentNode>(
+    nodes.map((n) => [n.node_id, n])
+  );
+
+  // 発火（is_active = true）しているノード ID のセットを構築
+  const activeNodeIds = new Set<string>(
+    observations.filter((o) => o.is_active).map((o) => o.node_id)
+  );
+
+  // 発火していない観測がある場合（全て is_active = false）
+  if (activeNodeIds.size === 0) return priorProbability;
+
+  // --- Step 1: 事前オッズへの変換 ---
+  let posteriorOdds = probabilityToOdds(priorProbability);
+
+  // --- Step 2-3: 各発火ノードの Effective LR を計算して乗算 ---
+  for (const observation of observations) {
+    // 発火していないノードはスキップ
+    if (!observation.is_active) continue;
+
+    const node = nodeMap.get(observation.node_id);
+    if (!node) {
+      // マスターデータに存在しないノード ID は無視（堅牢性）
+      console.warn(
+        `[bayes:dag] ノード "${observation.node_id}" がマスターデータに存在しません。スキップします。`
+      );
+      continue;
+    }
+
+    // ノードの生の陽性尤度比を取得
+    // lr_yes_sr（κ補正済み）が存在しない場合は lr_yes にフォールバック
+    const lrRaw = (node as unknown as Record<string, unknown>)["lr_yes_sr"] !== undefined
+      ? (node as unknown as Record<string, unknown>)["lr_yes_sr"] as number
+      : node.lr_yes;
+
+    // LR が 1.0（情報なし）の場合はスキップ（乗算しても変化なし）
+    if (lrRaw === 1.0) continue;
+
+    // 親ノードの因果関係を確認し、発火している親のエッジを収集
+    const activeParentEdges: CausalEdge[] = [];
+    if (node.parents && node.parents.length > 0) {
+      for (const edge of node.parents) {
+        if (activeNodeIds.has(edge.parentId)) {
+          activeParentEdges.push(edge);
+        }
+      }
+    }
+
+    // Effective LR の計算（因果割引適用）
+    const effectiveLR = computeEffectiveLR(lrRaw, activeParentEdges);
+
+    // オッズに乗算
+    posteriorOdds *= effectiveLR;
+  }
+
+  // --- Step 4: オッズ → 確率への変換 ---
+  return oddsToProbability(posteriorOdds);
 }

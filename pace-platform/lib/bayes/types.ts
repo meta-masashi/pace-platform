@@ -41,6 +41,8 @@ export interface AssessmentNode {
   /** 禁忌タグ（このノードが陽性の場合に禁止される運動タイプ）*/
   contraindication_tags: string[];
   is_active: boolean;
+  /** DAG 因果グラフ: このノードの親ノード定義（因果割引に使用）*/
+  parents?: CausalEdge[];
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +126,34 @@ export interface NodeResponse {
   target_axis: string;
   prescription_tags: string[];
   contraindication_tags: string[];
+}
+
+// ---------------------------------------------------------------------------
+// v3.1 因果グラフ（DAG）型定義 — Causal Discounting Model
+// ---------------------------------------------------------------------------
+
+/**
+ * ノード間の因果関係（有向辺）を定義する。
+ *
+ * 例: 「足関節背屈ROM不足（F2_001）」→「ディープスクワット不良（F1_001）」
+ * の因果関係では、F1_001 の parents に以下が入る:
+ *   { parentId: "F2_001", discountFactor: 0.85 }
+ *
+ * discountFactor (gamma): 親ノードが発火した際に子ノードの LR を割り引く率。
+ *   0.0 = 割引なし（独立情報）
+ *   1.0 = 完全割引（親が全て説明、子の追加情報ゼロ）
+ */
+export interface CausalEdge {
+  parentId: string;
+  discountFactor: number; // γ (0.0 to 1.0)
+}
+
+/**
+ * 推論時の入力データ（発火しているノードのリスト）
+ */
+export interface ActiveObservation {
+  node_id: string;
+  is_active: boolean; // Yes と回答されたか
 }
 
 // ---------------------------------------------------------------------------

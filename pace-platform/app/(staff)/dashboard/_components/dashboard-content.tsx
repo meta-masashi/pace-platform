@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { KpiCard } from './kpi-card';
 import { AlertActionHub } from './alert-action-hub';
+import { AlertCardApproval, type AlertCardData } from './alert-card-approval';
 import type { AlertItem, RiskPreventionReport } from './alert-action-hub';
 import type { AcwrDataPoint } from './acwr-trend-chart';
 import type { ConditioningDataPoint } from './conditioning-trend-chart';
@@ -85,6 +86,16 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Morning agenda state (7 AM Monopoly)
+  const [agendaCards, setAgendaCards] = useState<AlertCardData[]>([]);
+  const [agendaSummary, setAgendaSummary] = useState<{
+    totalAthletes: number;
+    criticalCount: number;
+    watchlistCount: number;
+    normalCount: number;
+  } | null>(null);
+  const [agendaLoading, setAgendaLoading] = useState(false);
+
   // Calendar integration state
   const [calendarPredictions, setCalendarPredictions] = useState<LoadPrediction[]>([]);
   const [calendarStatus, setCalendarStatus] = useState<CalendarSyncStatus>('disconnected');
@@ -125,6 +136,42 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
     }
 
     fetchDashboard();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId]);
+
+  // Fetch morning agenda (7 AM Monopoly)
+  useEffect(() => {
+    if (!teamId) {
+      setAgendaCards([]);
+      setAgendaSummary(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchMorningAgenda() {
+      setAgendaLoading(true);
+      try {
+        const res = await fetch(
+          `/api/morning-agenda?teamId=${encodeURIComponent(teamId!)}`,
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json.success) {
+          setAgendaCards(json.data.alertCards ?? []);
+          setAgendaSummary(json.data.teamSummary ?? null);
+        }
+      } catch {
+        // Morning agenda の取得失敗はダッシュボード全体をブロックしない
+        console.warn('[dashboard] 介入アジェンダの取得に失敗しました');
+      } finally {
+        if (!cancelled) setAgendaLoading(false);
+      }
+    }
+
+    fetchMorningAgenda();
     return () => {
       cancelled = true;
     };
@@ -188,6 +235,16 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
     }
   }, []);
 
+  /** アラートカードのアクション完了時のコールバック */
+  const handleAgendaAction = useCallback(
+    (athleteId: string, action: string, logId: string) => {
+      console.info(
+        `[dashboard] 介入アジェンダ: athleteId=${athleteId} action=${action} logId=${logId}`,
+      );
+    },
+    [],
+  );
+
   // No team selected
   if (!teamId) {
     return (
@@ -226,6 +283,14 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
 
   return (
     <div className="space-y-6">
+      {/* 本日の介入アジェンダ (7 AM Monopoly) — 最上部に配置 */}
+      <MorningAgendaSection
+        cards={agendaCards}
+        summary={agendaSummary}
+        loading={agendaLoading}
+        onActionComplete={handleAgendaAction}
+      />
+
       {/* KPI Row (4 cards) */}
       <div className="kpi-row-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
@@ -373,6 +438,110 @@ function CalendarSection({
       predictions={calendarPredictions}
       currentAvailability={currentAvailability}
     />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading skeleton (used during data fetch)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Morning Agenda section (7 AM Monopoly)
+// ---------------------------------------------------------------------------
+
+interface MorningAgendaSectionProps {
+  cards: AlertCardData[];
+  summary: {
+    totalAthletes: number;
+    criticalCount: number;
+    watchlistCount: number;
+    normalCount: number;
+  } | null;
+  loading: boolean;
+  onActionComplete: (athleteId: string, action: string, logId: string) => void;
+}
+
+function MorningAgendaSection({
+  cards,
+  summary,
+  loading,
+  onActionComplete,
+}: MorningAgendaSectionProps) {
+  // ローディング中
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
+        <div className="h-32 animate-pulse rounded-lg border border-border bg-card" />
+      </div>
+    );
+  }
+
+  // カードなし
+  if (cards.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="w-full space-y-3">
+      {/* セクションヘッダー */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertTriangleIcon className="h-5 w-5 text-amber-500" />
+          <h2 className="text-base font-bold">本日の介入アジェンダ</h2>
+          {summary && (
+            <span className="text-xs text-muted-foreground">
+              ({summary.totalAthletes}名中{' '}
+              {summary.criticalCount > 0 && (
+                <span className="font-medium text-red-600">
+                  Critical {summary.criticalCount}
+                </span>
+              )}
+              {summary.criticalCount > 0 && summary.watchlistCount > 0 && ' / '}
+              {summary.watchlistCount > 0 && (
+                <span className="font-medium text-amber-600">
+                  Watchlist {summary.watchlistCount}
+                </span>
+              )}
+              )
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* アラートカード一覧 */}
+      <div className="space-y-3">
+        {cards.map((card) => (
+          <AlertCardApproval
+            key={card.athleteId}
+            alertCard={card}
+            onActionComplete={onActionComplete}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline icons
+// ---------------------------------------------------------------------------
+
+function AlertTriangleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
   );
 }
 

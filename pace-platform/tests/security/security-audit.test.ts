@@ -189,7 +189,7 @@ describe('セキュリティ監査: Hard Lock 権限', () => {
     const content = readFileContent(locksRoutePath)
 
     // ドキュメントコメント
-    expect(content).toMatch(/[Hh]ard\s*[Ll]ock.*master/s)
+    expect(content).toMatch(/[Hh]ard\s*[Ll]ock.*master/)
   })
 })
 

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { ServiceWorkerRegister } from './_components/sw-register';
+import { PwaInstallPrompt } from './_components/pwa-install-prompt';
 
 export const metadata: Metadata = {
   title: {
@@ -27,6 +29,13 @@ export default function RootLayout({
   return (
     <html lang="ja" suppressHydrationWarning>
       <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link
           rel="preconnect"
           href="https://fonts.googleapis.com"
@@ -44,6 +53,8 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen font-sans">
         {children}
+        <ServiceWorkerRegister />
+        <PwaInstallPrompt />
       </body>
     </html>
   );
