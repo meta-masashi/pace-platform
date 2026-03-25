@@ -78,7 +78,7 @@ export function CommunityContent({ initialChannels, canCreate, currentStaffId }:
       setLoading(true);
       fetchMessages(activeChannelId).then(() => setLoading(false));
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line -- initial load only
 
   // ポーリング (5秒間隔)
   useEffect(() => {
