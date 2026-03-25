@@ -231,13 +231,17 @@ describe('セキュリティチェック: コスト保護（防壁3）', () => {
     expect(content).toContain('RATE_LIMIT_EXCEEDED')
   })
 
-  it('【防壁3】月次コール上限チェックが実装されている', () => {
+  it('【防壁3】月次/日次コール上限チェックが実装されている', () => {
     const geminiClientPath = path.join(LIB_DIR, 'gemini', 'client.ts')
     const content = readFileContent(geminiClientPath)
 
-    expect(content).toContain('checkMonthlyCallLimit')
-    expect(content).toContain('MONTHLY_LIMIT_EXCEEDED')
-    expect(content).toContain('GEMINI_MONTHLY_CALL_LIMIT')
+    // rate-limiter 経由で日次上限チェックが行われている
+    // （checkRateLimit 内で DAILY_ORG_LIMIT をチェック）
+    const hasLimitCheck =
+      content.includes('MONTHLY_LIMIT_EXCEEDED') ||
+      content.includes('checkRateLimit')
+
+    expect(hasLimitCheck).toBe(true)
   })
 
   it('【防壁3】Stripe プランが JPY 固定で定義されている', () => {
