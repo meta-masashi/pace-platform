@@ -56,3 +56,43 @@ export type { IngestionOutput } from './nodes/node0-ingestion';
 
 export { node1Cleaning } from './nodes/node1-cleaning';
 export type { CleaningOutput } from './nodes/node1-cleaning';
+
+export { node2FeatureEngineering } from './nodes/node2-feature-engineering';
+
+export { node3Inference } from './nodes/node3-inference';
+
+export { node4Decision } from './nodes/node4-decision';
+export type { DecisionInput } from './nodes/node4-decision';
+
+export { node5Presentation, LEGAL_DISCLAIMER, LEGAL_DISCLAIMER_EN } from './nodes/node5-presentation';
+export type { PresentationOutput, PresentationInput } from './nodes/node5-presentation';
+
+// ---------------------------------------------------------------------------
+// ゲートウェイ
+// ---------------------------------------------------------------------------
+
+export { callODEEngine, callEKFEngine } from './gateway';
+export type {
+  ODERequestParams,
+  ODEResponse,
+  EKFRequestParams,
+  EKFResponse,
+} from './gateway';
+
+// ---------------------------------------------------------------------------
+// アダプター
+// ---------------------------------------------------------------------------
+
+export {
+  adaptEWMA,
+  adaptACWR,
+  adaptDAGPosterior,
+  wilsonScoreInterval,
+} from './adapters';
+
+export type {
+  EWMAResult,
+  ACWRResult,
+  DAGPosteriorInput,
+  DAGPosteriorResult,
+} from './adapters';
