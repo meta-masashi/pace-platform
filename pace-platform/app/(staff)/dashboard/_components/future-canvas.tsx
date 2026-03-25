@@ -11,49 +11,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
-
-// Recharts は SSR 無効で読み込む
-const ResponsiveContainer = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.ResponsiveContainer })),
-  { ssr: false },
-);
-const ComposedChart = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.ComposedChart })),
-  { ssr: false },
-);
-const Area = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Area })),
-  { ssr: false },
-);
-const Bar = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Bar })),
-  { ssr: false },
-);
-const Line = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Line })),
-  { ssr: false },
-);
-const XAxis = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.XAxis })),
-  { ssr: false },
-);
-const YAxis = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.YAxis })),
-  { ssr: false },
-);
-const CartesianGrid = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.CartesianGrid })),
-  { ssr: false },
-);
-const Tooltip = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Tooltip })),
-  { ssr: false },
-);
-const ReferenceLine = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.ReferenceLine })),
-  { ssr: false },
-);
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Area,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+} from 'recharts';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -318,9 +287,9 @@ export function FutureCanvas({
               />
 
               {/* Today マーカー */}
-              {todayIndex >= 0 && todayIndex < adjustedTimeline.length && (
+              {todayIndex >= 0 && todayIndex < adjustedTimeline.length && adjustedTimeline[todayIndex]?.label && (
                 <ReferenceLine
-                  x={adjustedTimeline[todayIndex]?.label}
+                  x={adjustedTimeline[todayIndex]!.label}
                   stroke="hsl(var(--foreground))"
                   strokeDasharray="3 3"
                   label={{
