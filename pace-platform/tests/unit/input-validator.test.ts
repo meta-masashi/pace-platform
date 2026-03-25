@@ -249,7 +249,7 @@ describe('validatePagination', () => {
   });
 
   it('should handle undefined values', () => {
-    const result = validatePagination({ limit: undefined, offset: undefined });
+    const result = validatePagination({});
     expect(result).toEqual({ limit: 20, offset: 0 });
   });
 });

@@ -118,9 +118,9 @@ export interface ReportData {
   /** SOAPノート一覧（最新のもの） */
   soapNotes: SOAPSummary[];
   /** リハビリ進捗（該当する場合） */
-  rehabProgress?: RehabSummary;
+  rehabProgress?: RehabSummary | undefined;
   /** データ減衰ステータス（該当する場合） */
-  decayStatus?: DecayEntry[];
+  decayStatus?: DecayEntry[] | undefined;
 }
 
 // ---------------------------------------------------------------------------

@@ -207,7 +207,7 @@ export async function GET(request: Request) {
             position: ath.position ?? '',
             number: ath.number ?? '',
           },
-          date,
+          date: date ?? new Date().toISOString().slice(0, 10),
           conditioningScore: metrics?.conditioning_score ?? 0,
           acwr: metrics?.acwr ?? 0,
           riskAssessments,
@@ -219,7 +219,7 @@ export async function GET(request: Request) {
     );
 
     // ----- レポート生成 -----
-    const html = generateTeamReport(athleteReports, team.name, date);
+    const html = generateTeamReport(athleteReports, team.name, date ?? '');
 
     return new Response(html, {
       status: 200,

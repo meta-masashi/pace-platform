@@ -108,7 +108,7 @@ export function ReportsContent() {
     setReportUrl('');
 
     try {
-      const url = `/api/reports/team?teamId=${encodeURIComponent(selectedTeamId)}&date=${encodeURIComponent(teamDate)}`;
+      const url = `/api/reports/team?teamId=${encodeURIComponent(selectedTeamId)}&date=${encodeURIComponent(teamDate ?? '')}`;
       const res = await fetch(url);
 
       if (!res.ok) {

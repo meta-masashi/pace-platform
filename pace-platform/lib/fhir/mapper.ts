@@ -359,7 +359,7 @@ export function mapRehabToCarePlan(
     title: `リハビリプログラム — ${program.diagnosis_code}`,
     period: {
       start: program.start_date,
-      end: program.estimated_rtp_date ?? undefined,
+      ...(program.estimated_rtp_date ? { end: program.estimated_rtp_date } : {}),
     },
     activity: activities,
     subject: { reference: `Patient/${athleteId}` },

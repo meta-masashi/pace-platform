@@ -253,7 +253,7 @@ export async function GET(request: Request) {
         position: athlete.position ?? '',
         number: athlete.number ?? '',
       },
-      date: today,
+      date: today ?? new Date().toISOString().slice(0, 10),
       conditioningScore,
       acwr,
       riskAssessments,
