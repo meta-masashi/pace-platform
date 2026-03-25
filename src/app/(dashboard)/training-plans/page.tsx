@@ -54,7 +54,7 @@ function PlanStatusBadge({ status }: { status: TrainingPlan["status"] }) {
   const map: Record<string, { label: string; cls: string }> = {
     generating:       { label: "生成中",     cls: "bg-blue-50 text-blue-700 border-blue-200" },
     pending_approval: { label: "承認待ち",   cls: "bg-amber-50 text-amber-700 border-amber-200" },
-    approved:         { label: "承認済み",   cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    approved:         { label: "承認済み",   cls: "bg-brand-50 text-brand-700 border-brand-200" },
     rejected:         { label: "却下",       cls: "bg-red-50 text-red-600 border-red-200" },
     expired:          { label: "期限切れ",   cls: "bg-slate-50 text-slate-400 border-slate-200" },
   };
@@ -75,7 +75,7 @@ const DAY_LABELS: Record<string, string> = {
 
 const INTENSITY_COLOR: Record<string, string> = {
   low:    "text-blue-600 bg-blue-50",
-  medium: "text-emerald-600 bg-emerald-50",
+  medium: "text-brand-600 bg-brand-50",
   high:   "text-amber-600 bg-amber-50",
   rest:   "text-slate-400 bg-slate-50",
 };
@@ -106,8 +106,8 @@ function PlanCard({
         {/* ヘッダー行 */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-emerald-600" />
+            <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-brand-600" />
             </div>
             <div>
               <p className="text-sm font-700 text-slate-900">
@@ -221,7 +221,7 @@ function PlanCard({
                 </Button>
                 <Button
                   size="sm"
-                  className="flex-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white"
+                  className="flex-2 text-xs bg-brand-500 hover:bg-brand-600 text-white"
                   disabled={approving}
                   onClick={async () => {
                     setApproving(true);
@@ -238,7 +238,7 @@ function PlanCard({
         )}
 
         {plan.status === "approved" && plan.approved_at && (
-          <p className="mt-3 text-xs text-emerald-600 flex items-center gap-1">
+          <p className="mt-3 text-xs text-brand-600 flex items-center gap-1">
             <CheckCircle className="w-3 h-3" />
             {new Date(plan.approved_at).toLocaleString("ja-JP")} に承認済み
           </p>
@@ -282,7 +282,7 @@ function GenerateForm({
     <Card>
       <CardHeader>
         <CardTitle className="text-base font-700 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-500" />
+          <Sparkles className="w-4 h-4 text-brand-500" />
           AIエージェントで週次計画を生成
         </CardTitle>
       </CardHeader>
@@ -293,7 +293,7 @@ function GenerateForm({
             <label className="block text-xs font-700 text-slate-500 uppercase tracking-wide mb-1.5">対象週（月曜日）</label>
             <input
               type="date"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
               value={weekStart}
               onChange={(e) => setWeekStart(e.target.value)}
             />
@@ -302,14 +302,14 @@ function GenerateForm({
             <label className="block text-xs font-700 text-slate-500 uppercase tracking-wide mb-1.5">追加指示（任意）</label>
             <input
               type="text"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="例: 今週は試合が土曜にあります"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
           <Button
-            className="bg-emerald-500 hover:bg-emerald-600 text-white gap-2 whitespace-nowrap"
+            className="bg-brand-500 hover:bg-brand-600 text-white gap-2 whitespace-nowrap"
             onClick={handle}
             disabled={loading}
           >
@@ -322,7 +322,7 @@ function GenerateForm({
         </div>
         {error && <p className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</p>}
         {loading && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-700">
+          <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-xs text-brand-700">
             AIエージェントが計画を生成中です。通常15〜30秒かかります。生成後に「承認待ち」として一覧に表示されます。
           </div>
         )}

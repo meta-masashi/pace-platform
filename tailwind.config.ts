@@ -2,7 +2,8 @@ import type { Config } from "tailwindcss";
 
 // ─── PACE Platform v6.0 デザイントークン ──────────────────────────────────
 // フィロソフィー: "Complexity to Clarity"
-// 既存 Emerald ブランド + v6.0 Deep Space カラーシステム統合
+// Strava-inspired Orange Accent + Deep Space ダークテーマ統合
+// Brand: Strava Orange #FC4C02 / Dark: Charcoal #242428
 // ──────────────────────────────────────────────────────────────────────────
 
 const config: Config = {
@@ -15,33 +16,33 @@ const config: Config = {
     extend: {
       // ── カラーパレット ───────────────────────────────────────────────
       colors: {
-        // ブランドカラー: Emerald（医療グリーン）
+        // ブランドカラー: Strava Orange (#FC4C02)
         brand: {
-          50:  "#ecfdf5",
-          100: "#d1fae5",
-          200: "#a7f3d0",
-          300: "#6ee7b7",
-          400: "#34d399",
-          500: "#10b981",
-          600: "#059669",
-          700: "#047857",
-          800: "#065f46",
-          900: "#064e3b",
-          950: "#022c22",
+          50:  "#FFF7F0",
+          100: "#FFEAD9",
+          200: "#FFD2B0",
+          300: "#FFB380",
+          400: "#FF8840",
+          500: "#FC4C02",  // Strava primary
+          600: "#CC4200",  // Strava Grenadier
+          700: "#A33500",
+          800: "#7A2800",
+          900: "#521B00",
+          950: "#2E0F00",
         },
 
-        // v6.0: Deep Space ベースカラー
+        // v6.0: Deep Space ベースカラー (Strava Charcoal-aligned)
         "deep-space": {
-          50:  "#E6E8EB",
-          100: "#C0C5CC",
-          200: "#8B95A3",
-          300: "#56647A",
-          400: "#2D3B51",
-          500: "#161B22",
-          600: "#0D1117",
-          700: "#090D12",
-          800: "#06080C",
-          900: "#030406",
+          50:  "#EAEAEB",
+          100: "#CDCDCF",
+          200: "#9A9A9E",
+          300: "#6B6B71",
+          400: "#42424A",
+          500: "#242428",  // Strava charcoal
+          600: "#1A1A1E",
+          700: "#121215",
+          800: "#0A0A0C",
+          900: "#050506",
         },
 
         // v6.0: Pulse Red — 高リスク
@@ -58,7 +59,7 @@ const config: Config = {
           900: "#991A1A",
         },
 
-        // v6.0: Amber Caution — デカップリング
+        // v6.0: Amber Caution — デカップリング (Strava-warm amber)
         "amber-caution": {
           50:  "#FFF8EB",
           100: "#FFECC7",
@@ -72,18 +73,18 @@ const config: Config = {
           900: "#995604",
         },
 
-        // v6.0: Cyber Cyan — Bio-Active
-        "cyber-cyan": {
-          50:  "#E6FEFF",
-          100: "#B3FBFF",
-          200: "#80F8FF",
-          300: "#4DF5FF",
-          400: "#26F3FF",
-          500: "#00F2FF",
-          600: "#00D4E0",
-          700: "#00B6C2",
-          800: "#0098A3",
-          900: "#007A85",
+        // v6.0: Strava Teal — Safe/Bio-Active (replaces Cyber Cyan)
+        "strava-teal": {
+          50:  "#EDFCF9",
+          100: "#D2F7F0",
+          200: "#A8EFE2",
+          300: "#72E3CF",
+          400: "#3ED1B8",
+          500: "#1DB597",
+          600: "#139179",
+          700: "#0F735F",
+          800: "#0B584A",
+          900: "#074035",
         },
 
         // セマンティックカラー（WCAG AA 4.5:1 準拠確認済み）
@@ -92,33 +93,33 @@ const config: Config = {
           "critical-bg":     "#fef2f2",
           "critical-text":   "#991b1b",
           "critical-border": "#fca5a5",
-          watchlist:          "#d97706",
-          "watchlist-bg":     "#fffbeb",
-          "watchlist-text":   "#92400e",
-          "watchlist-border": "#fcd34d",
-          normal:          "#059669",
-          "normal-bg":     "#ecfdf5",
-          "normal-text":   "#065f46",
-          "normal-border": "#6ee7b7",
+          watchlist:          "#FC4C02",
+          "watchlist-bg":     "#FFF7F0",
+          "watchlist-text":   "#7A2800",
+          "watchlist-border": "#FFB380",
+          normal:          "#1DB597",
+          "normal-bg":     "#EDFCF9",
+          "normal-text":   "#074035",
+          "normal-border": "#72E3CF",
           zone:          "#2563eb",
           "zone-bg":     "#eff6ff",
           "zone-text":   "#1e3a8a",
           "zone-border": "#93c5fd",
-          success: "#059669",
-          warning: "#d97706",
+          success: "#1DB597",
+          warning: "#FC4C02",
           error:   "#dc2626",
           info:    "#2563eb",
         },
-        // サーフェスカラー
+        // サーフェスカラー (Strava-aligned)
         surface: {
-          base:    "#f8fafc",
+          base:    "#f8f8f8",
           card:    "#ffffff",
-          sidebar: "#0f172a",
+          sidebar: "#1A1A1E",
         },
         // 旧互換
         critical: "#dc2626",
-        watchlist: "#d97706",
-        normal: "#059669",
+        watchlist: "#FC4C02",
+        normal: "#1DB597",
       },
 
       // ── タイポグラフィ ────────────────────────────────────────────────
@@ -161,10 +162,11 @@ const config: Config = {
         lg:           "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
         card:         "0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.05)",
         "card-hover": "0 4px 12px -2px rgb(0 0 0 / 0.12), 0 2px 6px -2px rgb(0 0 0 / 0.08)",
-        "glow-green":  "0 0 20px rgba(16, 185, 129, 0.3), 0 0 60px rgba(16, 185, 129, 0.1)",
+        "glow-brand":  "0 0 20px rgba(252, 76, 2, 0.3), 0 0 60px rgba(252, 76, 2, 0.1)",
+        "glow-green":  "0 0 20px rgba(29, 181, 151, 0.3), 0 0 60px rgba(29, 181, 151, 0.1)",
         "glow-red":    "0 0 20px rgba(255, 75, 75, 0.3), 0 0 60px rgba(255, 75, 75, 0.1)",
-        "glow-amber":  "0 0 20px rgba(255, 159, 41, 0.3), 0 0 60px rgba(255, 159, 41, 0.1)",
-        "glow-cyan":   "0 0 20px rgba(0, 242, 255, 0.3), 0 0 60px rgba(0, 242, 255, 0.1)",
+        "glow-amber":  "0 0 20px rgba(252, 76, 2, 0.25), 0 0 60px rgba(252, 76, 2, 0.08)",
+        "glow-cyan":   "0 0 20px rgba(29, 181, 151, 0.3), 0 0 60px rgba(29, 181, 151, 0.1)",
       },
 
       // ── アニメーション ────────────────────────────────────────────────
@@ -188,11 +190,11 @@ const config: Config = {
         },
         corePulseHealthy: {
           "0%, 100%": {
-            boxShadow: "0 0 20px rgba(16, 185, 129, 0.2), 0 0 60px rgba(16, 185, 129, 0.05)",
+            boxShadow: "0 0 20px rgba(252, 76, 2, 0.2), 0 0 60px rgba(252, 76, 2, 0.05)",
             transform: "scale(1)",
           },
           "50%": {
-            boxShadow: "0 0 40px rgba(16, 185, 129, 0.4), 0 0 100px rgba(16, 185, 129, 0.15)",
+            boxShadow: "0 0 40px rgba(252, 76, 2, 0.4), 0 0 100px rgba(252, 76, 2, 0.15)",
             transform: "scale(1.02)",
           },
         },

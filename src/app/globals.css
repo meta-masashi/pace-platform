@@ -14,15 +14,15 @@
   --card-border:   #e2e8f0;
 
   /* ブランド */
-  --brand-500:     #10b981;
-  --brand-600:     #059669;
+  --brand-500:     #FC4C02;
+  --brand-600:     #CC4200;
 
   /* セマンティック（WCAG AA 4.5:1 準拠） */
   --critical:      #dc2626;
   --critical-bg:   #fef2f2;
   --watchlist:     #d97706;
   --watchlist-bg:  #fffbeb;
-  --normal:        #059669;
+  --normal:        #CC4200;
   --normal-bg:     #ecfdf5;
   --zone:          #2563eb;
   --zone-bg:       #eff6ff;
@@ -115,7 +115,7 @@
   /* ステータスドット */
   .status-dot-critical { @apply w-2 h-2 rounded-full bg-red-500 animate-pulse; }
   .status-dot-watchlist { @apply w-2 h-2 rounded-full bg-amber-500; }
-  .status-dot-normal { @apply w-2 h-2 rounded-full bg-emerald-500; }
+  .status-dot-normal { @apply w-2 h-2 rounded-full bg-brand-500; }
   .status-dot-zone { @apply w-2 h-2 rounded-full bg-blue-500; }
 
   /* 数値表示用（Inter フォント + 等幅数字） */
@@ -139,7 +139,7 @@
 
   /* ブランドテキストグラデーション */
   .text-gradient-brand {
-    background: linear-gradient(135deg, #10b981, #059669);
+    background: linear-gradient(135deg, #FC4C02, #CC4200);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
