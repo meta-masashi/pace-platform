@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { getCurrentStaff } from "@/lib/auth";
 import DashboardSidebar from "@/components/dashboard-sidebar";
+// PWA: disabled until Supabase env is configured
+// import { PwaProviders } from "@/components/pwa/pwa-providers";
 
 /** Async server component that fetches staff data for the sidebar. */
 async function SidebarWithData() {
@@ -32,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </Suspense>
       {/* ml-60 for expanded, ml-[72px] for collapsed — handled via CSS transition in sidebar */}
       <main className="ml-60 flex-1 p-6 min-h-screen transition-all duration-200">{children}</main>
+      {/* <PwaProviders /> — re-enable after Supabase env configured */}
     </div>
   );
 }
