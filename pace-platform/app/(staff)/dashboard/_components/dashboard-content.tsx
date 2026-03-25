@@ -5,10 +5,18 @@ import dynamic from 'next/dynamic';
 import { KpiCard } from './kpi-card';
 import { AlertActionHub } from './alert-action-hub';
 import { AlertCardApproval, type AlertCardData } from './alert-card-approval';
+import { KineticHeatmap } from './kinetic-heatmap';
+import { DecouplingIndicator } from './decoupling-indicator';
+import { WhatIfSimulator } from './what-if-simulator';
+import { EvidenceVault } from './evidence-vault';
 import type { AlertItem, RiskPreventionReport } from './alert-action-hub';
 import type { AcwrDataPoint } from './acwr-trend-chart';
 import type { ConditioningDataPoint } from './conditioning-trend-chart';
 import type { ClassifiedEvent, LoadPrediction, CalendarSyncStatus } from '@/lib/calendar/types';
+import type { ChainReaction } from './kinetic-heatmap';
+import type { InnovationPoint } from './decoupling-indicator';
+import type { SimulationParams, SimulationResult } from './what-if-simulator';
+import type { InferenceTraceLog } from '@/lib/engine/v6/types';
 
 // Dynamic imports for Recharts components (SSR disabled)
 const AcwrTrendChart = dynamic(
@@ -70,6 +78,25 @@ interface DashboardData {
   riskReports: RiskPreventionReport[];
 }
 
+/** v6 推論パイプラインから取得される選手別データ */
+interface V6AthleteInference {
+  athleteId: string;
+  athleteName?: string;
+  tissueStress: Record<string, number>;
+  chainReactions: ChainReaction[];
+  decouplingScore: number;
+  innovationHistory: InnovationPoint[];
+  severity: 'none' | 'mild' | 'moderate' | 'severe';
+  currentLoad: number;
+  currentDamage: Record<string, number>;
+  traceLog: InferenceTraceLog;
+}
+
+/** v6 チーム全体の推論結果 */
+interface V6TeamData {
+  athletes: V6AthleteInference[];
+}
+
 interface DashboardContentProps {
   searchParamsPromise: Promise<{ team?: string }>;
 }
@@ -101,6 +128,11 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
   const [calendarStatus, setCalendarStatus] = useState<CalendarSyncStatus>('disconnected');
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [connectingCalendar, setConnectingCalendar] = useState(false);
+
+  // v6 Bio-War Room state
+  const [v6Data, setV6Data] = useState<V6TeamData | null>(null);
+  const [v6Loading, setV6Loading] = useState(false);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!teamId) {
@@ -215,6 +247,40 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
     };
   }, [teamId]);
 
+  // Fetch v6 inference data for Bio-War Room
+  useEffect(() => {
+    if (!teamId) {
+      setV6Data(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchV6Data() {
+      setV6Loading(true);
+      try {
+        const res = await fetch(
+          `/api/v6/inference/team/${encodeURIComponent(teamId!)}`,
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json.success) {
+          setV6Data(json.data ?? null);
+        }
+      } catch {
+        // v6 データの取得失敗はダッシュボード全体をブロックしない
+        console.warn('[dashboard] v6 推論データの取得に失敗しました');
+      } finally {
+        if (!cancelled) setV6Loading(false);
+      }
+    }
+
+    fetchV6Data();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId]);
+
   /** Google Calendar 接続を開始する */
   const handleConnectCalendar = useCallback(async () => {
     setConnectingCalendar(true);
@@ -244,6 +310,88 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
     },
     [],
   );
+
+  /** Bio-War Room: region click → select athlete */
+  const handleRegionClick = useCallback((_regionId: string) => {
+    // Region click is primarily handled within KineticHeatmap popup
+  }, []);
+
+  /** Bio-War Room: What-If simulation */
+  const handleSimulate = useCallback(
+    async (params: SimulationParams): Promise<SimulationResult> => {
+      try {
+        const res = await fetch('/api/v6/simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            athleteId: selectedAthleteId,
+            ...params,
+          }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) return json.data;
+        }
+      } catch {
+        console.warn('[dashboard] シミュレーション API 呼び出し失敗、ローカルフォールバック使用');
+      }
+      // Client-side fallback estimation
+      const selectedAthlete = v6Data?.athletes.find(
+        (a) => a.athleteId === selectedAthleteId,
+      );
+      const baseDamage = selectedAthlete?.currentDamage ?? {};
+      const loadFactor = params.loadPercent / 100;
+      const interventionReduction =
+        (params.excludeSprints ? 0.15 : 0) +
+        (params.applyTaping ? 0.05 : 0) +
+        (params.switchToLowIntensity ? 0.25 : 0);
+      const predicted: Record<string, number> = {};
+      for (const [k, v] of Object.entries(baseDamage)) {
+        predicted[k] = Math.max(0, Math.min(100, v * loadFactor * (1 - interventionReduction)));
+      }
+      const maxPredicted = Math.max(...Object.values(predicted), 0);
+      const margin = Math.max(0, 100 - maxPredicted);
+      const riskBefore: SimulationResult['riskBefore'] =
+        Math.max(...Object.values(baseDamage), 0) > 80
+          ? 'RED'
+          : Math.max(...Object.values(baseDamage), 0) > 60
+            ? 'ORANGE'
+            : Math.max(...Object.values(baseDamage), 0) > 40
+              ? 'YELLOW'
+              : 'GREEN';
+      const riskAfter: SimulationResult['riskAfter'] =
+        maxPredicted > 80
+          ? 'RED'
+          : maxPredicted > 60
+            ? 'ORANGE'
+            : maxPredicted > 40
+              ? 'YELLOW'
+              : 'GREEN';
+      return {
+        predictedDamage: predicted,
+        marginToCritical: margin,
+        riskBefore,
+        riskAfter,
+        evidenceMessage: `負荷を${params.loadPercent}%に設定した場合、${
+          params.excludeSprints ? 'スプリントを除外し、' : ''
+        }${params.switchToLowIntensity ? '低強度メニューに変更すると、' : ''}予測最大ダメージは${Math.round(maxPredicted)}%です。臨界点までの余裕は${Math.round(margin)}%です。`,
+      };
+    },
+    [selectedAthleteId, v6Data],
+  );
+
+  // Derive selected athlete data for Bio-War Room detail view
+  const selectedAthlete = v6Data?.athletes.find(
+    (a) => a.athleteId === selectedAthleteId,
+  );
+
+  // Auto-select first athlete from alert hub when v6 data arrives
+  useEffect(() => {
+    if (v6Data && v6Data.athletes.length > 0 && !selectedAthleteId) {
+      const firstAthlete = v6Data.athletes[0];
+      if (firstAthlete) setSelectedAthleteId(firstAthlete.athleteId);
+    }
+  }, [v6Data, selectedAthleteId]);
 
   // No team selected
   if (!teamId) {
@@ -337,6 +485,17 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
 
       {/* Alert Action Hub */}
       <AlertActionHub alerts={data.alerts} riskReports={data.riskReports} />
+
+      {/* v6.0 Bio-War Room */}
+      <BioWarRoomSection
+        v6Data={v6Data}
+        v6Loading={v6Loading}
+        selectedAthleteId={selectedAthleteId}
+        selectedAthlete={selectedAthlete ?? null}
+        onSelectAthlete={setSelectedAthleteId}
+        onRegionClick={handleRegionClick}
+        onSimulate={handleSimulate}
+      />
     </div>
   );
 }
@@ -520,6 +679,126 @@ function MorningAgendaSection({
         ))}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bio-War Room section (v6.0)
+// ---------------------------------------------------------------------------
+
+interface BioWarRoomSectionProps {
+  v6Data: V6TeamData | null;
+  v6Loading: boolean;
+  selectedAthleteId: string | null;
+  selectedAthlete: V6AthleteInference | null;
+  onSelectAthlete: (id: string) => void;
+  onRegionClick: (regionId: string) => void;
+  onSimulate: (params: SimulationParams) => Promise<SimulationResult>;
+}
+
+function BioWarRoomSection({
+  v6Data,
+  v6Loading,
+  selectedAthleteId,
+  selectedAthlete,
+  onSelectAthlete,
+  onRegionClick,
+  onSimulate,
+}: BioWarRoomSectionProps) {
+  // Loading
+  if (v6Loading) {
+    return (
+      <div className="theme-deep-space rounded-xl bg-deep-space-600 p-4">
+        <div className="mb-4 h-6 w-48 animate-skeleton-dark rounded" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="h-80 animate-skeleton-dark rounded-lg" />
+          <div className="h-80 animate-skeleton-dark rounded-lg" />
+        </div>
+      </div>
+    );
+  }
+
+  // No v6 data
+  if (!v6Data || v6Data.athletes.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="theme-deep-space rounded-xl bg-[hsl(216,28%,7%)] p-4 md:p-6">
+      {/* Section header */}
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BioScanIcon className="h-5 w-5 text-cyber-cyan-500" />
+          <h2 className="text-base font-bold text-[hsl(210,14%,93%)]">
+            Bio-War Room
+          </h2>
+          <span className="text-xs text-deep-space-200">v6.0 推論パイプライン</span>
+        </div>
+
+        {/* Athlete selector */}
+        {v6Data.athletes.length > 1 && (
+          <select
+            value={selectedAthleteId ?? ''}
+            onChange={(e) => onSelectAthlete(e.target.value)}
+            className="rounded-md border border-deep-space-300 bg-deep-space-500 px-3 py-1 text-xs text-deep-space-100 focus:outline-none focus:ring-1 focus:ring-cyber-cyan-500"
+          >
+            {v6Data.athletes.map((a) => (
+              <option key={a.athleteId} value={a.athleteId}>
+                {a.athleteName ?? a.athleteId.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Main grid: Heatmap + Decoupling side by side */}
+      {selectedAthlete && (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <KineticHeatmap
+              tissueStress={selectedAthlete.tissueStress}
+              chainReactions={selectedAthlete.chainReactions}
+              onRegionClick={onRegionClick}
+            />
+            <DecouplingIndicator
+              decouplingScore={selectedAthlete.decouplingScore}
+              innovationHistory={selectedAthlete.innovationHistory}
+              severity={selectedAthlete.severity}
+            />
+          </div>
+
+          {/* What-If Simulator + Evidence Vault */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <WhatIfSimulator
+              athleteId={selectedAthlete.athleteId}
+              currentLoad={selectedAthlete.currentLoad}
+              currentDamage={selectedAthlete.currentDamage}
+              onSimulate={onSimulate}
+            />
+            <EvidenceVault traceLog={selectedAthlete.traceLog} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BioScanIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a10 10 0 0 1 0 20" opacity="0.5" />
+      <line x1="12" y1="8" x2="12" y2="16" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
   );
 }
 

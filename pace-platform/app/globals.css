@@ -4,7 +4,8 @@
 
 @layer base {
   :root {
-    /* PACE Design Tokens */
+    /* ── PACE v6.0 Design Tokens — Light Mode ─────────────────────────── */
+    /* アスリート向けモバイル PWA のデフォルトテーマ                          */
     --background: 0 0% 100%;
     --foreground: 160 10% 10%;
 
@@ -40,8 +41,14 @@
     --ring: 160 84% 39%;
 
     --radius: 0.5rem;
+
+    /* v6.0: Glowing Core gradient stops */
+    --core-glow-start: 160 84% 39%;
+    --core-glow-end: 160 84% 55%;
   }
 
+  /* ── Dark Mode — Staff Light テーマ ──────────────────────────────────── */
+  /* スタッフ/MDT 向けの通常ダークモード（サイドバー付きデスクトップ用）     */
   .dark {
     --background: 160 10% 5%;
     --foreground: 160 5% 95%;
@@ -75,6 +82,53 @@
     --input: 160 10% 18%;
     --ring: 160 84% 39%;
   }
+
+  /* ── Deep Space テーマ — Bio-War Room / Evidence Vault 専用 ──────────── */
+  /* 指導者・MDT 向け高集中モード                                           */
+  /* #0D1117 ベース。専門家画面でのみ適用する。                               */
+  .theme-deep-space {
+    --background: 216 28% 7%;
+    --foreground: 210 14% 93%;
+
+    --card: 216 22% 11%;
+    --card-foreground: 210 14% 93%;
+
+    --popover: 216 22% 11%;
+    --popover-foreground: 210 14% 93%;
+
+    /* Primary: Cyber Cyan */
+    --primary: 183 100% 50%;
+    --primary-foreground: 216 28% 7%;
+
+    --secondary: 216 18% 16%;
+    --secondary-foreground: 210 14% 85%;
+
+    --muted: 216 15% 14%;
+    --muted-foreground: 210 10% 55%;
+
+    --accent: 216 18% 18%;
+    --accent-foreground: 210 14% 90%;
+
+    /* Status Colors — v6.0 パレット */
+    --destructive: 0 100% 65%;
+    --destructive-foreground: 0 0% 100%;
+
+    --critical: 0 100% 65%;
+    --watchlist: 33 100% 58%;
+    --optimal: 160 84% 39%;
+
+    --border: 216 15% 18%;
+    --input: 216 15% 18%;
+    --ring: 183 100% 50%;
+
+    /* v6.0: Deep Space 専用 glow variables */
+    --core-glow-start: 183 100% 50%;
+    --core-glow-end: 183 100% 65%;
+
+    /* Chain Reaction line color */
+    --chain-line-color: 0 100% 65%;
+    --chain-line-opacity: 0.7;
+  }
 }
 
 @layer base {
@@ -88,7 +142,8 @@
   }
 }
 
-/* Conditioning Score status colors */
+/* ── ステータスカラー CSS カスタムプロパティ ─────────────────────────────── */
+/* conditioning-ring / status-circle / glowing-core で使用                  */
 @layer utilities {
   .status-optimal {
     --status-color: theme('colors.optimal.500');
@@ -109,7 +164,128 @@
   }
 }
 
-/* Scrollbar styling */
+/* ── v6.0: Glowing Core ステータスカラー ─────────────────────────────── */
+/* Deep Space テーマ内でのステータスグロウ                                  */
+@layer utilities {
+  /* 澄んだグリーン脈動 — 状態良好 */
+  .glow-core-healthy {
+    --glow-color: 160, 185, 129;
+    box-shadow:
+      0 0 20px rgba(var(--glow-color), 0.2),
+      0 0 60px rgba(var(--glow-color), 0.05);
+  }
+
+  /* アンバー — 注意 */
+  .glow-core-caution {
+    --glow-color: 255, 159, 41;
+    box-shadow:
+      0 0 20px rgba(var(--glow-color), 0.25),
+      0 0 60px rgba(var(--glow-color), 0.08);
+  }
+
+  /* レッド警告灯 — 危険 */
+  .glow-core-critical {
+    --glow-color: 255, 75, 75;
+    box-shadow:
+      0 0 30px rgba(var(--glow-color), 0.3),
+      0 0 80px rgba(var(--glow-color), 0.1);
+  }
+
+  /* Cyber Cyan — Bio-Active/スキャン中 */
+  .glow-core-scanning {
+    --glow-color: 0, 242, 255;
+    box-shadow:
+      0 0 25px rgba(var(--glow-color), 0.3),
+      0 0 70px rgba(var(--glow-color), 0.1);
+  }
+}
+
+/* ── v6.0: Chain Reaction SVG ライン ──────────────────────────────────── */
+@layer utilities {
+  .chain-line {
+    stroke-dasharray: 8 4;
+    stroke-linecap: round;
+  }
+
+  .chain-line-animated {
+    stroke-dasharray: 8 4;
+    stroke-linecap: round;
+    animation: chain-flow 2s linear infinite;
+  }
+}
+
+/* ── v6.0: Bio-Scan オーバーレイ ──────────────────────────────────────── */
+@layer utilities {
+  .scan-overlay {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scan-overlay::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 242, 255, 0.6) 30%,
+      rgba(0, 242, 255, 1) 50%,
+      rgba(0, 242, 255, 0.6) 70%,
+      transparent 100%
+    );
+    box-shadow: 0 0 12px rgba(0, 242, 255, 0.5);
+    animation: scan-line 2.5s ease-in-out;
+    animation-fill-mode: forwards;
+  }
+}
+
+/* ── v6.0: 3-Layer Information Architecture 切替 ─────────────────────── */
+/* Layer 1 (Status): 色と一言メッセージ                                     */
+/* Layer 2 (Narrative): 運動連鎖・デカップリング図解                        */
+/* Layer 3 (Evidence): 数理証跡・KaTeX レンダリング                        */
+@layer utilities {
+  .info-layer-status {
+    /* Layer 1: 1秒で把握。最大フォント、最小情報量 */
+  }
+
+  .info-layer-narrative {
+    /* Layer 2: なぜそうなったか。中程度の情報密度 */
+  }
+
+  .info-layer-evidence {
+    /* Layer 3: 専門家向け。高密度、モノスペースフォント */
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── v6.0: デカップリングメーター ────────────────────────────────────── */
+@layer utilities {
+  .meter-gauge {
+    --meter-angle: 0deg;
+    transform-origin: bottom center;
+  }
+}
+
+/* ── v6.0: What-If シミュレータ スライダー Deep Space テーマ ──────────── */
+@layer utilities {
+  .theme-deep-space .slider-whatif::-webkit-slider-thumb {
+    background: #00F2FF;
+    box-shadow: 0 0 8px rgba(0, 242, 255, 0.5);
+  }
+
+  .theme-deep-space .slider-whatif::-webkit-slider-runnable-track {
+    background: linear-gradient(
+      90deg,
+      #10b981 0%,
+      #FF9F29 60%,
+      #FF4B4B 100%
+    );
+  }
+}
+
+/* ── スクロールバー ──────────────────────────────────────────────────── */
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
@@ -128,5 +304,37 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: hsl(var(--muted-foreground) / 0.3);
     border-radius: 3px;
+  }
+
+  /* Deep Space テーマ用スクロールバー */
+  .theme-deep-space .scrollbar-thin {
+    scrollbar-color: rgba(139, 149, 163, 0.2) transparent;
+  }
+
+  .theme-deep-space .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 149, 163, 0.2);
+  }
+}
+
+/* ── KaTeX レンダリング（Evidence Vault 用） ──────────────────────────── */
+@layer utilities {
+  .katex-container {
+    @apply overflow-x-auto rounded-lg p-4 font-mono text-sm;
+  }
+
+  .theme-deep-space .katex-container {
+    background: rgba(139, 149, 163, 0.05);
+    border: 1px solid rgba(139, 149, 163, 0.1);
+  }
+}
+
+/* ── prefers-reduced-motion 対応 ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
