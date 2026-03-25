@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'ダッシュボード', icon: DashboardIcon },
+  { href: '/copilot', label: 'MDT Copilot', icon: CopilotIcon },
   { href: '/triage', label: 'トリアージ', icon: TriageIcon },
   { href: '/athletes', label: '選手一覧', icon: AthletesIcon },
   { href: '/assessment', label: 'アセスメント', icon: AssessmentIcon },
@@ -240,6 +241,16 @@ function BillingIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
       <line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  );
+}
+
+function CopilotIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+      <path d="M2 17l10 5 10-5" />
+      <path d="M2 12l10 5 10-5" />
     </svg>
   );
 }
