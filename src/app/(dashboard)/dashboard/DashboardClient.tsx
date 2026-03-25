@@ -8,7 +8,7 @@
  * - Today's Action: Critical(赤) / Watchlist(amber) / Normal(緑) / Zone(青)
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { MorningMonopoly } from "@/components/dashboard/morning-monopoly";
 import { BioOverview } from "@/components/dashboard/bio-overview";
 import { FutureCanvas } from "@/components/dashboard/future-canvas";
@@ -202,9 +202,14 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const [activeTab, setActiveTab] = useState<ChartTab>("acwr");
 
-  // 7AM Monopoly mode: show by default before 10am, or toggle manually
-  const isBeforeTen = useMemo(() => new Date().getHours() < 10, []);
-  const [monopolyMode, setMonopolyMode] = useState(isBeforeTen && (criticalCount + watchlistCount) > 0);
+  // 7AM Monopoly mode: activate client-side only to avoid hydration mismatch
+  const [monopolyMode, setMonopolyMode] = useState(false);
+  useEffect(() => {
+    const isBeforeTen = new Date().getHours() < 10;
+    if (isBeforeTen && (criticalCount + watchlistCount) > 0) {
+      setMonopolyMode(true);
+    }
+  }, [criticalCount, watchlistCount]);
 
   const alertCount = criticalCount + watchlistCount;
   const normalCount = teamCondition?.normal_count ?? 0;
@@ -238,6 +243,7 @@ export function DashboardClient({
   }
 
   // Future Canvas data: past 14 + future 7 days
+  // Deterministic seed to avoid SSR/CSR hydration mismatch (no Math.random)
   const futureCanvasData = useMemo(() => {
     const past = chartData.map((d) => ({
       date: d.date,
@@ -246,18 +252,18 @@ export function DashboardClient({
       acwr: d.ACWR * 20,
       isFuture: false,
     }));
-    // Generate 7 future days with projected trend
+    // Generate 7 future days with deterministic projected trend
     const lastLoad = past.length > 0 ? past[past.length - 1]!.load : 50;
     const lastDmg = past.length > 0 ? past[past.length - 1]!.damage : 40;
+    const seeds = [0.12, 0.08, -0.05, 0.15, -0.02, 0.10, 0.06]; // fixed offsets
     for (let i = 1; i <= 7; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      const label = `${date.getMonth() + 1}/${date.getDate()}`;
+      const offset = seeds[i - 1]!;
+      // Use todayLabel as date anchor instead of new Date() to keep SSR/CSR consistent
       past.push({
-        date: label,
-        load: Math.round(lastLoad * (1 + Math.random() * 0.2 - 0.1)),
-        damage: Math.min(100, Math.round(lastDmg + i * 3 * Math.random())),
-        acwr: 22 + Math.random() * 6,
+        date: `+${i}日`,
+        load: Math.round(lastLoad * (1 + offset)),
+        damage: Math.min(100, Math.round(lastDmg + i * 3 * (0.5 + offset))),
+        acwr: 22 + i * 0.8,
         isFuture: true,
       });
     }
