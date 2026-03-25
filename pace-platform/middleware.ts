@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/auth/callback'];
+const PUBLIC_ROUTES = ['/login', '/auth/callback', '/tokushoho', '/privacy'];
 
 // ---------------------------------------------------------------------------
 // セキュリティ・パフォーマンスヘッダー（OWASP 推奨準拠）
@@ -47,6 +47,7 @@ export async function middleware(request: NextRequest) {
 
   // Skip auth check for public routes and static assets
   if (
+    pathname === '/' ||
     PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/api/auth/') ||
