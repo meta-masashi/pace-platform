@@ -46,7 +46,7 @@ function useAnimatedNumber(target: number | null, duration = 600): number {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line -- debounced deps intentional
   }, [target, duration]);
 
   return display;

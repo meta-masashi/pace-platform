@@ -245,7 +245,7 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
     if (selectedAthleteId && selectedRiskNodeId) {
       debouncedSimulate();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line -- debounced deps intentional
   }, [intervention, selectedRiskNodeId, targetDate]);
 
   // ----- Computed values -----
