@@ -167,7 +167,7 @@ export function computeAdjustedLr(
     return 1.0;
   }
 
-  return 1 + (lrRaw - 1) * cScore * kappa;
+  return Math.max(0, 1 + (lrRaw - 1) * cScore * kappa);
 }
 
 // ---------------------------------------------------------------------------
