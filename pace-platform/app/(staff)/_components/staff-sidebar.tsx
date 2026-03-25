@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/athletes', label: '選手一覧', icon: AthletesIcon },
   { href: '/assessment', label: 'アセスメント', icon: AssessmentIcon },
   { href: '/rehab', label: 'リハビリ', icon: RehabIcon },
+  { href: '/training', label: 'トレーニング', icon: TrainingIcon },
   { href: '/what-if', label: '介入シミュレーター', icon: WhatIfIcon },
   { href: '/community', label: 'コミュニティ', icon: CommunityIcon },
   { href: '/menus', label: 'メニュー管理', icon: MenuIcon },
@@ -239,6 +240,20 @@ function BillingIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
       <line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  );
+}
+
+function TrainingIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.5 6.5h11" />
+      <path d="M6.5 17.5h11" />
+      <path d="M4 6.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z" />
+      <path d="M20 6.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z" />
+      <path d="M4 12.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z" />
+      <path d="M20 12.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z" />
+      <line x1="12" y1="4" x2="12" y2="20" />
     </svg>
   );
 }
