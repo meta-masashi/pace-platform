@@ -32,10 +32,10 @@ export default function AthleteCheckinPage() {
         </Link>
         <div>
           <h1 className="text-sm font-bold text-slate-900">
-            朝のチェックイン
+            モーニング・チェック
           </h1>
           <p className="text-2xs text-slate-500">
-            カードをスワイプして回答
+            体調報告 — スワイプで回答
           </p>
         </div>
       </header>
