@@ -84,7 +84,7 @@ function sendToGA4(metric: VitalMetric): void {
     }],
   })
 
-  const endpoint = `https://www.google-analytics.com/mp/collect?measurement_id=${measurementId}&api_secret=${process.env['NEXT_PUBLIC_GA4_API_SECRET'] ?? ''}`
+  const endpoint = `https://www.google-analytics.com/mp/collect?measurement_id=${measurementId}&api_secret=${process.env['GA4_API_SECRET'] ?? ''}`
 
   _navigator.sendBeacon(endpoint, body)
 }

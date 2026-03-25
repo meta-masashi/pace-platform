@@ -191,8 +191,8 @@ export async function POST(
 - ID: ${athlete.id}
 - 年齢: ${athlete.age ?? "不明"}
 - 性別: ${athlete.sex === "male" ? "男性" : athlete.sex === "female" ? "女性" : "不明"}
-${athlete.position ? `- ポジション: ${athlete.position}` : ""}
-${athlete.sport ? `- スポーツ: ${athlete.sport}` : ""}`,
+${athlete.position ? `- ポジション: ${sanitizeUserInput(String(athlete.position))}` : ""}
+${athlete.sport ? `- スポーツ: ${sanitizeUserInput(String(athlete.sport))}` : ""}`,
     ];
 
     if (metrics && metrics.length > 0) {
