@@ -317,6 +317,41 @@ const config: Config = {
           '100%': { top: '100%', opacity: '0' },
         },
 
+        // Bio-Swipe: 脈動アニメーション（筋肉グラフィック用）
+        'bio-pulse': {
+          '0%, 100%': { transform: 'scale(1)', opacity: '0.8' },
+          '50%': { transform: 'scale(1.05)', opacity: '1' },
+        },
+
+        // スワイプカード: 左右にフェードアウト
+        'swipe-left': {
+          '0%': { transform: 'translateX(0) rotate(0deg)', opacity: '1' },
+          '100%': { transform: 'translateX(-150%) rotate(-15deg)', opacity: '0' },
+        },
+        'swipe-right': {
+          '0%': { transform: 'translateX(0) rotate(0deg)', opacity: '1' },
+          '100%': { transform: 'translateX(150%) rotate(15deg)', opacity: '0' },
+        },
+
+        // ステータスサークル脈動
+        'status-pulse': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.03)' },
+        },
+
+        // ハーフドーナツ fill
+        'donut-fill': {
+          '0%': { strokeDashoffset: 'var(--donut-circumference)' },
+          '100%': { strokeDashoffset: 'var(--donut-target-offset)' },
+        },
+
+        // カメラスキャンライン（スマートスキャナー用）
+        'camera-scan': {
+          '0%': { transform: 'translateY(0%)', opacity: '0.4' },
+          '50%': { opacity: '1' },
+          '100%': { transform: 'translateY(100%)', opacity: '0.4' },
+        },
+
         // 神経系解析インジケータ
         'neural-process': {
           '0%': { width: '0%' },
@@ -371,6 +406,12 @@ const config: Config = {
         'dot-appear': 'dot-appear 0.4s ease-out forwards',
         'risk-transition': 'risk-transition 0.8s ease-in-out forwards',
         'skeleton-dark': 'skeleton-dark 1.5s ease-in-out infinite',
+        'bio-pulse': 'bio-pulse 2s ease-in-out infinite',
+        'swipe-left': 'swipe-left 0.3s ease-out forwards',
+        'swipe-right': 'swipe-right 0.3s ease-out forwards',
+        'status-pulse': 'status-pulse 3s ease-in-out infinite',
+        'donut-fill': 'donut-fill 1.5s ease-out forwards',
+        'camera-scan': 'camera-scan 2s ease-in-out infinite',
       },
     },
   },

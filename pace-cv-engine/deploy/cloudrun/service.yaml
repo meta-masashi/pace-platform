@@ -1,0 +1,62 @@
+# Cloud Run service definition for PACE Biomechanics Engine (ODE/EKF)
+# Deploy: gcloud run services replace deploy/cloudrun/service.yaml --region=asia-northeast1
+#
+# Key setting: minInstances=1 prevents cold start latency.
+# Monthly cost: ~$5-10 USD for 1 idle instance (256MB, 1 vCPU)
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: pace-biomechanics
+  labels:
+    project: pace
+    service: biomechanics
+    phase: "1"
+  annotations:
+    run.googleapis.com/description: "PACE v6.0 Biomechanics computation (ODE tissue damage, EKF decoupling)"
+spec:
+  template:
+    metadata:
+      annotations:
+        # --- Cold Start Prevention ---
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        # --- Resource allocation ---
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 30
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/pace/biomechanics:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: LOG_LEVEL
+              value: INFO
+            - name: BIOMECHANICS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: biomechanics-api-key
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+  traffic:
+    - percent: 100
+      latestRevision: true

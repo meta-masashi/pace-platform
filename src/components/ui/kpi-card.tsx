@@ -37,11 +37,11 @@ const COLOR_CONFIG = {
     icon:       "text-amber-500",
   },
   green: {
-    value:      "text-emerald-700",
-    border:     "border-emerald-200",
-    leftBorder: "border-l-4 border-l-emerald-500",
-    bg:         "bg-emerald-50",
-    icon:       "text-emerald-500",
+    value:      "text-brand-700",
+    border:     "border-brand-200",
+    leftBorder: "border-l-4 border-l-brand-500",
+    bg:         "bg-brand-50",
+    icon:       "text-brand-500",
   },
   blue: {
     value:      "text-blue-700",
@@ -112,7 +112,7 @@ export function KpiCard({
         <div className="mt-2.5 flex items-center gap-1.5">
           {trend === "up" && (
             <TrendingUp
-              className={cn("w-3.5 h-3.5", color === "red" ? "text-red-500" : "text-emerald-500")}
+              className={cn("w-3.5 h-3.5", color === "red" ? "text-red-500" : "text-brand-500")}
               aria-hidden="true"
             />
           )}

@@ -1,0 +1,58 @@
+# AWS SAM template for PACE Biomechanics Engine (ODE/EKF)
+# Deploy: sam build && sam deploy --guided
+#
+# Key setting: ProvisionedConcurrencyConfig ensures 1 warm instance at all times.
+# Monthly cost: ~$3-5 USD for provisioned concurrency
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: PACE v6.0 Biomechanics computation service (ODE tissue damage, EKF decoupling)
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Environment:
+      Variables:
+        ENVIRONMENT: production
+        LOG_LEVEL: INFO
+
+Resources:
+  BiomechanicsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pace-biomechanics
+      Handler: biomechanics_main.handler
+      CodeUri: ../../
+      Description: ODE tissue damage + EKF decoupling detection
+      Architectures:
+        - arm64
+      AutoPublishAlias: live
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
+      Events:
+        ComputeODE:
+          Type: HttpApi
+          Properties:
+            Path: /compute/ode
+            Method: post
+        ComputeEKF:
+          Type: HttpApi
+          Properties:
+            Path: /compute/ekf
+            Method: post
+        Health:
+          Type: HttpApi
+          Properties:
+            Path: /health
+            Method: get
+      Tags:
+        Project: PACE
+        Service: biomechanics
+        Phase: "1"
+
+Outputs:
+  BiomechanicsApiUrl:
+    Description: Biomechanics API endpoint
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

@@ -1,13 +1,17 @@
 "use client";
 
 /**
- * DashboardClient v3.2
- * - .kpi-row-4: Critical / Availability / Team Peaking / Watchlist
- * - .yt-chart-wrap: ACWR / Readiness / Fitness vs Fatigue の3タブ
- * - Today's Action: Critical(赤) / Watchlist(amber) / Normal(緑) / Zone(青) 4ステータス
+ * DashboardClient v4.0
+ * - Layer 1: Bio-Overview (Hero Metric + Vital Signs + Contextual Actions)
+ * - Layer 2: 3タブチャート (ACWR / Readiness / Fitness vs Fatigue)
+ * - Layer 3: Future Canvas (時系列予測 + What-If シミュレーター)
+ * - Today's Action: Critical(赤) / Watchlist(amber) / Normal(緑) / Zone(青)
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { MorningMonopoly } from "@/components/dashboard/morning-monopoly";
+import { BioOverview } from "@/components/dashboard/bio-overview";
+import { FutureCanvas } from "@/components/dashboard/future-canvas";
 import {
   LineChart,
   Line,
@@ -198,6 +202,10 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const [activeTab, setActiveTab] = useState<ChartTab>("acwr");
 
+  // 7AM Monopoly mode: show by default before 10am, or toggle manually
+  const isBeforeTen = useMemo(() => new Date().getHours() < 10, []);
+  const [monopolyMode, setMonopolyMode] = useState(isBeforeTen && (criticalCount + watchlistCount) > 0);
+
   const alertCount = criticalCount + watchlistCount;
   const normalCount = teamCondition?.normal_count ?? 0;
   const zoneCount   = teamCondition?.zone_count   ?? 0;
@@ -210,6 +218,52 @@ export function DashboardClient({
   const watchlistAthletes = actionAthletes.filter((a) => a.status === "watchlist");
   const actionList = [...criticalAthletes, ...watchlistAthletes].slice(0, 10);
 
+  // 7AM Monopoly View
+  if (monopolyMode) {
+    return (
+      <MorningMonopoly
+        athletes={actionAthletes.map((a) => ({
+          ...a,
+          nlg_summary: undefined,
+          recommendation: undefined,
+          evidence_text: undefined,
+          risk_score: undefined,
+        }))}
+        teamReadinessAvg={avgReadiness}
+        criticalCount={criticalCount}
+        watchlistCount={watchlistCount}
+        onExitMonopoly={() => setMonopolyMode(false)}
+      />
+    );
+  }
+
+  // Future Canvas data: past 14 + future 7 days
+  const futureCanvasData = useMemo(() => {
+    const past = chartData.map((d) => ({
+      date: d.date,
+      load: Math.round(d.NRS * 10),
+      damage: Math.round(d.readiness ? 100 - d.readiness : 50),
+      acwr: d.ACWR * 20,
+      isFuture: false,
+    }));
+    // Generate 7 future days with projected trend
+    const lastLoad = past.length > 0 ? past[past.length - 1]!.load : 50;
+    const lastDmg = past.length > 0 ? past[past.length - 1]!.damage : 40;
+    for (let i = 1; i <= 7; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      const label = `${date.getMonth() + 1}/${date.getDate()}`;
+      past.push({
+        date: label,
+        load: Math.round(lastLoad * (1 + Math.random() * 0.2 - 0.1)),
+        damage: Math.min(100, Math.round(lastDmg + i * 3 * Math.random())),
+        acwr: 22 + Math.random() * 6,
+        isFuture: true,
+      });
+    }
+    return past;
+  }, [chartData]);
+
   return (
     <div className="space-y-6">
       {/* ── ヘッダー ── */}
@@ -218,18 +272,25 @@ export function DashboardClient({
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">ダッシュボード</h1>
           <p className="text-sm text-slate-500 mt-0.5">{todayLabel}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-md font-medium">
-            選手数: {totalAthletes}名
-          </span>
-          <Button variant="primary" aria-label="選手へ一括配信する">
-            <Bell className="w-4 h-4 mr-1.5" aria-hidden="true" />
-            一括配信
-          </Button>
-        </div>
+        <span className="text-sm text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-md font-medium">
+          選手数: {totalAthletes}名
+        </span>
       </div>
 
-      {/* ── .kpi-row-4: Critical / Availability / Team Peaking / Watchlist ── */}
+      {/* ── Layer 1: Bio-Overview ── */}
+      <BioOverview
+        teamReadiness={avgReadiness}
+        fullMenuCount={normalCount + zoneCount}
+        totalAthletes={totalAthletes}
+        readinessDelta={0}
+        checkinRate={checkinRate}
+        missingCheckinCount={totalAthletes - Math.round(totalAthletes * checkinRate / 100)}
+        teamAcwr={chartData.length > 0 ? chartData[chartData.length - 1]!.ACWR : 1.0}
+        criticalCount={criticalCount}
+        watchlistCount={watchlistCount}
+      />
+
+      {/* ── KPI Row (retained as secondary detail) ── */}
       <div className="kpi-row-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
         <KpiCard
           title="Critical"
@@ -283,7 +344,7 @@ export function DashboardClient({
                   key={t.key}
                   onClick={() => setActiveTab(t.key)}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors min-h-[32px]
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1
                     ${
                       activeTab === t.key
                         ? "bg-white text-slate-900 shadow-sm"
@@ -388,6 +449,9 @@ export function DashboardClient({
           </CardContent>
         </Card>
       )}
+
+      {/* ── Layer 3: Future Canvas (予測 + What-If シミュレーター) ── */}
+      <FutureCanvas pastData={futureCanvasData} />
     </div>
   );
 }

@@ -32,9 +32,9 @@ export function Button({
 
         // バリアント
         variant === "primary" && [
-          "bg-emerald-600 text-white",
-          "hover:bg-emerald-700 active:bg-emerald-800",
-          "focus-visible:ring-emerald-500",
+          "bg-brand-600 text-white",
+          "hover:bg-brand-700 active:bg-brand-800",
+          "focus-visible:ring-brand-500",
           "shadow-sm",
         ],
         variant === "secondary" && [

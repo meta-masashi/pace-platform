@@ -8,7 +8,7 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { CheckinForm } from "./_components/checkin-form";
+import { BioSwipeWrapper } from "./_components/bio-swipe-wrapper";
 
 export const metadata: Metadata = {
   title: "チェックイン",
@@ -34,18 +34,5 @@ export default async function CheckinPage() {
     redirect("/login");
   }
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">
-          デイリーチェックイン
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          今日のコンディションを記録しましょう
-        </p>
-      </div>
-
-      <CheckinForm athleteId={athlete.id as string} />
-    </div>
-  );
+  return <BioSwipeWrapper athleteId={athlete.id as string} />;
 }

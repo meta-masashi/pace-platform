@@ -2,51 +2,86 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
-  LayoutDashboard,
-  AlertTriangle,
   Users,
-  ClipboardList,
+  UserCircle,
+  Target,
   Activity,
-  Dumbbell,
+  LogOut,
   MessageSquare,
   Settings,
-  Calendar,
-  BarChart2,
-  LogOut,
-  Sparkles,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import type { Staff } from "@/types";
 
-const navItems = [
-  { href: "/dashboard",      label: "ダッシュボード",       icon: LayoutDashboard },
-  { href: "/triage",         label: "トリアージ",           icon: AlertTriangle   },
-  { href: "/schedule",       label: "スケジュール",         icon: Calendar        },
-  { href: "/players",        label: "選手一覧",             icon: Users           },
-  { href: "/assessment",     label: "アセスメント",         icon: ClipboardList   },
-  { href: "/rehabilitation", label: "リハビリ",             icon: Activity        },
-  { href: "/team-training",   label: "チームトレーニング",   icon: Dumbbell        },
-  { href: "/training-plans",  label: "AI訓練計画",           icon: Sparkles        },
-  { href: "/community",       label: "コミュニティ",         icon: MessageSquare   },
-  { href: "/stats",          label: "統計",                 icon: BarChart2       },
-  { href: "/settings",       label: "設定",                 icon: Settings        },
+// ─── 4 Action Hubs ─────────────────────────────────────────────────────────
+
+const hubs = [
+  {
+    href: "/dashboard",
+    label: "チーム",
+    sublabel: "コンディション・トリアージ",
+    icon: Users,
+    matchPaths: ["/dashboard", "/triage"],
+  },
+  {
+    href: "/players",
+    label: "選手",
+    sublabel: "データ・アセスメント",
+    icon: UserCircle,
+    matchPaths: ["/players", "/assessment", "/rehabilitation"],
+  },
+  {
+    href: "/training-plans",
+    label: "計画",
+    sublabel: "カレンダー・AIサジェスト",
+    icon: Target,
+    matchPaths: ["/training-plans", "/schedule", "/team-training"],
+  },
+  {
+    href: "/stats",
+    label: "Analytics",
+    sublabel: "データ分析・レポート",
+    icon: Activity,
+    matchPaths: ["/stats"],
+  },
 ];
+
+// ─── Touch device detection ────────────────────────────────────────────────
+
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    setIsTouch(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isTouch;
+}
+
+// ─── Role config ───────────────────────────────────────────────────────────
 
 const roleLabels: Record<string, string> = {
   master: "Master",
-  AT:     "AT",
-  PT:     "PT",
-  "S&C":  "S&C",
+  AT: "AT",
+  PT: "PT",
+  "S&C": "S&C",
 };
 
 const roleBadgeColor: Record<string, string> = {
-  master: "bg-emerald-500 text-white",
-  AT:     "bg-sky-500 text-white",
-  PT:     "bg-violet-500 text-white",
-  "S&C":  "bg-orange-500 text-white",
+  master: "bg-brand-500 text-white",
+  AT: "bg-sky-500 text-white",
+  PT: "bg-violet-500 text-white",
+  "S&C": "bg-orange-500 text-white",
 };
+
+// ─── Component ─────────────────────────────────────────────────────────────
 
 interface DashboardSidebarProps {
   staff: Staff | null;
@@ -54,7 +89,14 @@ interface DashboardSidebarProps {
 
 export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const router   = useRouter();
+  const router = useRouter();
+  const isTouch = useIsTouch();
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Auto-collapse on touch devices
+  useEffect(() => {
+    if (isTouch) setCollapsed(true);
+  }, [isTouch]);
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -63,114 +105,235 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
     router.refresh();
   }
 
-  const displayName    = staff?.name ?? "ゲスト";
+  const displayName = staff?.name ?? "ゲスト";
   const displayInitial = displayName.charAt(0);
-  const displayRole    = staff ? (roleLabels[staff.role] ?? staff.role) : "";
-  const roleBadge      = staff ? (roleBadgeColor[staff.role] ?? "bg-slate-500 text-white") : "";
+  const displayRole = staff
+    ? (roleLabels[staff.role] ?? staff.role)
+    : "";
+  const roleBadge = staff
+    ? (roleBadgeColor[staff.role] ?? "bg-slate-500 text-white")
+    : "";
+
+  const sidebarWidth = collapsed ? "w-[72px]" : "w-60";
 
   return (
     <aside
-      className="fixed top-0 left-0 h-full w-60 flex flex-col z-40"
-      style={{ backgroundColor: "#0f172a" }} /* slate-900 ダークサイドバー */
+      className={cn(
+        "fixed top-0 left-0 h-full flex flex-col z-40 transition-all duration-200",
+        sidebarWidth
+      )}
+      style={{ backgroundColor: "#1A1A1E" }}
     >
-      {/* ── ロゴエリア ─────────────────────────────────────────────── */}
-      <div className="px-5 py-5 border-b border-slate-700/50">
+      {/* ── Logo ─────────────────────────────────────────────────── */}
+      <div
+        className={cn(
+          "border-b border-white/5 flex items-center",
+          collapsed ? "px-3 py-5 justify-center" : "px-5 py-5"
+        )}
+      >
         <div className="flex items-center gap-2.5">
-          {/* ブランドアイコン: グリーン正方形にP */}
           <div
-            className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}
+            className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{
+              background: "linear-gradient(135deg, #FC4C02, #CC4200)",
+            }}
             aria-hidden="true"
           >
-            <span className="text-white text-sm font-bold leading-none">P</span>
+            <span className="text-white text-sm font-bold leading-none">
+              P
+            </span>
           </div>
-          <div>
-            <span className="text-white text-base font-bold tracking-tight">PACE</span>
-            <p className="text-slate-400 text-xs leading-none mt-0.5">Platform</p>
-          </div>
+          {!collapsed && (
+            <div>
+              <span className="text-white text-base font-bold tracking-tight">
+                PACE
+              </span>
+              <p className="text-slate-500 text-2xs leading-none mt-0.5">
+                v6.0
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── ナビゲーション ────────────────────────────────────────────── */}
+      {/* ── 4 Action Hubs ──────────────────────────────────────── */}
       <nav
-        className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto scrollbar-hidden"
+        className={cn(
+          "flex-1 py-6 overflow-y-auto scrollbar-hidden",
+          collapsed ? "px-2" : "px-3"
+        )}
         aria-label="メインナビゲーション"
       >
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive =
-            pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+        <div className="space-y-2">
+          {hubs.map(({ href, label, sublabel, icon: Icon, matchPaths }) => {
+            const isActive = matchPaths.some(
+              (p) =>
+                pathname === p ||
+                (p !== "/dashboard" && pathname.startsWith(p))
+            );
 
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                // focus-visible: 明示的なアウトライン（WCAG AA）
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900",
-                isActive
-                  ? "bg-emerald-600/20 text-emerald-300 border border-emerald-500/30"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-              )}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <Icon
+            return (
+              <Link
+                key={href}
+                href={href}
                 className={cn(
-                  "w-4 h-4 flex-shrink-0",
-                  isActive ? "text-emerald-400" : "text-slate-500"
+                  "group flex items-center rounded-xl transition-all duration-150",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#1A1A1E]",
+                  collapsed
+                    ? "justify-center p-3"
+                    : "gap-3.5 px-4 py-3.5",
+                  isActive
+                    ? "bg-brand-500/15 text-white"
+                    : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
                 )}
-                aria-hidden="true"
-              />
-              <span className="truncate">{label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* ── ユーザーエリア ────────────────────────────────────────────── */}
-      <div className="px-3 py-4 border-t border-slate-700/50 space-y-3">
-        {/* ユーザー情報 */}
-        <div className="flex items-center gap-3 px-2">
-          {/* アバター */}
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: "#10b981" }}
-            aria-hidden="true"
-          >
-            <span className="text-white text-xs font-semibold">{displayInitial}</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-slate-200 truncate">{displayName}</p>
-            {displayRole && (
-              <span
-                className={cn(
-                  "inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-semibold leading-none mt-0.5",
-                  roleBadge
-                )}
-                style={{ fontSize: "11px" }}
+                aria-current={isActive ? "page" : undefined}
+                title={collapsed ? label : undefined}
               >
-                {displayRole}
-              </span>
-            )}
-          </div>
+                <div
+                  className={cn(
+                    "flex items-center justify-center rounded-lg flex-shrink-0 transition-colors",
+                    collapsed ? "w-10 h-10" : "w-9 h-9",
+                    isActive
+                      ? "bg-brand-500/20 text-brand-400"
+                      : "bg-white/5 text-slate-500 group-hover:text-slate-300"
+                  )}
+                >
+                  <Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                </div>
+                {!collapsed && (
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold block truncate">
+                      {label}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-2xs block truncate",
+                        isActive ? "text-brand-300/70" : "text-slate-600"
+                      )}
+                    >
+                      {sublabel}
+                    </span>
+                  </div>
+                )}
+                {/* Active indicator bar */}
+                {isActive && !collapsed && (
+                  <div className="ml-auto w-1 h-6 rounded-full bg-brand-500" />
+                )}
+              </Link>
+            );
+          })}
         </div>
 
-        {/* サインアウト */}
+        {/* ── Divider ── */}
+        <div className="my-6 mx-3 border-t border-white/5" />
+
+        {/* ── Utility links ── */}
+        <div className="space-y-1">
+          <Link
+            href="/community"
+            className={cn(
+              "flex items-center rounded-lg transition-colors",
+              "text-slate-500 hover:bg-white/5 hover:text-slate-300",
+              collapsed ? "justify-center p-3" : "gap-3 px-4 py-2.5"
+            )}
+            title={collapsed ? "メッセージ" : undefined}
+          >
+            <MessageSquare
+              className="w-4 h-4 flex-shrink-0"
+              strokeWidth={1.8}
+            />
+            {!collapsed && (
+              <span className="text-xs font-medium">メッセージ</span>
+            )}
+          </Link>
+          <Link
+            href="/settings"
+            className={cn(
+              "flex items-center rounded-lg transition-colors",
+              "text-slate-500 hover:bg-white/5 hover:text-slate-300",
+              collapsed ? "justify-center p-3" : "gap-3 px-4 py-2.5"
+            )}
+            title={collapsed ? "設定" : undefined}
+          >
+            <Settings
+              className="w-4 h-4 flex-shrink-0"
+              strokeWidth={1.8}
+            />
+            {!collapsed && (
+              <span className="text-xs font-medium">設定</span>
+            )}
+          </Link>
+        </div>
+      </nav>
+
+      {/* ── User area ──────────────────────────────────────────── */}
+      <div className="border-t border-white/5 px-3 py-4 space-y-3">
+        {/* User info */}
+        <div
+          className={cn(
+            "flex items-center",
+            collapsed ? "justify-center" : "gap-3 px-2"
+          )}
+        >
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: "#FC4C02" }}
+            aria-hidden="true"
+          >
+            <span className="text-white text-xs font-semibold">
+              {displayInitial}
+            </span>
+          </div>
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-slate-200 truncate">
+                {displayName}
+              </p>
+              {displayRole && (
+                <span
+                  className={cn(
+                    "inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-semibold leading-none mt-0.5",
+                    roleBadge
+                  )}
+                >
+                  {displayRole}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Sign out */}
         <button
           onClick={handleSignOut}
           className={cn(
-            "flex items-center gap-2.5 w-full px-3 py-2.5 rounded-md text-sm font-medium",
-            "text-slate-400 hover:bg-red-500/15 hover:text-red-400",
-            "transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900",
-            "min-h-[44px]" // タッチターゲット
+            "flex items-center w-full rounded-lg text-sm font-medium",
+            "text-slate-500 hover:bg-red-500/10 hover:text-red-400",
+            "transition-colors min-h-[44px]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400",
+            collapsed ? "justify-center p-3" : "gap-2.5 px-3 py-2.5"
           )}
           aria-label="ログアウト"
         >
-          <LogOut className="w-4 h-4" aria-hidden="true" />
-          ログアウト
+          <LogOut className="w-4 h-4" strokeWidth={1.8} />
+          {!collapsed && <span>ログアウト</span>}
         </button>
       </div>
+
+      {/* ── Collapse toggle ── */}
+      {!isTouch && (
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="absolute top-1/2 -right-3 w-6 h-6 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors shadow-md"
+          aria-label={collapsed ? "サイドバーを展開" : "サイドバーを折りたたむ"}
+        >
+          {collapsed ? (
+            <ChevronRight className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronLeft className="w-3.5 h-3.5" />
+          )}
+        </button>
+      )}
     </aside>
   );
 }
