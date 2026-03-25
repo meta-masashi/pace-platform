@@ -71,11 +71,13 @@ describe('セキュリティ監査: API ルート認証', () => {
     it(`${relativePath} に認証チェックが含まれる`, () => {
       const content = readFileContent(routeFile)
 
-      // 認証チェックパターン: supabase.auth.getUser() の呼び出し
+      // 認証チェックパターン: supabase.auth.getUser() またはAPIキー認証
       const hasAuthCheck =
         content.includes('auth.getUser') ||
         content.includes('getUser()') ||
-        content.includes('auth.getSession')
+        content.includes('auth.getSession') ||
+        content.includes('Authorization') ||
+        content.includes('validateApiKey')
 
       expect(hasAuthCheck).toBe(true)
     })

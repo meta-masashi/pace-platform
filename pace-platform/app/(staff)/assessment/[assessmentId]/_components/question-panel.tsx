@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import type { AnswerValue, NextQuestionResult } from '@/lib/assessment/types';
 
 // ---------------------------------------------------------------------------
@@ -12,7 +13,20 @@ interface AnswerHistoryItem {
   answer: AnswerValue;
 }
 
+/** ルーティング情報（next-questions API から取得） */
+interface RoutingInfo {
+  /** ルーティング条件タイプ */
+  routingType: string;
+  /** ルーティングヒント（なぜこの質問が表示されたか） */
+  routingHint: string | null;
+  /** ルーティング通過ノード数 */
+  routingPassedCount: number;
+  /** 全未回答ノード数 */
+  totalUnanswered: number;
+}
+
 interface QuestionPanelProps {
+  assessmentId: string;
   currentQuestion: NextQuestionResult | null;
   responseCount: number;
   estimatedTotal: number;
@@ -53,6 +67,7 @@ function getAnswerColor(answer: AnswerValue): string {
 // ---------------------------------------------------------------------------
 
 export function QuestionPanel({
+  assessmentId,
   currentQuestion,
   responseCount,
   estimatedTotal,
@@ -62,6 +77,51 @@ export function QuestionPanel({
   answerHistory,
 }: QuestionPanelProps) {
   const progressPercent = Math.min(100, Math.round(progress));
+
+  // ルーティング情報の状態管理
+  const [routingInfo, setRoutingInfo] = useState<RoutingInfo | null>(null);
+
+  /**
+   * next-questions API からルーティング情報を取得する。
+   * 質問表示前にルーティング条件を確認し、
+   * 表示すべき質問のみをフィルタリングする。
+   */
+  const fetchRoutingInfo = useCallback(async () => {
+    if (!assessmentId) return;
+
+    try {
+      const res = await fetch(
+        `/api/assessment/next-questions?assessmentId=${encodeURIComponent(assessmentId)}`,
+      );
+      if (!res.ok) return;
+
+      const json = await res.json();
+      if (!json.success || !json.data) return;
+
+      const { recommended, routingPassedCount, totalUnanswered } = json.data;
+
+      if (recommended) {
+        setRoutingInfo({
+          routingType: recommended.routingType ?? 'always',
+          routingHint: recommended.routingHint ?? null,
+          routingPassedCount: routingPassedCount ?? 0,
+          totalUnanswered: totalUnanswered ?? 0,
+        });
+      } else {
+        setRoutingInfo(null);
+      }
+    } catch {
+      // ルーティング取得失敗時はフォールバック（ヒント非表示）
+      setRoutingInfo(null);
+    }
+  }, [assessmentId]);
+
+  // 回答送信後にルーティング情報を再取得
+  useEffect(() => {
+    if (!submitting && currentQuestion) {
+      fetchRoutingInfo();
+    }
+  }, [submitting, currentQuestion, fetchRoutingInfo]);
 
   return (
     <div className="space-y-4">
@@ -79,6 +139,23 @@ export function QuestionPanel({
             style={{ width: `${progressPercent}%` }}
           />
         </div>
+        {/* ルーティングフィルタ情報 */}
+        {routingInfo && routingInfo.totalUnanswered > 0 && (
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
+            <svg
+              className="h-3 w-3"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+            </svg>
+            <span>
+              {routingInfo.routingPassedCount} / {routingInfo.totalUnanswered} 件の質問が条件を満たしています
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Current question */}
@@ -103,6 +180,24 @@ export function QuestionPanel({
               </svg>
               <span className="text-xs text-muted-foreground">
                 情報利得: {currentQuestion.informationGain.toFixed(3)}
+              </span>
+            </div>
+          )}
+
+          {/* Routing hint — なぜこの質問が表示されたか */}
+          {routingInfo?.routingHint && routingInfo.routingType !== 'always' && (
+            <div className="mt-2 flex items-center gap-1.5">
+              <svg
+                className="h-3.5 w-3.5 text-blue-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+              <span className="text-[11px] text-blue-500/80">
+                {routingInfo.routingHint}
               </span>
             </div>
           )}

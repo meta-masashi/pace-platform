@@ -276,6 +276,7 @@ export function AssessmentSession({ paramsPromise }: AssessmentSessionProps) {
       <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
         {/* Left panel: Question */}
         <QuestionPanel
+          assessmentId={assessmentId}
           currentQuestion={currentQuestion}
           responseCount={answerHistory.length}
           estimatedTotal={totalNodes}

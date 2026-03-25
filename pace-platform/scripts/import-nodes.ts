@@ -2,6 +2,7 @@
  * PACE Platform -- Assessment Nodes インポートスクリプト
  *
  * CSV または Excel ファイルから assessment_nodes テーブルへデータをインポートする。
+ * Routing_v4.3 カラムを自動パースし、routing_rules_json に構造化データとして格納する。
  *
  * Usage:
  *   npx tsx scripts/import-nodes.ts --file data/assessment_nodes.csv
@@ -17,6 +18,7 @@ import {
   validateJson,
 } from "./lib/validator";
 import { getSupabaseAdmin } from "./lib/supabase-admin";
+import { parseRoutingRule } from "../lib/routing/parser";
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -38,6 +40,13 @@ interface AssessmentNode {
   time_decay_lambda: number | null;
   base_prevalence: number | null;
   mutual_exclusive_group: string | null;
+  // PRD Phase 1 エビデンスカラム
+  lr_yes_clinical: number | null;
+  evidence_text: string | null;
+  half_life_days: number | null;
+  chronic_alpha_modifier: number | null;
+  // Routing_v4.3 生テキスト
+  routing_v43_raw: string | null;
 }
 
 interface ErrorRow {
@@ -93,6 +102,28 @@ function validateRow(
   );
   if (bpErr) errors.push(bpErr);
 
+  // PRD Phase 1 エビデンスカラムのバリデーション
+  const lrYesClinicalErr = validateNumeric(
+    row["lr_yes_clinical"] ?? "",
+    "lr_yes_clinical",
+    0,
+  );
+  if (lrYesClinicalErr) errors.push(lrYesClinicalErr);
+
+  const halfLifeErr = validateNumeric(
+    row["half_life_days"] ?? "",
+    "half_life_days",
+    0,
+  );
+  if (halfLifeErr) errors.push(halfLifeErr);
+
+  const chronicAlphaErr = validateNumeric(
+    row["chronic_alpha_modifier"] ?? "",
+    "chronic_alpha_modifier",
+    0,
+  );
+  if (chronicAlphaErr) errors.push(chronicAlphaErr);
+
   // JSON フィールド
   const rrErr = validateJson(
     row["routing_rules_json"] ?? "",
@@ -116,6 +147,21 @@ function validateRow(
     return { data: null, errors };
   }
 
+  // Routing_v4.3 カラムのパース
+  // CSV に Routing_v4.3 カラムがある場合、パースして routing_rules_json に格納する。
+  // 既存の routing_rules_json カラムが空で Routing_v4.3 が存在する場合のみ上書き。
+  const routingV43Raw = emptyToNull(row["Routing_v4.3"] ?? row["routing_v43"]);
+  let routingRulesJson = parseNullableJson(row["routing_rules_json"]);
+
+  if (routingV43Raw && !routingRulesJson) {
+    // Routing_v4.3 テキストをパースして routing_rules_json に変換
+    const parsedCondition = parseRoutingRule(routingV43Raw);
+    routingRulesJson = {
+      ...((routingRulesJson as Record<string, unknown>) ?? {}),
+      routing_condition: parsedCondition,
+    };
+  }
+
   // データオブジェクト構築
   const data: AssessmentNode = {
     node_id: row["node_id"]!.trim(),
@@ -127,7 +173,7 @@ function validateRow(
     lr_yes: parseNullableNumber(row["lr_yes"]),
     lr_no: parseNullableNumber(row["lr_no"]),
     kappa: parseNullableNumber(row["kappa"]),
-    routing_rules_json: parseNullableJson(row["routing_rules_json"]),
+    routing_rules_json: routingRulesJson,
     prescription_tags_json: parseNullableJson(row["prescription_tags_json"]),
     contraindication_tags_json: parseNullableJson(
       row["contraindication_tags_json"],
@@ -135,6 +181,13 @@ function validateRow(
     time_decay_lambda: parseNullableNumber(row["time_decay_lambda"]),
     base_prevalence: parseNullableNumber(row["base_prevalence"]),
     mutual_exclusive_group: emptyToNull(row["mutual_exclusive_group"]),
+    // PRD Phase 1 エビデンスカラム
+    lr_yes_clinical: parseNullableNumber(row["lr_yes_clinical"]),
+    evidence_text: emptyToNull(row["evidence_text"]),
+    half_life_days: parseNullableNumber(row["half_life_days"]),
+    chronic_alpha_modifier: parseNullableNumber(row["chronic_alpha_modifier"]),
+    // Routing_v4.3 生テキスト
+    routing_v43_raw: routingV43Raw,
   };
 
   return { data, errors: [] };
