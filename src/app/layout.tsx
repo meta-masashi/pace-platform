@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { PwaProviders } from "@/components/pwa/pwa-providers";
 
 export const metadata: Metadata = {
   title: "PACE Platform",
@@ -34,10 +33,7 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
-      <body>
-        {children}
-        <PwaProviders />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
