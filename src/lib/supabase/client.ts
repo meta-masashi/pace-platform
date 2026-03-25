@@ -1,17 +1,28 @@
-import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-export function createClient() {
+let _client: SupabaseClient | null = null;
+
+export function createClient(): SupabaseClient {
+  if (_client) return _client;
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
-    // Return a no-op proxy in development when env is not set
-    // This prevents crashes on pages that import createClient
+    // No-op proxy when env is not configured (dev without Supabase)
     const handler: ProxyHandler<object> = {
-      get: () => new Proxy(() => Promise.resolve({ data: null, error: null }), handler),
+      get: (_target, prop) => {
+        if (prop === "then") return undefined; // Prevent Promise coercion
+        return new Proxy(() => Promise.resolve({ data: null, error: null }), handler);
+      },
+      apply: () => Promise.resolve({ data: null, error: null }),
     };
-    return new Proxy({} as ReturnType<typeof createBrowserClient>, handler);
+    return new Proxy({} as SupabaseClient, handler);
   }
 
-  return createBrowserClient(url, key);
+  // Dynamic import to avoid module-level validation crash
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createBrowserClient } = require("@supabase/ssr");
+  _client = createBrowserClient(url, key) as SupabaseClient;
+  return _client;
 }
