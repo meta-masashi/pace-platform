@@ -17,6 +17,7 @@ import {
   halfLifeFromLambda,
   RISK_THRESHOLD,
 } from "./calculator";
+import { getChronicModifiers } from "./chronic-modifier";
 
 // ---------------------------------------------------------------------------
 // DB行型（Supabase クエリ結果）
@@ -144,11 +145,30 @@ export async function runDecayBatch(
     computed_at: string;
   }> = [];
 
+  // ----- 2a. アスリートごとの慢性 α 修正係数を取得 -----
+  const athleteIds = [...new Set(rows.map((r) => r.athlete_id))];
+  const chronicModifiersByAthlete = new Map<string, Map<string, number>>();
+  for (const aid of athleteIds) {
+    try {
+      const modifiers = await getChronicModifiers(supabase, aid);
+      chronicModifiersByAthlete.set(aid, modifiers);
+    } catch {
+      // 取得失敗時はデフォルト値（1.0）にフォールバック
+      chronicModifiersByAthlete.set(aid, new Map());
+    }
+  }
+
   for (const row of rows) {
     try {
       const lambda = row.time_decay_lambda ?? 0;
       const halfLife = row.half_life_days ?? (lambda > 0 ? halfLifeFromLambda(lambda) : 30);
-      const chronicModifier = row.chronic_alpha_modifier ?? 1.0;
+      // 慢性 α 修正係数: athlete_chronic_modifiers テーブルから取得、
+      // なければ row の値にフォールバック、それもなければ 1.0
+      const athleteModifiers = chronicModifiersByAthlete.get(row.athlete_id);
+      const chronicModifier =
+        athleteModifiers?.get(row.node_id) ??
+        row.chronic_alpha_modifier ??
+        1.0;
       const detectedAt = new Date(row.completed_at);
       const elapsed = daysBetween(detectedAt, now);
       const elapsedDays = Math.floor(elapsed);

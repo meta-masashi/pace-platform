@@ -25,3 +25,11 @@ export {
 
 // バッチ処理
 export { runDecayBatch } from "./batch-processor";
+
+// 慢性 α 修正係数
+export {
+  computeChronicModifier,
+  calculateChronicModifier,
+  updateChronicModifiers,
+  getChronicModifiers,
+} from "./chronic-modifier";

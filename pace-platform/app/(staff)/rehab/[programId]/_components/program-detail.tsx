@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { PhaseStepper } from './phase-stepper';
 import { GateCriteriaCard } from './gate-criteria-card';
 import { ExerciseMenu } from './exercise-menu';
+import { RerouteAlert } from './reroute-alert';
+import { RTSPredictionChart } from './rts-prediction-chart';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -184,6 +186,9 @@ export function ProgramDetail({
         )}
       </div>
 
+      {/* リルートアラート */}
+      <RerouteAlert programId={programId} onAction={fetchData} />
+
       {/* ロック警告 */}
       {locks.length > 0 && (
         <div className="space-y-2">
@@ -232,6 +237,11 @@ export function ProgramDetail({
         gates={gates}
         status={program.status}
       />
+
+      {/* RTS 復帰予測チャート */}
+      {program.status === 'active' && (
+        <RTSPredictionChart programId={programId} />
+      )}
 
       {/* ゲート基準カード */}
       {program.status !== 'completed' && currentGate && (
