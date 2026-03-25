@@ -13,6 +13,17 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { MemoryCache } from '@/lib/cache/memory-cache';
+import { validateUUID } from '@/lib/security/input-validator';
+
+// ---------------------------------------------------------------------------
+// ダッシュボードキャッシュ（60秒 TTL）
+// MDT ミーティング中に同一ダッシュボードを複数スタッフが閲覧する際の DB 負荷軽減
+// ---------------------------------------------------------------------------
+const dashboardCache = new MemoryCache<DashboardResponse['data']>({
+  defaultTTL: 60,
+  maxEntries: 50,
+});
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -83,6 +94,14 @@ export async function GET(
       );
     }
 
+    // UUID 形式バリデーション
+    if (!validateUUID(teamId)) {
+      return NextResponse.json(
+        { success: false, error: 'team_id の形式が不正です。' },
+        { status: 400 },
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -108,6 +127,13 @@ export async function GET(
         { success: false, error: 'チームが見つかりません。' },
         { status: 403 },
       );
+    }
+
+    // キャッシュチェック
+    const cacheKey = `dashboard:${teamId}`;
+    const cached = dashboardCache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached } as DashboardResponse);
     }
 
     const today = new Date().toISOString().split('T')[0]!;
@@ -275,20 +301,25 @@ export async function GET(
       }),
     );
 
+    const dashboardData: DashboardResponse['data'] = {
+      kpi: {
+        criticalAlerts: criticalCount,
+        availability: `${availableCount}/${athleteRows.length}`,
+        conditioningScore,
+        watchlistCount,
+      },
+      acwrTrend,
+      conditioningTrend,
+      alerts,
+      riskReports,
+    };
+
+    // キャッシュに保存（60秒 TTL）
+    dashboardCache.set(cacheKey, dashboardData);
+
     return NextResponse.json({
       success: true,
-      data: {
-        kpi: {
-          criticalAlerts: criticalCount,
-          availability: `${availableCount}/${athleteRows.length}`,
-          conditioningScore,
-          watchlistCount,
-        },
-        acwrTrend,
-        conditioningTrend,
-        alerts,
-        riskReports,
-      },
+      data: dashboardData,
     });
   } catch (err) {
     console.error('[team/dashboard] 予期しないエラー:', err);

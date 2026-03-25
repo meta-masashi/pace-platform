@@ -10,6 +10,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { validateUUID } from "@/lib/security/input-validator";
 import type {
   AssessmentSession,
   AssessmentResult,
@@ -31,9 +32,9 @@ export async function GET(
     const { assessmentId } = await params;
 
     // ----- バリデーション -----
-    if (!assessmentId || assessmentId.length === 0) {
+    if (!assessmentId || !validateUUID(assessmentId)) {
       return NextResponse.json(
-        { success: false, error: "アセスメントIDが指定されていません。" },
+        { success: false, error: "アセスメントIDが不正です。有効なUUID形式で指定してください。" },
         { status: 400 }
       );
     }

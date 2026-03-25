@@ -9,6 +9,8 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { validateUUID } from "@/lib/security/input-validator";
+import { logAuditEvent } from "@/lib/security/audit-logger";
 
 // ---------------------------------------------------------------------------
 // GET /api/rehab/programs/:programId
@@ -24,6 +26,15 @@ export async function GET(
 ) {
   try {
     const { programId } = await params;
+
+    // ----- UUID バリデーション -----
+    if (!validateUUID(programId)) {
+      return NextResponse.json(
+        { success: false, error: "プログラムIDの形式が不正です。" },
+        { status: 400 }
+      );
+    }
+
     const supabase = await createClient();
 
     // ----- 認証チェック -----
@@ -137,6 +148,15 @@ export async function PATCH(
 ) {
   try {
     const { programId } = await params;
+
+    // ----- UUID バリデーション -----
+    if (!validateUUID(programId)) {
+      return NextResponse.json(
+        { success: false, error: "プログラムIDの形式が不正です。" },
+        { status: 400 }
+      );
+    }
+
     const supabase = await createClient();
 
     // ----- 認証チェック -----
@@ -237,22 +257,16 @@ export async function PATCH(
       }
 
       // 監査ログ
-      await supabase
-        .from("audit_logs")
-        .insert({
-          user_id: user.id,
-          action: "rehab_phase_advance",
-          resource_type: "rehab_program",
-          resource_id: programId,
-          details: {
-            from_phase: currentPhase,
-            to_phase: nextPhase,
-            athlete_id: program.athlete_id,
-          },
-        })
-        .then(({ error }) => {
-          if (error) console.warn("[rehab:programs:PATCH] 監査ログ記録失敗:", error);
-        });
+      await logAuditEvent(supabase, {
+        action: 'rehab_phase_advance',
+        targetType: 'rehab_program',
+        targetId: programId,
+        details: {
+          from_phase: currentPhase,
+          to_phase: nextPhase,
+          athlete_id: program.athlete_id,
+        },
+      });
 
       return NextResponse.json({
         success: true,
@@ -282,21 +296,15 @@ export async function PATCH(
       }
 
       // 監査ログ
-      await supabase
-        .from("audit_logs")
-        .insert({
-          user_id: user.id,
-          action: "rehab_status_update",
-          resource_type: "rehab_program",
-          resource_id: programId,
-          details: {
-            new_status: body.status,
-            athlete_id: program.athlete_id,
-          },
-        })
-        .then(({ error }) => {
-          if (error) console.warn("[rehab:programs:PATCH] 監査ログ記録失敗:", error);
-        });
+      await logAuditEvent(supabase, {
+        action: 'rehab_status_update',
+        targetType: 'rehab_program',
+        targetId: programId,
+        details: {
+          new_status: body.status,
+          athlete_id: program.athlete_id,
+        },
+      });
 
       return NextResponse.json({
         success: true,

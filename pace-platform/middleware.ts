@@ -4,6 +4,44 @@ import { createServerClient } from '@supabase/ssr';
 // Routes that don't require authentication
 const PUBLIC_ROUTES = ['/login', '/auth/callback'];
 
+// ---------------------------------------------------------------------------
+// セキュリティ・パフォーマンスヘッダー（OWASP 推奨準拠）
+// ---------------------------------------------------------------------------
+
+function applySecurityHeaders(response: NextResponse, pathname: string): void {
+  // セキュリティヘッダー
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=()',
+  );
+
+  // 静的アセットのキャッシュ制御
+  if (
+    pathname.startsWith('/_next/static/') ||
+    pathname.startsWith('/_next/image/')
+  ) {
+    response.headers.set(
+      'Cache-Control',
+      'public, max-age=31536000, immutable',
+    );
+  } else if (pathname.includes('.') && !pathname.startsWith('/api/')) {
+    // その他の静的ファイル（favicon.ico 等）
+    response.headers.set(
+      'Cache-Control',
+      'public, max-age=86400, stale-while-revalidate=43200',
+    );
+  } else if (pathname.startsWith('/api/')) {
+    // API ルートはキャッシュしない
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate',
+    );
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -14,7 +52,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/auth/') ||
     pathname.includes('.')
   ) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    applySecurityHeaders(response, pathname);
+    return response;
   }
 
   // Create Supabase client for server-side session check
@@ -66,6 +106,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  applySecurityHeaders(response, pathname);
   return response;
 }
 
