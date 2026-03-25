@@ -1,10 +1,19 @@
-# 環境変数（実際の値）
+# 環境変数（実際の値 — .env.example はコミット対象）
+.env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+pace-platform/.env
 pace-platform/.env.local
+pace-platform/.env.*.local
 
 # Node.js
 node_modules/
+.next/
+out/
+dist/
+.turbo/
 pace-platform/node_modules/
 pace-platform/.next/
 pace-platform/out/
@@ -26,6 +35,9 @@ supabase/.temp/
 *.swo
 
 # テスト出力
+coverage/
+test-results/
+playwright-report/
 pace-platform/coverage/
 pace-platform/test-results/
 pace-platform/playwright-report/

@@ -1,0 +1,19 @@
+{
+  "roc_auc": 0.6816316244239647,
+  "precision": 0.028328611898016998,
+  "recall": 0.3125,
+  "f1": 0.05194805194805195,
+  "accuracy": 0.5944444444444444,
+  "confusion_matrix": {
+    "tp": 10,
+    "fp": 343,
+    "fn": 22,
+    "tn": 525
+  },
+  "total_injuries": 8,
+  "total_alerts": 353,
+  "lookahead_days": 3,
+  "damage_threshold": 0.6,
+  "n_athletes": 5,
+  "n_days_total": 900
+}
