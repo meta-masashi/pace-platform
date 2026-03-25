@@ -128,9 +128,9 @@ function readinessColor(score: number): string {
 type ChartTab = "acwr" | "readiness" | "fitness_fatigue";
 
 const CHART_TABS: { key: ChartTab; label: string }[] = [
-  { key: "acwr",           label: "ACWR" },
-  { key: "readiness",      label: "Readiness" },
-  { key: "fitness_fatigue", label: "Fitness vs Fatigue" },
+  { key: "acwr",           label: "負荷バランス（ACWR）" },
+  { key: "readiness",      label: "出場可能度" },
+  { key: "fitness_fatigue", label: "体力 vs 疲労" },
 ];
 
 function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
@@ -143,9 +143,9 @@ function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
           <YAxis tick={{ fontSize: 11 }} domain={[0, 2.5]} />
           <Tooltip />
           <Legend />
-          <ReferenceLine y={1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "危険 1.5", fill: "#ef4444", fontSize: 10 }} />
-          <ReferenceLine y={1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "注意 1.3", fill: "#f59e0b", fontSize: 10 }} />
-          <Line type="monotone" dataKey="ACWR" stroke="#f59e0b" strokeWidth={2.5} dot={false} name="ACWR（チーム平均）" />
+          <ReferenceLine y={1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "過負荷ライン 1.5", fill: "#ef4444", fontSize: 10 }} />
+          <ReferenceLine y={1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "注意ライン 1.3", fill: "#f59e0b", fontSize: 10 }} />
+          <Line type="monotone" dataKey="ACWR" stroke="#f59e0b" strokeWidth={2.5} dot={false} name="負荷バランス（チーム平均）" />
         </LineChart>
       </ResponsiveContainer>
     );
@@ -166,7 +166,7 @@ function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
           <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
           <Tooltip />
           <ReferenceLine y={60} stroke="#d97706" strokeDasharray="4 4" label={{ value: "注意ライン", fill: "#d97706", fontSize: 10 }} />
-          <Area type="monotone" dataKey="readiness" stroke="#16a34a" strokeWidth={2.5} fill="url(#readinessGrad)" name="Readiness" dot={false} />
+          <Area type="monotone" dataKey="readiness" stroke="#16a34a" strokeWidth={2.5} fill="url(#readinessGrad)" name="出場可能度" dot={false} />
         </AreaChart>
       </ResponsiveContainer>
     );
@@ -182,7 +182,7 @@ function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
         <Tooltip />
         <Legend />
         <Bar dataKey="fatigue" fill="#ef444422" stroke="#ef4444" strokeWidth={1} name="疲労" radius={[2,2,0,0]} />
-        <Line type="monotone" dataKey="fitness" stroke="#16a34a" strokeWidth={2.5} dot={false} name="フィットネス" />
+        <Line type="monotone" dataKey="fitness" stroke="#16a34a" strokeWidth={2.5} dot={false} name="体力（フィットネス）" />
       </ComposedChart>
     </ResponsiveContainer>
   );

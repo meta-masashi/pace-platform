@@ -369,7 +369,7 @@ export default function TrainingPlansPage() {
 
   const handleGenerate = async (weekStart: string, notes: string) => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("ログインが必要です");
+    if (!session) throw new Error("ログインが必要です。Supabase 接続を確認してください。");
     const res = await fetch("/api/staff/generate-training-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
