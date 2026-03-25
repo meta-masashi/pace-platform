@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const result = await getAuthenticatedStaff(supabase);
     if ('error' in result) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json({ error: result.error }, { status: result.status ?? 401 });
     }
     const { staff } = result;
 
@@ -89,8 +89,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ menu: null });
     }
 
-    const workout = workouts[0];
-    const menuJson = workout.menu_json as Record<string, unknown>;
+    const workout = workouts[0]!;
+    const menuJson = (workout.menu_json ?? {}) as Record<string, unknown>;
 
     // ステータスを判定
     let status: 'draft' | 'approved' | 'distributed' = 'draft';
@@ -133,7 +133,7 @@ export async function PATCH(request: Request) {
     const supabase = await createClient();
     const result = await getAuthenticatedStaff(supabase);
     if ('error' in result) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json({ error: result.error }, { status: result.status ?? 401 });
     }
     const { staff } = result;
 
@@ -218,7 +218,7 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const result = await getAuthenticatedStaff(supabase);
     if ('error' in result) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json({ error: result.error }, { status: result.status ?? 401 });
     }
     const { staff } = result;
 
