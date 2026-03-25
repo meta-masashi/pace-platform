@@ -11,6 +11,8 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { validateUUID, sanitizeString } from "@/lib/security/input-validator";
+import { logAuditEvent } from "@/lib/security/audit-logger";
 
 // ---------------------------------------------------------------------------
 // GET /api/locks
@@ -54,6 +56,20 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const athleteId = searchParams.get("athleteId");
     const teamId = searchParams.get("teamId");
+
+    // UUID 形式バリデーション
+    if (athleteId && !validateUUID(athleteId)) {
+      return NextResponse.json(
+        { success: false, error: "athleteId の形式が不正です。" },
+        { status: 400 }
+      );
+    }
+    if (teamId && !validateUUID(teamId)) {
+      return NextResponse.json(
+        { success: false, error: "teamId の形式が不正です。" },
+        { status: 400 }
+      );
+    }
 
     // ----- ロック取得 -----
     let query = supabase
@@ -166,6 +182,19 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!validateUUID(body.athleteId)) {
+      return NextResponse.json(
+        { success: false, error: "athleteId の形式が不正です。" },
+        { status: 400 }
+      );
+    }
+
+    // 文字列入力をサニタイズ
+    body.tag = sanitizeString(body.tag, 100);
+    if (body.reason) {
+      body.reason = sanitizeString(body.reason, 500);
+    }
+
     if (!["hard", "soft"].includes(body.lockType)) {
       return NextResponse.json(
         { success: false, error: "lockType は 'hard' または 'soft' を指定してください。" },
@@ -228,23 +257,17 @@ export async function POST(request: Request) {
     }
 
     // ----- 監査ログ -----
-    await supabase
-      .from("audit_logs")
-      .insert({
-        user_id: user.id,
-        action: "lock_create",
-        resource_type: "athlete_lock",
-        resource_id: lock.id as string,
-        details: {
-          athlete_id: body.athleteId,
-          lock_type: body.lockType,
-          tag: body.tag,
-          reason: body.reason,
-        },
-      })
-      .then(({ error }) => {
-        if (error) console.warn("[locks:POST] 監査ログ記録失敗:", error);
-      });
+    await logAuditEvent(supabase, {
+      action: 'lock_create',
+      targetType: 'athlete_lock',
+      targetId: lock.id as string,
+      details: {
+        athlete_id: body.athleteId,
+        lock_type: body.lockType,
+        tag: body.tag,
+        reason: body.reason,
+      },
+    });
 
     return NextResponse.json(
       { success: true, data: { lockId: lock.id, setAt: lock.set_at } },
@@ -310,9 +333,9 @@ export async function DELETE(request: Request) {
       );
     }
 
-    if (!body.lockId) {
+    if (!body.lockId || !validateUUID(body.lockId)) {
       return NextResponse.json(
-        { success: false, error: "lockId は必須です。" },
+        { success: false, error: "有効な lockId を指定してください。" },
         { status: 400 }
       );
     }
@@ -354,21 +377,15 @@ export async function DELETE(request: Request) {
     }
 
     // ----- 監査ログ -----
-    await supabase
-      .from("audit_logs")
-      .insert({
-        user_id: user.id,
-        action: "lock_delete",
-        resource_type: "athlete_lock",
-        resource_id: body.lockId,
-        details: {
-          athlete_id: lock.athlete_id,
-          lock_type: lock.lock_type,
-        },
-      })
-      .then(({ error }) => {
-        if (error) console.warn("[locks:DELETE] 監査ログ記録失敗:", error);
-      });
+    await logAuditEvent(supabase, {
+      action: 'lock_delete',
+      targetType: 'athlete_lock',
+      targetId: body.lockId,
+      details: {
+        athlete_id: lock.athlete_id,
+        lock_type: lock.lock_type,
+      },
+    });
 
     return NextResponse.json({
       success: true,

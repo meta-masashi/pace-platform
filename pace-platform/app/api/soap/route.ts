@@ -9,6 +9,12 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  validateUUID,
+  validatePagination,
+  sanitizeString,
+} from "@/lib/security/input-validator";
+import { logAuditEvent } from "@/lib/security/audit-logger";
 
 // ---------------------------------------------------------------------------
 // レスポンス型定義
@@ -54,12 +60,15 @@ export async function GET(
   try {
     const { searchParams } = new URL(request.url);
     const athleteId = searchParams.get("athleteId");
-    const limit = Math.min(Number(searchParams.get("limit") ?? 20), 100);
-    const offset = Number(searchParams.get("offset") ?? 0);
+    const pagination = validatePagination({
+      limit: Number(searchParams.get("limit") ?? 20),
+      offset: Number(searchParams.get("offset") ?? 0),
+    });
+    const { limit, offset } = pagination;
 
-    if (!athleteId) {
+    if (!athleteId || !validateUUID(athleteId)) {
       return NextResponse.json(
-        { success: false, error: "athleteId パラメータが必要です。" },
+        { success: false, error: "有効な athleteId パラメータが必要です。" },
         { status: 400 }
       );
     }
@@ -129,7 +138,7 @@ function validateCreateBody(body: unknown): body is CreateSoapBody {
 
   return (
     typeof b.athleteId === "string" &&
-    b.athleteId.length > 0 &&
+    validateUUID(b.athleteId) &&
     typeof b.sText === "string" &&
     b.sText.length >= 10 &&
     typeof b.oText === "string" &&
@@ -196,16 +205,16 @@ export async function POST(
       );
     }
 
-    // ----- SOAPノート作成 -----
+    // ----- SOAPノート作成（テキスト入力をサニタイズ） -----
     const { data: note, error: insertError } = await supabase
       .from("soap_notes")
       .insert({
         athlete_id: body.athleteId,
         staff_id: user.id,
-        s_text: body.sText,
-        o_text: body.oText,
-        a_text: body.aText,
-        p_text: body.pText,
+        s_text: sanitizeString(body.sText, 5000),
+        o_text: sanitizeString(body.oText, 5000),
+        a_text: sanitizeString(body.aText, 5000),
+        p_text: sanitizeString(body.pText, 5000),
         ai_assisted: body.aiAssisted,
       })
       .select("*")
@@ -220,21 +229,15 @@ export async function POST(
     }
 
     // ----- 監査ログ記録 -----
-    await supabase
-      .from("audit_logs")
-      .insert({
-        user_id: user.id,
-        action: "soap_note_create",
-        resource_type: "soap_note",
-        resource_id: note.id as string,
-        details: {
-          athlete_id: body.athleteId,
-          ai_assisted: body.aiAssisted,
-        },
-      })
-      .then(({ error }) => {
-        if (error) console.warn("[soap:create] 監査ログ記録失敗:", error);
-      });
+    await logAuditEvent(supabase, {
+      action: 'soap_note_create',
+      targetType: 'soap_note',
+      targetId: note.id as string,
+      details: {
+        athlete_id: body.athleteId,
+        ai_assisted: body.aiAssisted,
+      },
+    });
 
     return NextResponse.json({
       success: true,

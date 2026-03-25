@@ -13,6 +13,7 @@ import { calculateConditioningScore } from "@/lib/conditioning/engine";
 import { callGeminiWithRetry, buildCdsSystemPrefix } from "@/lib/gemini/client";
 import { checkRateLimit, logTokenUsage, buildRateLimitResponse } from "@/lib/gemini/rate-limiter";
 import { sanitizeUserInput } from "@/lib/shared/security-helpers";
+import { validateUUID } from "@/lib/security/input-validator";
 import type {
   ConditioningInput,
   ConditioningResult,
@@ -154,9 +155,9 @@ export async function GET(
     const { athleteId } = await params;
 
     // ----- バリデーション -----
-    if (!athleteId || athleteId.length === 0) {
+    if (!athleteId || !validateUUID(athleteId)) {
       return NextResponse.json(
-        { success: false, error: "アスリートIDが指定されていません。" },
+        { success: false, error: "アスリートIDが不正です。有効なUUID形式で指定してください。" },
         { status: 400 }
       );
     }
