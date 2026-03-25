@@ -12,13 +12,12 @@ async function SidebarWithData() {
 function SidebarSkeleton() {
   return (
     <div
-      className="fixed left-0 top-0 w-60 h-screen animate-pulse p-4 space-y-4"
-      style={{ backgroundColor: "#1A1A1E" }}
+      className="fixed left-0 top-0 w-60 h-screen animate-pulse p-4 space-y-4 bg-white border-r border-slate-200"
     >
-      <div className="h-9 bg-slate-700 rounded-lg w-32" />
+      <div className="h-9 bg-slate-100 rounded-lg w-32" />
       <div className="space-y-3 pt-6">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-12 bg-white/5 rounded-xl" />
+          <div key={i} className="h-12 bg-slate-50 rounded-xl" />
         ))}
       </div>
     </div>

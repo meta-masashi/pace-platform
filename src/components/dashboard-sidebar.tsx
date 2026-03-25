@@ -99,8 +99,12 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
   }, [isTouch]);
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch {
+      // Supabase env not set — proceed to login
+    }
     router.push("/auth/login");
     router.refresh();
   }
@@ -119,15 +123,15 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed top-0 left-0 h-full flex flex-col z-40 transition-all duration-200",
+        "fixed top-0 left-0 h-full flex flex-col z-40 transition-all duration-200 border-r border-slate-200",
         sidebarWidth
       )}
-      style={{ backgroundColor: "#1A1A1E" }}
+      style={{ backgroundColor: "#ffffff" }}
     >
       {/* ── Logo ─────────────────────────────────────────────────── */}
       <div
         className={cn(
-          "border-b border-white/5 flex items-center",
+          "border-b border-slate-200 flex items-center",
           collapsed ? "px-3 py-5 justify-center" : "px-5 py-5"
         )}
       >
@@ -145,10 +149,10 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
           </div>
           {!collapsed && (
             <div>
-              <span className="text-white text-base font-bold tracking-tight">
+              <span className="text-slate-900 text-base font-bold tracking-tight">
                 PACE
               </span>
-              <p className="text-slate-500 text-2xs leading-none mt-0.5">
+              <p className="text-slate-400 text-2xs leading-none mt-0.5">
                 v6.0
               </p>
             </div>
@@ -178,13 +182,13 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
                 href={href}
                 className={cn(
                   "group flex items-center rounded-xl transition-all duration-150",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#1A1A1E]",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 focus-visible:ring-offset-white",
                   collapsed
                     ? "justify-center p-3"
                     : "gap-3.5 px-4 py-3.5",
                   isActive
-                    ? "bg-brand-500/15 text-white"
-                    : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-black"
                 )}
                 aria-current={isActive ? "page" : undefined}
                 title={collapsed ? label : undefined}
@@ -194,8 +198,8 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
                     "flex items-center justify-center rounded-lg flex-shrink-0 transition-colors",
                     collapsed ? "w-10 h-10" : "w-9 h-9",
                     isActive
-                      ? "bg-brand-500/20 text-brand-400"
-                      : "bg-white/5 text-slate-500 group-hover:text-slate-300"
+                      ? "bg-brand-100 text-brand-600"
+                      : "bg-slate-100 text-slate-400 group-hover:text-slate-600"
                   )}
                 >
                   <Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
@@ -208,7 +212,7 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
                     <span
                       className={cn(
                         "text-2xs block truncate",
-                        isActive ? "text-brand-300/70" : "text-slate-600"
+                        isActive ? "text-brand-500" : "text-slate-400"
                       )}
                     >
                       {sublabel}
@@ -225,7 +229,7 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
         </div>
 
         {/* ── Divider ── */}
-        <div className="my-6 mx-3 border-t border-white/5" />
+        <div className="my-6 mx-3 border-t border-slate-200" />
 
         {/* ── Utility links ── */}
         <div className="space-y-1">
@@ -233,7 +237,7 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
             href="/community"
             className={cn(
               "flex items-center rounded-lg transition-colors",
-              "text-slate-500 hover:bg-white/5 hover:text-slate-300",
+              "text-slate-500 hover:bg-slate-50 hover:text-black",
               collapsed ? "justify-center p-3" : "gap-3 px-4 py-2.5"
             )}
             title={collapsed ? "メッセージ" : undefined}
@@ -250,7 +254,7 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
             href="/settings"
             className={cn(
               "flex items-center rounded-lg transition-colors",
-              "text-slate-500 hover:bg-white/5 hover:text-slate-300",
+              "text-slate-500 hover:bg-slate-50 hover:text-black",
               collapsed ? "justify-center p-3" : "gap-3 px-4 py-2.5"
             )}
             title={collapsed ? "設定" : undefined}
@@ -267,7 +271,7 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
       </nav>
 
       {/* ── User area ──────────────────────────────────────────── */}
-      <div className="border-t border-white/5 px-3 py-4 space-y-3">
+      <div className="border-t border-slate-200 px-3 py-4 space-y-3">
         {/* User info */}
         <div
           className={cn(
@@ -286,7 +290,7 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-slate-200 truncate">
+              <p className="text-sm font-medium text-slate-800 truncate">
                 {displayName}
               </p>
               {displayRole && (
@@ -324,7 +328,7 @@ export default function DashboardSidebar({ staff }: DashboardSidebarProps) {
       {!isTouch && (
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="absolute top-1/2 -right-3 w-6 h-6 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors shadow-md"
+          className="absolute top-1/2 -right-3 w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-black transition-colors shadow-sm"
           aria-label={collapsed ? "サイドバーを展開" : "サイドバーを折りたたむ"}
         >
           {collapsed ? (
