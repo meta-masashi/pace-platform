@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { KpiCard } from './kpi-card';
+import { BioOverview, type BioOverviewData } from './bio-overview';
 import { AlertActionHub } from './alert-action-hub';
 import { AlertCardApproval, type AlertCardData } from './alert-card-approval';
 import { KineticHeatmap } from './kinetic-heatmap';
@@ -431,13 +432,33 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
 
   return (
     <div className="space-y-6">
-      {/* 本日の介入アジェンダ (7 AM Monopoly) — 最上部に配置 */}
-      <MorningAgendaSection
-        cards={agendaCards}
-        summary={agendaSummary}
-        loading={agendaLoading}
-        onActionComplete={handleAgendaAction}
+      {/* Layer 1: Bio-Overview (生体ステータス・サマリー) */}
+      <BioOverview
+        data={{
+          teamReadiness: data.kpi.conditioningScore,
+          availableCount: parseInt(data.kpi.availability.split('/')[0] ?? '0', 10),
+          totalCount: parseInt(data.kpi.availability.split('/')[1] ?? '0', 10),
+          trendDelta: 0,
+          checkinRate: 100,
+          uncheckedCount: 0,
+          teamAcwr: 1.15,
+          watchCriticalCount: data.kpi.criticalAlerts + data.kpi.watchlistCount,
+        }}
+        onAlertAction={() => {
+          // スクロールしてアジェンダセクションへ
+          document.getElementById('morning-agenda')?.scrollIntoView({ behavior: 'smooth' });
+        }}
       />
+
+      {/* 本日の介入アジェンダ (7 AM Monopoly) */}
+      <div id="morning-agenda">
+        <MorningAgendaSection
+          cards={agendaCards}
+          summary={agendaSummary}
+          loading={agendaLoading}
+          onActionComplete={handleAgendaAction}
+        />
+      </div>
 
       {/* KPI Row (4 cards) */}
       <div className="kpi-row-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
