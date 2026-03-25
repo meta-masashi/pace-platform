@@ -162,7 +162,6 @@ function InnovationPlot({ history }: { history: InnovationPoint[] }) {
     const topLine = sorted.map((p) => `${toX(p.day)},${toY(p.tolerance)}`).join(' ');
     const bottomLine = [...sorted].reverse().map((p) => `${toX(p.day)},${toY(-p.tolerance)}`).join(' ');
     return `${topLine} ${bottomLine}`;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [points, minY, maxY]);
 
   if (points.length === 0) {

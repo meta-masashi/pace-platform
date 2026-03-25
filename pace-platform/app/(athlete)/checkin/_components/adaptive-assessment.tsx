@@ -257,7 +257,6 @@ export function AdaptiveAssessment({
     }
 
     return shuffle(qs);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   // レンダー時刻をリセット
