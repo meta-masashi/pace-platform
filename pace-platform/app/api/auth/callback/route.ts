@@ -1,10 +1,13 @@
 /**
- * PACE Platform — OAuth コールバックハンドラー
+ * PACE Platform — OAuth / Magic Link コールバックハンドラー
  *
  * GET /api/auth/callback
  *
- * Supabase Auth の OAuth フローで使用するコールバックエンドポイント。
- * 認可コードをセッションに交換し、ダッシュボードにリダイレクトする。
+ * Supabase Auth の OAuth フローおよび Magic Link 認証で使用するコールバック。
+ * 認可コードをセッションに交換し、ユーザーロールに応じてリダイレクトする。
+ *
+ * - staff テーブルにレコードが存在する場合 → /dashboard（スタッフ）
+ * - それ以外 → /（アスリートまたは一般ユーザー）
  */
 
 import { NextResponse } from "next/server";
@@ -17,23 +20,57 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next");
+  const errorParam = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
 
-  if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error) {
-      // 認証成功 — ダッシュボードまたは指定先にリダイレクト
-      const redirectUrl = `${origin}${next}`;
-      return NextResponse.redirect(redirectUrl);
-    }
-
-    console.error("[auth/callback] セッション交換エラー:", error);
+  // OAuth プロバイダーからのエラー（拒否など）
+  if (errorParam) {
+    const message = errorDescription ?? "認証に失敗しました。";
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent(message)}`
+    );
   }
 
-  // 認証失敗 — エラーページにリダイレクト
-  return NextResponse.redirect(
-    `${origin}/login?error=${encodeURIComponent("認証に失敗しました。もう一度お試しください。")}`
-  );
+  if (!code) {
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent("認証コードが見つかりません。もう一度お試しください。")}`
+    );
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    console.error("[auth/callback] セッション交換エラー:", error);
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent("認証に失敗しました。もう一度お試しください。")}`
+    );
+  }
+
+  // 明示的なリダイレクト先が指定されている場合はそちらを使用
+  if (next) {
+    return NextResponse.redirect(`${origin}${next}`);
+  }
+
+  // ロールに基づくリダイレクト先の決定
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const { data: staff } = await supabase
+      .from("staff")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (staff) {
+      // スタッフ → ダッシュボード
+      return NextResponse.redirect(`${origin}/dashboard`);
+    }
+  }
+
+  // アスリートまたはロール不明 → ホーム
+  return NextResponse.redirect(`${origin}/`);
 }
