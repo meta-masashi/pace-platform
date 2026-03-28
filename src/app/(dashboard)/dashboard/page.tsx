@@ -60,7 +60,8 @@ export default async function DashboardPage() {
     const db = getDb();
 
     // ── スタッフ情報からorg_idを取得 ─────────────────────────────────────
-    const { data: { user } } = await supabase.auth.getUser();
+    const userRes = await supabase.auth.getUser();
+    const user = userRes?.data?.user ?? null;
     let orgId: string | null = null;
 
     if (user) {

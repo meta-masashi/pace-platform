@@ -128,9 +128,9 @@ function readinessColor(score: number): string {
 type ChartTab = "acwr" | "readiness" | "fitness_fatigue";
 
 const CHART_TABS: { key: ChartTab; label: string }[] = [
-  { key: "acwr",           label: "負荷バランス（ACWR）" },
-  { key: "readiness",      label: "出場可能度" },
-  { key: "fitness_fatigue", label: "体力 vs 疲労" },
+  { key: "acwr",           label: "負荷バランス（急性 / 慢性）" },
+  { key: "readiness",      label: "出場可能スコア" },
+  { key: "fitness_fatigue", label: "コンディション推移（体力 vs 疲労）" },
 ];
 
 function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
@@ -299,14 +299,14 @@ export function DashboardClient({
       {/* ── KPI Row (retained as secondary detail) ── */}
       <div className="kpi-row-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
         <KpiCard
-          title="Critical"
+          title="即時対応"
           value={String(criticalCount)}
           unit="名"
           color="red"
           emphasis
           trend={criticalCount > 0 ? "up" : "stable"}
           trendLabel="要即対応"
-          subtitle="NRS≥6 または ACWR>1.5"
+          subtitle="高負荷 または 痛み強度6以上"
         />
         <KpiCard
           title="チェックイン率"
@@ -318,23 +318,23 @@ export function DashboardClient({
           subtitle={`${totalAthletes}名中`}
         />
         <KpiCard
-          title="チーム Readiness"
+          title="チーム出場可能度"
           value={String(Math.round(avgReadiness))}
           unit=""
           color={avgReadiness >= 70 ? "green" : avgReadiness >= 50 ? "amber" : "red"}
           trend="stable"
-          trendLabel={`Zone ${zoneCount}名 / Normal ${normalCount}名`}
+          trendLabel={`フル稼働 ${normalCount}名 / 別メニュー ${zoneCount}名`}
           subtitle="チーム平均スコア"
         />
         <KpiCard
-          title="Watchlist"
+          title="要注意"
           value={String(watchlistCount)}
           unit="名"
           color="amber"
           emphasis
           trend={watchlistCount > 0 ? "up" : "stable"}
-          trendLabel="要注意観察"
-          subtitle="ACWR 1.3〜1.5 or NRS 4〜5"
+          trendLabel="経過観察中"
+          subtitle="負荷バランス注意 or 痛み4〜5"
         />
       </div>
 

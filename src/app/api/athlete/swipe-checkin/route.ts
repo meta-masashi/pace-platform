@@ -59,9 +59,8 @@ function aggregateSubjectiveScore(responses: SwipeResponsePayload[]): number {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const userRes = await supabase.auth.getUser();
+    const user = userRes?.data?.user ?? null;
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

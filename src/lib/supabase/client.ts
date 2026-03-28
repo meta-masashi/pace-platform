@@ -9,15 +9,40 @@ export function createClient(): SupabaseClient {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
-    // No-op proxy when env is not configured (dev without Supabase)
-    const handler: ProxyHandler<object> = {
-      get: (_target, prop) => {
-        if (prop === "then") return undefined; // Prevent Promise coercion
-        return new Proxy(() => Promise.resolve({ data: null, error: null }), handler);
-      },
-      apply: () => Promise.resolve({ data: null, error: null }),
+    // Deep no-op proxy: supports full Supabase chaining without env vars.
+    const TERMINAL = { data: null, error: null, count: null, status: 200, statusText: "OK" };
+
+    const makeChainable = (): unknown => {
+      const handler: ProxyHandler<object> = {
+        get: (_target, prop) => {
+          if (prop === "then") return undefined;
+          if (prop === "catch" || prop === "finally") return undefined;
+          if (prop === "data") return null;
+          if (prop === "error") return null;
+          return makeChainable();
+        },
+        apply: () => {
+          const resultProxy = new Proxy(
+            Object.assign(() => resultProxy, { ...TERMINAL }),
+            {
+              get: (t, prop) => {
+                if (prop === "then") {
+                  return (resolve: (v: unknown) => void) => resolve(TERMINAL);
+                }
+                if (prop === "catch" || prop === "finally") return undefined;
+                if (prop in TERMINAL) return (TERMINAL as Record<string, unknown>)[prop as string];
+                return makeChainable();
+              },
+              apply: () => resultProxy,
+            }
+          );
+          return resultProxy;
+        },
+      };
+      return new Proxy(() => makeChainable(), handler);
     };
-    return new Proxy({} as SupabaseClient, handler);
+
+    return makeChainable() as SupabaseClient;
   }
 
   // Dynamic import to avoid module-level validation crash

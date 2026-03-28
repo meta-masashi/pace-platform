@@ -111,7 +111,7 @@ export function BioOverview({
             )}
           </div>
           <p className="text-sm font-semibold text-slate-700 mt-1">
-            Team Readiness
+            チーム稼働率
           </p>
           <p className="text-xs text-slate-500">
             {fullMenuCount}/{totalAthletes}名がフルメニュー消化可能
@@ -148,7 +148,7 @@ export function BioOverview({
           {/* チーム平均ACWR */}
           <div>
             <p className="text-xs text-slate-500 font-medium mb-1">
-              チーム平均 ACWR
+              チーム負荷バランス（急性 / 慢性）
             </p>
             <span className={`text-3xl font-bold font-numeric ${acwrColor}`}>
               {teamAcwr.toFixed(2)}

@@ -52,7 +52,8 @@ export default function CommunityPage() {
     async function bootstrap() {
       // 1. Resolve current user (silent fallback if not authenticated)
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const userRes = await supabase.auth.getUser();
+        const user = userRes?.data?.user ?? null;
         if (!cancelled && user) {
           setCurrentUserId(user.id);
         }

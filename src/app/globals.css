@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ─── Webフォント読み込み ────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap');
 
 /* ─── CSS カスタムプロパティ（デザイントークン） ─────────────────────── */
 :root {
@@ -27,8 +27,8 @@
   --zone:          #2563eb;
   --zone-bg:       #eff6ff;
 
-  /* サイドバー */
-  --sidebar-bg:    #0f172a;
+  /* サイドバー（白ベース） */
+  --sidebar-bg:    #ffffff;
   --sidebar-width: 240px;
 }
 
@@ -118,11 +118,13 @@
   .status-dot-normal { @apply w-2 h-2 rounded-full bg-brand-500; }
   .status-dot-zone { @apply w-2 h-2 rounded-full bg-blue-500; }
 
-  /* 数値表示用（Inter フォント + 等幅数字） */
+  /* 数値表示用（Strava風 Barlow Condensed + 等幅数字） */
   .font-numeric {
-    font-family: Inter, 'Noto Sans JP', sans-serif;
+    font-family: 'Barlow Condensed', Inter, 'Noto Sans JP', sans-serif;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 }
 

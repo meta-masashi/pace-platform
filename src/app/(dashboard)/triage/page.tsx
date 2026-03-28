@@ -180,7 +180,8 @@ export default async function TriagePage() {
       }
 
       // Try to get current user's staff record
-      const { data: { user } } = await supabase.auth.getUser();
+      const userRes = await supabase.auth.getUser();
+      const user = userRes?.data?.user ?? null;
       if (user) {
         const { data: staffRow } = await supabase
           .from("staff")
