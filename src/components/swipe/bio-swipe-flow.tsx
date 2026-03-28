@@ -97,7 +97,6 @@ export function BioSwipeFlow({
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastResponseRef = useRef<SwipeResponsePayload | null>(null);
 
-  const isComplete = currentIndex >= shuffledQuestions.length;
   const progress = shuffledQuestions.length > 0
     ? Math.round((currentIndex / shuffledQuestions.length) * 100)
     : 0;

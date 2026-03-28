@@ -17,7 +17,6 @@ import { Loader2 } from "lucide-react";
 import {
   getActivityLevel,
   scaleToLoad,
-  toMatchDayLabel,
   getMdPrescription,
 } from "@/lib/football/constants";
 
