@@ -53,18 +53,34 @@ export function getHPBarColor(hp: number): string {
   return "bg-green-500";
 }
 
+/**
+ * 日付を短形式で表示する（例: '3月20日'）。
+ *
+ * UTC の ISO 8601 文字列を Asia/Tokyo タイムゾーンへ変換して表示する。
+ * toLocaleDateString() はブラウザ設定に依存するため、
+ * Intl.DateTimeFormat に timeZone を明示して使用する。
+ */
 export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("ja-JP", {
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "short",
     day: "numeric",
-  });
+  }).format(new Date(dateStr));
 }
 
+/**
+ * 日時を短形式で表示する（例: '3月20日 19:00'）。
+ *
+ * UTC の ISO 8601 文字列を Asia/Tokyo タイムゾーンへ変換して表示する。
+ * toLocaleString() はブラウザ設定に依存するため、
+ * Intl.DateTimeFormat に timeZone を明示して使用する。
+ */
 export function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString("ja-JP", {
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+  }).format(new Date(dateStr));
 }

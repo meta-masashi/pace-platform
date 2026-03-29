@@ -60,6 +60,7 @@ async function embedText(text: string): Promise<number[]> {
       body: JSON.stringify({
         model: "models/text-embedding-004",
         content: { parts: [{ text }] },
+        taskType: "RETRIEVAL_DOCUMENT",
       }),
     }
   );

@@ -1,0 +1,95 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "search": "Search",
+    "noResults": "No results found"
+  },
+  "auth": {
+    "login": "Log In",
+    "logout": "Log Out",
+    "email": "Email Address",
+    "password": "Password",
+    "loginError": "Incorrect email address or password",
+    "sessionExpired": "Your session has expired. Please log in again",
+    "unauthorized": "You do not have permission to perform this action"
+  },
+  "subscription": {
+    "currentPlan": "Current Plan: {plan}",
+    "expiresAt": "Valid until {date}",
+    "planFree": "Free",
+    "planBasic": "Basic",
+    "planPro": "Pro",
+    "planEnterprise": "Enterprise",
+    "upgrade": "Upgrade",
+    "billingCycle": "Billing Cycle",
+    "monthly": "Monthly",
+    "annual": "Annual"
+  },
+  "athlete": {
+    "name": "Athlete Name",
+    "sport": "Sport",
+    "position": "Position",
+    "birthDate": "Date of Birth",
+    "height": "Height",
+    "weight": "Weight",
+    "unit": {
+      "cm": "cm",
+      "kg": "kg"
+    }
+  },
+  "injury": {
+    "title": "Injury Information",
+    "bodyPart": "Body Part",
+    "severity": "Severity",
+    "occuredAt": "Date / Time of Injury",
+    "status": "Status",
+    "statusActive": "Active",
+    "statusRecovered": "Recovered",
+    "statusMonitoring": "Monitoring"
+  },
+  "rehab": {
+    "title": "Rehabilitation",
+    "plan": "Rehab Plan",
+    "phase": "Phase",
+    "exercise": "Exercise",
+    "sets": "Sets",
+    "reps": "Reps",
+    "duration": "Duration",
+    "restPeriod": "Rest",
+    "notes": "Notes",
+    "progressNote": "Progress Note"
+  },
+  "soap": {
+    "title": "SOAP Note",
+    "subjective": "Subjective (S)",
+    "objective": "Objective (O)",
+    "assessment": "Assessment (A)",
+    "plan": "Plan (P)",
+    "disclaimer": "* This output is AI-assisted information. Final decisions and treatments must always be performed by qualified staff."
+  },
+  "validation": {
+    "required": "{field} is required",
+    "invalidEmail": "Please enter a valid email address",
+    "minLength": "{field} must be at least {min} characters",
+    "maxLength": "{field} must be {max} characters or fewer",
+    "invalidPostalCode": "Please enter a valid postal code (e.g. 123-4567)",
+    "invalidPhoneNumber": "Please enter a valid phone number (e.g. 090-1234-5678)"
+  },
+  "error": {
+    "rateLimitExceeded": "Rate limit reached. Please wait a moment and try again",
+    "monthlyLimitExceeded": "Monthly AI usage limit reached. Please contact your administrator",
+    "aiUnavailable": "AI features are temporarily unavailable. Please try again shortly",
+    "networkError": "A network error occurred. Please check your connection",
+    "serverError": "A server error occurred. Please contact your administrator"
+  }
+}
