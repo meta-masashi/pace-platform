@@ -10,7 +10,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calculateConditioningScore } from "@/lib/conditioning/engine";
-import { callGeminiWithRetry, buildCdsSystemPrefix } from "@/lib/gemini/client";
+import { callGeminiWithRetry, buildCdsSystemPrefix, MEDICAL_DISCLAIMER } from "@/lib/gemini/client";
 import { checkRateLimit, logTokenUsage, buildRateLimitResponse } from "@/lib/gemini/rate-limiter";
 import { sanitizeUserInput } from "@/lib/shared/security-helpers";
 import { validateUUID } from "@/lib/security/input-validator";
@@ -121,7 +121,7 @@ async function generateInsight(
       estimatedTokens: Math.ceil(prompt.length / 4),
     });
 
-    return result.insight;
+    return `${result.insight} ${MEDICAL_DISCLAIMER}`;
   } catch {
     return generateFallbackInsight(data);
   }

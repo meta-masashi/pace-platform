@@ -1,7 +1,7 @@
 import * as Sentry from '@sentry/nextjs'
 
 Sentry.init({
-  ...(process.env.NEXT_PUBLIC_SENTRY_DSN && { dsn: process.env.NEXT_PUBLIC_SENTRY_DSN }),
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
 
   // 本番: 10% サンプリング / 開発: 100%
