@@ -638,6 +638,37 @@ function CalendarSection({
 // Morning Agenda section (7 AM Monopoly)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 一括承認ヘルパー（M11）
+// ---------------------------------------------------------------------------
+
+async function batchApproveCards(
+  cards: AlertCardData[],
+  action: 'approve' | 'reject'
+): Promise<{ processed: number; failed: number }> {
+  // P1/P2 は M20 により個別承認必須 — normal のみ対象
+  const normalCards = cards.filter((c) => c.riskLevel === 'normal');
+  if (normalCards.length === 0) return { processed: 0, failed: 0 };
+
+  const res = await fetch('/api/approval/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action,
+      items: normalCards.map((c) => ({
+        athleteId: c.athleteId,
+        evidenceText: c.nlgText,
+        nlgText: c.nlgText,
+        riskScore: c.riskMultiplier,
+      })),
+    }),
+  });
+
+  if (!res.ok) return { processed: 0, failed: normalCards.length };
+  const json = (await res.json()) as { success: boolean; data?: { processed: number; failed: number } };
+  return json.data ?? { processed: 0, failed: normalCards.length };
+}
+
 interface MorningAgendaSectionProps {
   cards: AlertCardData[];
   summary: {
@@ -656,6 +687,10 @@ function MorningAgendaSection({
   loading,
   onActionComplete,
 }: MorningAgendaSectionProps) {
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchResult, setBatchResult] = useState<string | null>(null);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+
   // ローディング中
   if (loading) {
     return (
@@ -670,6 +705,30 @@ function MorningAgendaSection({
   if (cards.length === 0) {
     return null;
   }
+
+  const normalCards = cards.filter(
+    (c) => c.riskLevel === 'normal' && !completedIds.has(c.athleteId)
+  );
+  const highRiskCards = cards.filter((c) => c.riskLevel !== 'normal');
+
+  const handleBatch = async (action: 'approve' | 'reject') => {
+    setBatchLoading(true);
+    setBatchResult(null);
+    try {
+      const result = await batchApproveCards(normalCards, action);
+      normalCards.forEach((c) => {
+        setCompletedIds((prev) => new Set([...prev, c.athleteId]));
+        onActionComplete(c.athleteId, action, 'batch');
+      });
+      setBatchResult(
+        `${result.processed} 件を${action === 'approve' ? '承認' : '却下'}しました。${
+          result.failed > 0 ? ` (${result.failed} 件失敗)` : ''
+        }`
+      );
+    } finally {
+      setBatchLoading(false);
+    }
+  };
 
   return (
     <div className="w-full space-y-3">
@@ -696,17 +755,61 @@ function MorningAgendaSection({
             </span>
           )}
         </div>
+
+        {/* M11: 通常アラートの一括承認ボタン（P1/P2 は M20 により除外） */}
+        {normalCards.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              Normal {normalCards.length}件を一括:
+            </span>
+            <button
+              type="button"
+              disabled={batchLoading}
+              onClick={() => handleBatch('approve')}
+              className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {batchLoading ? '処理中...' : '全て承認'}
+            </button>
+            <button
+              type="button"
+              disabled={batchLoading}
+              onClick={() => handleBatch('reject')}
+              className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              全て却下
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* 一括処理結果 */}
+      {batchResult && (
+        <div className="rounded-md border border-optimal-200 bg-optimal-50 px-3 py-2 text-xs text-optimal-700">
+          {batchResult}
+        </div>
+      )}
+
+      {/* P1/P2 は個別承認必須バナー */}
+      {highRiskCards.length > 0 && normalCards.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          ※ Critical/Watchlist ({highRiskCards.length}件) は M20 により個別承認が必要です。
+        </p>
+      )}
 
       {/* アラートカード一覧 */}
       <div className="space-y-3">
-        {cards.map((card) => (
-          <AlertCardApproval
-            key={card.athleteId}
-            alertCard={card}
-            onActionComplete={onActionComplete}
-          />
-        ))}
+        {cards
+          .filter((c) => !completedIds.has(c.athleteId))
+          .map((card) => (
+            <AlertCardApproval
+              key={card.athleteId}
+              alertCard={card}
+              onActionComplete={(athleteId, action, logId) => {
+                setCompletedIds((prev) => new Set([...prev, athleteId]));
+                onActionComplete(athleteId, action, logId);
+              }}
+            />
+          ))}
       </div>
     </div>
   );
