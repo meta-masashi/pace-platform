@@ -21,6 +21,8 @@ interface ApprovalRequestBody {
   nlgText?: string;
   riskScore?: number;
   diagnosisContext?: unknown;
+  /** M20: P1(critical)/P2(watchlist) は AT/PT のみ承認可 */
+  riskLevel?: 'critical' | 'watchlist' | 'normal';
 }
 
 interface ApprovalResponse {
@@ -114,7 +116,7 @@ export async function POST(
     // ----- リクエストボディのパースとバリデーション -----
     let body: unknown;
     try {
-      body = await request.json();
+      body = await request.json() as unknown;
     } catch {
       return NextResponse.json(
         { success: false, error: 'リクエストボディのJSONパースに失敗しました。' },
@@ -131,6 +133,25 @@ export async function POST(
         },
         { status: 400 }
       );
+    }
+
+    // ----- M20: P1/P2 は AT/PT のみ承認可（master は管理者であり臨床有資格者ではない） -----
+    const typedBody = body as ApprovalRequestBody;
+    if (
+      (typedBody.riskLevel === 'critical' || typedBody.riskLevel === 'watchlist') &&
+      body !== null && typeof body === 'object'
+    ) {
+      const qualifiedRoles = ['AT', 'PT'];
+      if (!qualifiedRoles.includes(staff.role as string)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'P1/P2 リスク推奨の承認はAT（アスレティックトレーナー）またはPT（理学療法士）のみ実施できます。',
+          },
+          { status: 403 }
+        );
+      }
     }
 
     // ----- アスリート存在・アクセス確認 (RLS) -----
@@ -159,6 +180,13 @@ export async function POST(
     if (body.nlgText !== undefined) auditParams.nlgText = body.nlgText;
     if (body.riskScore !== undefined) auditParams.riskScore = body.riskScore;
     if (body.diagnosisContext !== undefined) auditParams.diagnosisContext = body.diagnosisContext;
+    // M20: riskLevel を監査コンテキストに含める
+    if (body.riskLevel !== undefined) {
+      auditParams.diagnosisContext = {
+        ...(auditParams.diagnosisContext as Record<string, unknown> ?? {}),
+        riskLevel: body.riskLevel,
+      };
+    }
 
     const entry = await createAuditEntry(supabase, auditParams);
 

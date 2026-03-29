@@ -3,7 +3,11 @@
  *
  * コンディションスコアに基づく AI 生成インサイトを表示。
  * 電球アイコン付き、グラデーション背景のカード。
+ * M20: 全 AI 出力に医療免責事項を表示。
  */
+
+const MEDICAL_DISCLAIMER =
+  "※ この出力はAIによる補助情報です。最終的な判断・処置は必ず有資格スタッフが行ってください。";
 
 interface InsightCardProps {
   insight: string;
@@ -43,6 +47,10 @@ export function InsightCard({ insight }: InsightCardProps) {
           <p className="text-sm leading-relaxed text-foreground">{insight}</p>
         </div>
       </div>
+      {/* M20: 医療免責事項 */}
+      <p className="mt-3 border-t border-border/50 pt-2 text-[11px] leading-snug text-muted-foreground">
+        {MEDICAL_DISCLAIMER}
+      </p>
     </div>
   );
 }
