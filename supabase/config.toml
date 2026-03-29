@@ -60,9 +60,6 @@ file_size_limit = "524288000"  # 500MB
 enabled = true
 # JWT 有効期限: 1時間（セキュリティ設計: HIPAA準拠）
 jwt_expiry = 3600
-# リフレッシュトークン有効期限: 7日
-refresh_token_rotation_enabled = true
-security_update_password_require_reauthentication = true
 
 # メール認証
 [auth.email]
@@ -77,10 +74,6 @@ max_enrolled_factors = 2
 [auth.mfa.totp]
 enroll_enabled = true
 verify_enabled = true
-
-# パスワードポリシー
-[auth.password]
-min_length = 12
 
 # ========================================
 # Realtime 設定
@@ -104,4 +97,4 @@ ip_version = "IPv6"
 #   - gemini-proxy     : Gemini API 呼び出しプロキシ（API キー保護）
 #   - audit-logger     : 全操作の監査ログ自動記録
 #   - notification     : スタッフへのプッシュ通知送信
-verify_jwt = true
+# verify_jwt はfunctionごとに個別設定（デフォルト: true）
