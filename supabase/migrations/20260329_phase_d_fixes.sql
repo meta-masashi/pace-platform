@@ -39,7 +39,7 @@ CREATE OR REPLACE VIEW public.athlete_alerts AS
     -- resolved: false until explicitly dismissed
     false             AS resolved,
     t.created_at,
-    t.updated_at
+    t.created_at    AS updated_at
   FROM public.triage t
   JOIN public.athletes a ON a.id = t.athlete_id
 
@@ -68,6 +68,6 @@ CREATE OR REPLACE VIEW public.athlete_alerts AS
       ELSE false
     END               AS resolved,
     fa.created_at,
-    fa.updated_at
+    fa.created_at   AS updated_at
   FROM public.fatigue_alerts fa
   JOIN public.athletes a ON a.id = fa.athlete_id;
