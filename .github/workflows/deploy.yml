@@ -25,23 +25,15 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: Repair stale remote migrations
+      - name: Mark all existing migrations as applied
         run: |
-          # リモートDBの migration history を Management API で直接取得し、
-          # ローカルにファイルが存在しないバージョンを reverted に修正する。
-          # CLI の出力をパースする方式と異なり、バージョン桁数に依存しない。
-          REMOTE_VERS=$(curl -s -X POST \
-            "https://api.supabase.com/v1/projects/${{ secrets.SUPABASE_PROJECT_REF }}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d '{"query":"SELECT version FROM supabase_migrations.schema_migrations ORDER BY version ASC;"}' \
-            | python3 -c "import sys,json; [print(r['version']) for r in json.load(sys.stdin)]" 2>/dev/null || true)
-
-          for ver in $REMOTE_VERS; do
-            if [ -z "$(ls supabase/migrations/${ver}*.sql 2>/dev/null)" ]; then
-              echo "Repairing orphan migration: ${ver}"
-              supabase migration repair --status reverted "$ver" || true
-            fi
+          # ローカルの全マイグレーションファイルを「適用済み」として CLI 経由で登録する。
+          # これにより supabase db push は新規ファイルのみを対象にする。
+          # supabase CLI の migration repair を使うことで CLI が期待する形式で書き込む。
+          for f in supabase/migrations/*.sql; do
+            ver=$(basename "$f" .sql)
+            echo "Marking as applied: ${ver}"
+            supabase migration repair --status applied "$ver" || true
           done
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
