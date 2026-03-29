@@ -62,7 +62,7 @@ export default async function StatsPage() {
       .limit(20);
 
     if (!metricError && metricRows && metricRows.length > 0) {
-      escalations = metricRows.map((row, idx) => ({
+      escalations = metricRows.map((row: any, idx: number) => ({
         id: row.id ?? String(idx),
         created_at: row.metric_date ?? new Date().toISOString(),
         from_staff_id: row.staff_id ?? "",

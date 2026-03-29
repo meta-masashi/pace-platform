@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     const baselineMs =
       historicalData && historicalData.length > 0
-        ? historicalData.reduce((s, r) => s + r.reaction_latency_ms, 0) /
+        ? historicalData.reduce((s: number, r: any) => s + (r.reaction_latency_ms as number), 0) /
           historicalData.length
         : DEFAULT_BASELINE_MS;
 

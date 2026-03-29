@@ -66,7 +66,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   // Build response
-  const result: Record<string, unknown> = {
+  const result: any = {
     job_id: job.id,
     athlete_id: job.athlete_id,
     status: job.status,
@@ -78,9 +78,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // If completed, include cv_errors for LLM context injection
   if (job.status === 'completed' && job.result_payload) {
-    const payload = job.result_payload as Record<string, unknown>
+    const payload = job.result_payload as any
     result.cv_errors = payload.cv_errors ?? []
-    result.kinematics_confidence = (payload.kinematics_vector as Record<string, unknown>)?.confidence_score ?? null
+    result.kinematics_confidence = (payload.kinematics_vector as any)?.confidence_score ?? null
 
     // Generate masked video presigned URL (1-hour expiry)
     if (job.masked_video_s3_key) {

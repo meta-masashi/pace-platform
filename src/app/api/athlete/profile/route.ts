@@ -52,13 +52,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Athlete not found" }, { status: 404, headers: CORS_HEADERS });
     }
 
-    const athlete = result.data as Record<string, unknown>;
+    const athlete = result.data as any;
     return NextResponse.json({
       id: athlete.id,
       name: athlete.name,
       position: athlete.position ?? "",
       number: athlete.number,
-      team_name: (athlete.teams as Record<string, unknown> | null)?.name ?? "",
+      team_name: (athlete.teams as any | null)?.name ?? "",
     }, { headers: CORS_HEADERS });
   } catch (e) {
     console.error("[athlete/profile] Unexpected error:", e);

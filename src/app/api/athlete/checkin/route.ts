@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
     }
 
     // daily_metrics UPSERT (v3.2: srpe / sleep_quality / fatigue_feeling 追加)
-    const upsertData: Record<string, unknown> = {
+    const upsertData: any = {
       athlete_id: user.id,
       date: today,
       nrs: nrs ?? 0,
