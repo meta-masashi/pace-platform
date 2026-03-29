@@ -159,12 +159,11 @@ function buildChainReactions(tissueStress: Record<string, number>): ChainReactio
 
 function buildInnovationHistory(rows: Array<{ date: string; acwr: number | null; conditioning_score: number | null }>): InnovationPoint[] {
   return rows.slice(-7).map((r, i) => ({
-    date: r.date,
-    innovation: r.acwr !== null && i > 0
+    day: i,
+    residual: r.acwr !== null && i > 0
       ? Math.abs((r.acwr ?? 1) - (rows[Math.max(0, rows.length - 7 + i - 1)]?.acwr ?? 1))
       : 0,
-    expected: 1.0,
-    actual: r.acwr ?? 1.0,
+    tolerance: 0.2,
   }));
 }
 
@@ -362,7 +361,7 @@ export async function GET(
     const assessmentsByAthlete = new Map<string, Array<{ category: string; posterior: number }>>();
     for (const row of allAssessments) {
       const aid = row.athlete_id as string;
-      const node = row.assessment_nodes as Record<string, unknown> | null;
+      const node = row.assessment_nodes as unknown as Record<string, unknown> | null;
       if (!node) continue;
       const lrYes = node.lr_yes as number ?? 2;
       const prior = node.base_prevalence as number ?? 0.1;

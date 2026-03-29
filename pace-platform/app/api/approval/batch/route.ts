@@ -145,8 +145,8 @@ export async function POST(
           athleteId: item.athleteId,
           action: b.action,
           evidenceText: item.evidenceText || `一括${b.action === 'approve' ? '承認' : '却下'}`,
-          nlgText: item.nlgText,
-          riskScore: item.riskScore,
+          ...(item.nlgText !== undefined && { nlgText: item.nlgText }),
+          ...(item.riskScore !== undefined && { riskScore: item.riskScore }),
           diagnosisContext: { batchAction: true, riskLevel: 'normal' },
         });
 
