@@ -28,6 +28,7 @@ interface GridPoint {
   repair_rate: number;
   status: "GREEN" | "YELLOW" | "ORANGE" | "RED";
   d_crit: number;
+  from_service: boolean;
 }
 
 function classifyStatus(damage: number, dCrit: number): GridPoint["status"] {
@@ -132,6 +133,7 @@ export async function GET(req: NextRequest) {
         repair_rate: result.repair_rate,
         status: classifyStatus(result.damage_after, result.d_crit),
         d_crit: result.d_crit,
+        from_service: true,
       };
     }
 
@@ -143,6 +145,7 @@ export async function GET(req: NextRequest) {
       repair_rate: approx.repair_rate,
       status: classifyStatus(approx.damage_after, approx.d_crit),
       d_crit: approx.d_crit,
+      from_service: false,
     };
   });
 
@@ -155,9 +158,7 @@ export async function GET(req: NextRequest) {
       current_damage: currentDamage,
       tissue,
       computed_at: new Date().toISOString(),
-      is_exact: grid.every(
-        (_, i) => GRID_SCALES[i] !== undefined
-      ), // true if all from Python
+      is_exact: grid.every((p) => p.from_service), // true only if all from Python service
     },
   });
 }
