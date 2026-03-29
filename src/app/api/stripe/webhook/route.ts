@@ -107,7 +107,7 @@ async function handleCheckoutCompleted(
 
   // Enterprise プラン購入フロー
   const plan = (planMeta as "pro" | "standard" | "enterprise") ?? "standard";
-  const updates: Record<string, unknown> = {
+  const updates: any = {
     plan,
     stripe_customer_id: customerId,
   };
@@ -130,7 +130,7 @@ async function handleCheckoutCompleted(
 async function handlePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
   const db = getDb();
   const customerId = invoice.customer as string;
-  const rawSub = (invoice as unknown as Record<string, unknown>).subscription;
+  const rawSub = (invoice as unknown as any).subscription;
   const subscriptionId = typeof rawSub === "string"
     ? rawSub
     : (rawSub as Stripe.Subscription | null)?.id;

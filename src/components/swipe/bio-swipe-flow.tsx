@@ -65,11 +65,11 @@ if (typeof window !== "undefined") {
 
 const DEFAULT_QUESTIONS: SwipeQuestion[] = [
   { id: "q_sleep_quality", text: "昨晩はよく眠れましたか？", category: "sleep" },
-  { id: "q_general_fatigue", text: "全身に疲労感がありますか？", category: "fatigue" },
+  { id: "q_leg_heaviness", text: "足のハリ / 重さはありますか？", category: "fatigue" },
   { id: "q_hamstring_soreness", text: "ハムストリングに張りがありますか？", body_part: "ハムストリング", category: "pain" },
   { id: "q_knee_pain", text: "膝に違和感がありますか？", body_part: "膝", category: "pain" },
-  { id: "q_lower_back", text: "腰に重さや痛みがありますか？", body_part: "腰", category: "pain" },
-  { id: "q_mental_readiness", text: "今日のトレーニングに集中できそうですか？", category: "mental" },
+  { id: "q_ankle", text: "足首に不安はありますか？", body_part: "足首", category: "pain" },
+  { id: "q_mental_readiness", text: "今日の試合 / 練習に集中できそうですか？", category: "mental" },
 ];
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -97,7 +97,6 @@ export function BioSwipeFlow({
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastResponseRef = useRef<SwipeResponsePayload | null>(null);
 
-  const isComplete = currentIndex >= shuffledQuestions.length;
   const progress = shuffledQuestions.length > 0
     ? Math.round((currentIndex / shuffledQuestions.length) * 100)
     : 0;

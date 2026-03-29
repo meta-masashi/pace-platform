@@ -1,8 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { PwaInstallPrompt } from "@/components/pwa/pwa-install-prompt";
-import { OfflineIndicator } from "@/components/pwa/offline-indicator";
-import { ServiceWorkerRegistrar } from "@/components/pwa/sw-registrar";
 
 export const metadata: Metadata = {
   title: "PACE Platform",
@@ -23,7 +20,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#059669",
+  themeColor: "#FC4C02",
 };
 
 export default function RootLayout({
@@ -36,12 +33,7 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
-      <body>
-        {children}
-        <PwaInstallPrompt />
-        <OfflineIndicator />
-        <ServiceWorkerRegistrar />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

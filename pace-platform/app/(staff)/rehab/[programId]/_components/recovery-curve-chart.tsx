@@ -73,13 +73,13 @@ export function RecoveryCurveChart({ curve, todayStr }: RecoveryCurveChartProps)
             tickFormatter={(v: number) => `${v}%`}
           />
           <Tooltip
-            labelFormatter={(label: string) => {
-              const d = new Date(label);
+            labelFormatter={(label: any) => {
+              const d = new Date(String(label));
               return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
             }}
-            formatter={(value: number | string, name: string) => {
+            formatter={(value: any, name: any) => {
               const label = name === 'predictedProgress' ? '予測進捗' : '実績';
-              return [`${Number(value).toFixed(1)}%`, label];
+              return [`${Number(value).toFixed(1)}%`, label] as [string, string];
             }}
           />
           {/* 予測カーブ */}

@@ -32,7 +32,7 @@ export default async function SchedulePage() {
 
     if (!eventError && eventRows && eventRows.length > 0) {
       // Normalize DB rows: start_time/end_time are TIMESTAMPTZ, extract date + HH:MM
-      scheduleEvents = eventRows.map((row) => {
+      scheduleEvents = eventRows.map((row: any) => {
         const startDt = new Date(row.start_time as string);
         const endDt = row.end_time ? new Date(row.end_time as string) : startDt;
         const dateStr = startDt.toISOString().slice(0, 10);

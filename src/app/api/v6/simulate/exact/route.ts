@@ -14,9 +14,8 @@ const BIOMECHANICS_KEY = process.env.BIOMECHANICS_API_KEY ?? "";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userRes = await supabase.auth.getUser();
+  const user = userRes?.data?.user ?? null;
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

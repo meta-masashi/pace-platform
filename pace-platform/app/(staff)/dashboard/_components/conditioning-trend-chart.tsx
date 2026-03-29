@@ -68,7 +68,7 @@ export function ConditioningTrendChart({ data }: ConditioningTrendChartProps) {
               fontSize: '0.8125rem',
             }}
             labelFormatter={(label) => `日付: ${label}`}
-            formatter={(value: number) => [value.toFixed(1), 'スコア']}
+            formatter={(value: any) => [value.toFixed(1), 'スコア']}
           />
           <Area
             type="monotone"

@@ -14,6 +14,11 @@ import {
   Area,
 } from "recharts";
 import { Loader2 } from "lucide-react";
+import {
+  getActivityLevel,
+  scaleToLoad,
+  getMdPrescription,
+} from "@/lib/football/constants";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -36,6 +41,8 @@ interface FutureCanvasProps {
   pastData: DayPoint[];
   /** D_crit threshold */
   damageCrit?: number;
+  /** 次の試合日（MD タイムライン用） */
+  nextMatchDate?: Date;
 }
 
 // ─── Client-side linear interpolation ──────────────────────────────────────
@@ -70,23 +77,42 @@ function lerp(grid: GridPoint[], scale: number): GridPoint {
 
 function getPrescription(
   interp: GridPoint,
-  baseScale: number
-): { text: string; color: string } {
+  scalePct: number,
+  mdOffset?: number
+): { text: string; color: string; activityLabel: string } {
+  const load = scaleToLoad(scalePct);
+  const activity = getActivityLevel(load);
+
+  // MD-aware prescription
+  if (mdOffset !== undefined) {
+    const mdText = getMdPrescription(mdOffset, scalePct, interp.status);
+    if (mdText) {
+      return {
+        text: mdText,
+        color: interp.status === "RED" ? "text-red-600" : interp.status === "YELLOW" ? "text-amber-600" : "text-brand-600",
+        activityLabel: activity.shortLabel,
+      };
+    }
+  }
+
   if (interp.status === "RED") {
     return {
-      text: `予定通りの負荷（${baseScale}%）をかけると、閾値を突破（RED）します。負荷を下げてください。`,
+      text: `${activity.shortLabel}の負荷をかけると閾値を突破（RED）します。リカバリーメニューに切り替えてください。`,
       color: "text-red-600",
+      activityLabel: activity.shortLabel,
     };
   }
   if (interp.status === "YELLOW") {
     return {
-      text: `現在の負荷レベル（${Math.round(interp.scale)}%）はイエローゾーンです。注意してください。`,
+      text: `${activity.shortLabel}はイエローゾーンです。タクティカル練習に留めてください。`,
       color: "text-amber-600",
+      activityLabel: activity.shortLabel,
     };
   }
   return {
-    text: `安全圏（GREEN）に入りました。${baseScale !== Math.round(interp.scale) ? `本日の負荷を${Math.round(100 - interp.scale)}%削減してください。` : "予定通り実施できます。"}`,
+    text: `安全圏 — ${activity.shortLabel}を実施できます。`,
     color: "text-brand-600",
+    activityLabel: activity.shortLabel,
   };
 }
 
@@ -96,6 +122,7 @@ export function FutureCanvas({
   athleteId,
   pastData,
   damageCrit = 85,
+  nextMatchDate,
 }: FutureCanvasProps) {
   const [grid, setGrid] = useState<GridPoint[]>([]);
   const [sliderValue, setSliderValue] = useState(100);
@@ -170,7 +197,9 @@ export function FutureCanvas({
   }, [pastData, sliderValue]);
 
   const displayResult = exactResult ?? interpolated;
-  const prescription = getPrescription(displayResult, 100);
+  const currentLoad = scaleToLoad(sliderValue);
+  const currentActivity = getActivityLevel(currentLoad);
+  const prescription = getPrescription(displayResult, sliderValue);
   const isEstimate = !exactResult;
 
   return (
@@ -266,10 +295,12 @@ export function FutureCanvas({
             </ComposedChart>
           </ResponsiveContainer>
 
-          {/* Today marker */}
+          {/* Timeline marker */}
           <div className="text-center">
             <span className="text-2xs text-slate-400">
-              ◀ 過去14日 │ Today │ 未来7日 ▶
+              {nextMatchDate
+                ? "◀ 過去 │ MD │ 未来 ▶"
+                : "◀ 過去14日 │ Today │ 未来7日 ▶"}
             </span>
           </div>
         </div>
@@ -285,7 +316,7 @@ export function FutureCanvas({
             <input
               type="range"
               min="0"
-              max="200"
+              max="100"
               step="1"
               value={sliderValue}
               onChange={handleSliderChange}
@@ -294,9 +325,19 @@ export function FutureCanvas({
               className="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-brand-600"
             />
             <div className="flex justify-between text-2xs text-slate-400 mt-1">
-              <span>0%</span>
-              <span>100%</span>
-              <span>200%</span>
+              <span>0%（休養）</span>
+              <span>50%</span>
+              <span>100%（フル）</span>
+            </div>
+
+            {/* Activity Mapper badge */}
+            <div className="mt-3 flex items-center gap-2">
+              <span className={`text-xs font-medium ${currentActivity.color}`}>
+                ⚽ {currentActivity.shortLabel}
+              </span>
+              <span className="text-2xs text-slate-400">
+                Load {currentLoad}
+              </span>
             </div>
 
             {/* Result display */}

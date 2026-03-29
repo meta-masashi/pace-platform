@@ -9,8 +9,8 @@
 export const PHYSIOLOGICAL_LIMITS = {
   /** 負荷スケール最小 (%) */
   LOAD_SCALE_MIN: 0,
-  /** 負荷スケール最大 (%) — 通常の2倍までが生理学的に有意 */
-  LOAD_SCALE_MAX: 200,
+  /** 負荷スケール最大 (%) — 100% = フルメニュー消化 */
+  LOAD_SCALE_MAX: 100,
   /** sRPE の上限 */
   SRPE_MAX: 10,
   /** トレーニング時間の上限 (分) — 6時間 */

@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let updateData: Record<string, unknown>;
+    let updateData: any;
 
     if (action === "approve") {
       updateData = {

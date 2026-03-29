@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const insertData: Record<string, unknown> = {
+    const insertData: any = {
       athlete_id,
       diagnosis_label,
       approval_status: "pending",

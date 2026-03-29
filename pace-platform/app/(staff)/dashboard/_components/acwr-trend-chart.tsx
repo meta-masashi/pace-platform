@@ -101,7 +101,7 @@ export function AcwrTrendChart({ data }: AcwrTrendChartProps) {
               fontSize: '0.8125rem',
             }}
             labelFormatter={(label) => `日付: ${label}`}
-            formatter={(value: number) => [value.toFixed(2), 'ACWR']}
+            formatter={(value: any) => [value.toFixed(2), 'ACWR']}
           />
           <Line
             type="monotone"

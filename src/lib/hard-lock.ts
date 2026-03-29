@@ -46,7 +46,7 @@ async function fetchActiveLocks(athleteId: string): Promise<AthleteLock[]> {
       return [];
     }
 
-    return (data ?? []).map((row) => ({
+    return (data ?? []).map((row: any) => ({
       id: row.id as string,
       athlete_id: row.athlete_id as string,
       set_by_staff_id: row.set_by_staff_id as string,

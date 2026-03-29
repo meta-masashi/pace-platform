@@ -86,7 +86,7 @@ export default async function KartePage({
             .limit(10);
 
           if (soapRows && soapRows.length > 0) {
-            soapNotes = soapRows.map((r) => ({
+            soapNotes = soapRows.map((r: any) => ({
               id: r.id,
               athlete_id: r.athlete_id,
               staff_id: r.staff_id ?? "",

@@ -36,7 +36,7 @@ export default async function PlayersPage() {
       if (error) throw error;
 
       if (rows && rows.length > 0) {
-        const athleteIds = rows.map((r) => r.id);
+        const athleteIds = rows.map((r: any) => r.id);
 
         // Fetch the most recent daily_metrics per athlete
         const { data: metricsRows } = await supabase
@@ -63,7 +63,7 @@ export default async function PlayersPage() {
           }
         }
 
-        athletes = rows.map((r) => {
+        athletes = rows.map((r: any) => {
           const latest = latestMetric[r.id];
           const nrs = latest?.nrs ?? 0;
           const hrv = latest?.hrv ?? 0;

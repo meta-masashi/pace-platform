@@ -110,7 +110,7 @@ export default async function TriagePage() {
         .eq("is_active", true);
 
       if (!athletesError && athletes && athletes.length > 0) {
-        const athleteIds = athletes.map((a) => a.id);
+        const athleteIds = athletes.map((a: any) => a.id);
 
         // Fetch last 14 days of metrics
         const cutoffDate = new Date();
@@ -143,12 +143,12 @@ export default async function TriagePage() {
           });
         }
 
-        const entries = athletes.map((athlete) =>
-          computeTriageEntry(athlete, metricsByAthlete[athlete.id] ?? [])
+        const entries = athletes.map((athlete: any) =>
+          computeTriageEntry(athlete, metricsByAthlete[athlete.id as string] ?? [])
         );
 
         const priorityOrder: Record<Priority, number> = { critical: 0, watchlist: 1, normal: 2 };
-        entries.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+        entries.sort((a: any, b: any) => priorityOrder[a.priority as Priority] - priorityOrder[b.priority as Priority]);
 
         triageEntries = entries;
 
@@ -176,11 +176,12 @@ export default async function TriagePage() {
         .eq("is_active", true);
 
       if (staffRows && staffRows.length > 0) {
-        staffMembers = staffRows.map((s) => ({ role: s.role, name: s.name }));
+        staffMembers = staffRows.map((s: any) => ({ role: s.role, name: s.name }));
       }
 
       // Try to get current user's staff record
-      const { data: { user } } = await supabase.auth.getUser();
+      const userRes = await supabase.auth.getUser();
+      const user = userRes?.data?.user ?? null;
       if (user) {
         const { data: staffRow } = await supabase
           .from("staff")

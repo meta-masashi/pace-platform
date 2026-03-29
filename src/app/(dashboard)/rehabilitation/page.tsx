@@ -34,7 +34,7 @@ export default async function RehabilitationPage() {
         .order("start_date", { ascending: false });
 
       if (!error && rows && rows.length > 0) {
-        const athleteIds = [...new Set(rows.map((r) => r.athlete_id))];
+        const athleteIds = [...new Set(rows.map((r: any) => r.athlete_id))];
 
         const { data: athleteRows } = await supabase
           .from("athletes")
@@ -46,7 +46,7 @@ export default async function RehabilitationPage() {
           athleteMap[a.id] = a.name;
         }
 
-        items = rows.map((r) => ({
+        items = rows.map((r: any) => ({
           program: {
             id: r.id,
             athlete_id: r.athlete_id,
@@ -77,7 +77,7 @@ export default async function RehabilitationPage() {
           .eq("is_active", true)
           .order("name");
 
-        athletes = (allAthletes ?? []).map((a) => ({ id: a.id, name: a.name }));
+        athletes = (allAthletes ?? []).map((a: any) => ({ id: a.id, name: a.name }));
       }
     }
   } catch (err) {

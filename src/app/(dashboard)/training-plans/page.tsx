@@ -340,10 +340,12 @@ export default function TrainingPlansPage() {
   const [tab, setTab] = useState<"pending" | "approved" | "all">("pending");
 
   const fetchPlans = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const sessionRes = await supabase.auth.getSession();
+    const session = sessionRes?.data?.session ?? null;
     if (!session) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const userRes = await supabase.auth.getUser();
+    const user = userRes?.data?.user ?? null;
     if (!user) return;
     const { data: staff } = await supabase.from("staff").select("org_id").eq("id", user.id).maybeSingle();
     if (!staff?.org_id) return;
@@ -368,8 +370,9 @@ export default function TrainingPlansPage() {
   }, []);
 
   const handleGenerate = async (weekStart: string, notes: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("ログインが必要です");
+    const sessionRes = await supabase.auth.getSession();
+    const session = sessionRes?.data?.session ?? null;
+    if (!session) throw new Error("ログインが必要です。認証情報を確認してください。");
     const res = await fetch("/api/staff/generate-training-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
@@ -381,7 +384,8 @@ export default function TrainingPlansPage() {
   };
 
   const handleApprove = async (planId: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const sessionRes = await supabase.auth.getSession();
+    const session = sessionRes?.data?.session ?? null;
     if (!session) return;
     await fetch(`/api/staff/training-plans/${planId}/approve`, {
       method: "POST",
@@ -391,7 +395,8 @@ export default function TrainingPlansPage() {
   };
 
   const handleReject = async (planId: string, reason: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const sessionRes = await supabase.auth.getSession();
+    const session = sessionRes?.data?.session ?? null;
     if (!session) return;
     await fetch(`/api/staff/training-plans/${planId}/approve`, {
       method: "POST",

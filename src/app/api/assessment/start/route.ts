@@ -13,7 +13,7 @@ function generateId(): string {
 }
 
 // Map a raw Supabase row to an AssessmentNode
-function rowToAssessmentNode(row: Record<string, unknown>): AssessmentNode {
+function rowToAssessmentNode(row: any): AssessmentNode {
   return {
     node_id: row.node_id as string,
     file_type: row.file_type as AssessmentType,
@@ -53,7 +53,7 @@ async function fetchNodesFromSupabase(
       return null; // signal: table is empty
     }
 
-    return data.map((row) => rowToAssessmentNode(row as Record<string, unknown>));
+    return data.map((row: any) => rowToAssessmentNode(row as any));
   } catch (err) {
     console.warn("[assessment/start] Supabase nodes fetch failed:", err);
     return null;

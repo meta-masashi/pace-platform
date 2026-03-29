@@ -56,7 +56,8 @@ export default async function PlayerDetailPage({
 
         // Build chart data
         if (metricsRows && metricsRows.length > 0) {
-          chartData = metricsRows.map((m) => ({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          chartData = metricsRows.map((m: any) => ({
             date: formatDate(m.date),
             NRS: parseFloat(Number(m.nrs ?? 0).toFixed(1)),
             HRV: parseFloat(Number(m.hrv ?? 0).toFixed(1)),

@@ -51,15 +51,15 @@ export function SrpeDial({ athleteId, sessionId, onSubmit }: SrpeDialProps) {
   const labels = [
     "全く疲れない",
     "非常に楽",
-    "楽",
+    "楽（アップ程度）",
     "やや楽",
-    "普通",
+    "普通（戦術確認）",
     "ややキツい",
-    "キツい",
+    "キツい（SSG）",
     "かなりキツい",
-    "非常にキツい",
+    "非常にキツい（紅白戦）",
     "極めてキツい",
-    "限界",
+    "限界（フル90分）",
   ];
 
   const handleChange = useCallback(

@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { TriageSwipe } from "@/components/swipe/triage-swipe";
 import type { TriageSwipeCard } from "@/types/swipe-assessment";
 import { Check, X, ChevronRight } from "lucide-react";
+import {
+  parsePosition,
+  POSITION_CONFIG,
+  type FootballPosition,
+} from "@/lib/football/constants";
 
 // ─── タッチデバイス検知 ─────────────────────────────────────────────────────
 
@@ -30,20 +35,42 @@ interface WarRoomProps {
   ) => void;
 }
 
+function PositionTag({ position }: { position: string | null }) {
+  const pos = parsePosition(position);
+  if (!pos) return null;
+  const cfg = POSITION_CONFIG[pos];
+  return (
+    <span
+      className={`text-2xs font-bold px-1.5 py-0.5 rounded ${cfg.bgColor} ${cfg.color}`}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
 function DataWarRoom({ cards, onDecision }: WarRoomProps) {
   const [selectedId, setSelectedId] = useState<string | null>(
     cards[0]?.athlete_id ?? null
   );
-  const selected = cards.find((c) => c.athlete_id === selectedId);
+  const [posFilter, setPosFilter] = useState<FootballPosition | "ALL">("ALL");
+
+  const filteredCards = useMemo(() => {
+    if (posFilter === "ALL") return cards;
+    return cards.filter((c) => parsePosition(c.position) === posFilter);
+  }, [cards, posFilter]);
+
+  const selected = filteredCards.find((c) => c.athlete_id === selectedId)
+    ?? filteredCards[0];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 h-full">
       {/* 左ペイン: データグリッド */}
       <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900">
-            要対応アスリート ({cards.length}名)
-          </h3>
+        <div className="px-4 py-3 border-b border-slate-100 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900">
+              要対応アスリート ({filteredCards.length}名)
+            </h3>
           <button
             onClick={() => {
               cards.forEach((c) =>
@@ -54,9 +81,26 @@ function DataWarRoom({ cards, onDecision }: WarRoomProps) {
           >
             全員一括承認
           </button>
+          </div>
+          {/* ポジション・フィルタ */}
+          <div className="flex gap-1.5">
+            {(["ALL", "GK", "DF", "MF", "FW"] as const).map((pos) => (
+              <button
+                key={pos}
+                onClick={() => setPosFilter(pos)}
+                className={`text-2xs font-bold px-2.5 py-1 rounded-full transition-colors ${
+                  posFilter === pos
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                }`}
+              >
+                {pos === "ALL" ? "全員" : pos}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="divide-y divide-slate-50 max-h-[600px] overflow-y-auto">
-          {cards.map((card) => (
+          {filteredCards.map((card) => (
             <div
               key={card.athlete_id}
               onClick={() => setSelectedId(card.athlete_id)}
@@ -64,9 +108,10 @@ function DataWarRoom({ cards, onDecision }: WarRoomProps) {
                 selectedId === card.athlete_id ? "bg-slate-50" : ""
               }`}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
+                <PositionTag position={card.position} />
                 <span
-                  className={`w-2 h-2 rounded-full ${
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
                     card.status === "RED" ? "bg-red-500" : "bg-amber-500"
                   }`}
                 />

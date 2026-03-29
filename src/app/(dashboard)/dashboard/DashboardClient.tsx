@@ -8,7 +8,7 @@
  * - Today's Action: Critical(赤) / Watchlist(amber) / Normal(緑) / Zone(青)
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { MorningMonopoly } from "@/components/dashboard/morning-monopoly";
 import { BioOverview } from "@/components/dashboard/bio-overview";
 import { FutureCanvas } from "@/components/dashboard/future-canvas";
@@ -128,9 +128,9 @@ function readinessColor(score: number): string {
 type ChartTab = "acwr" | "readiness" | "fitness_fatigue";
 
 const CHART_TABS: { key: ChartTab; label: string }[] = [
-  { key: "acwr",           label: "ACWR" },
-  { key: "readiness",      label: "Readiness" },
-  { key: "fitness_fatigue", label: "Fitness vs Fatigue" },
+  { key: "acwr",           label: "負荷バランス（急性 / 慢性）" },
+  { key: "readiness",      label: "出場可能スコア" },
+  { key: "fitness_fatigue", label: "コンディション推移（体力 vs 疲労）" },
 ];
 
 function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
@@ -143,9 +143,9 @@ function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
           <YAxis tick={{ fontSize: 11 }} domain={[0, 2.5]} />
           <Tooltip />
           <Legend />
-          <ReferenceLine y={1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "危険 1.5", fill: "#ef4444", fontSize: 10 }} />
-          <ReferenceLine y={1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "注意 1.3", fill: "#f59e0b", fontSize: 10 }} />
-          <Line type="monotone" dataKey="ACWR" stroke="#f59e0b" strokeWidth={2.5} dot={false} name="ACWR（チーム平均）" />
+          <ReferenceLine y={1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "過負荷ライン 1.5", fill: "#ef4444", fontSize: 10 }} />
+          <ReferenceLine y={1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "注意ライン 1.3", fill: "#f59e0b", fontSize: 10 }} />
+          <Line type="monotone" dataKey="ACWR" stroke="#f59e0b" strokeWidth={2.5} dot={false} name="負荷バランス（チーム平均）" />
         </LineChart>
       </ResponsiveContainer>
     );
@@ -166,7 +166,7 @@ function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
           <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
           <Tooltip />
           <ReferenceLine y={60} stroke="#d97706" strokeDasharray="4 4" label={{ value: "注意ライン", fill: "#d97706", fontSize: 10 }} />
-          <Area type="monotone" dataKey="readiness" stroke="#16a34a" strokeWidth={2.5} fill="url(#readinessGrad)" name="Readiness" dot={false} />
+          <Area type="monotone" dataKey="readiness" stroke="#16a34a" strokeWidth={2.5} fill="url(#readinessGrad)" name="出場可能度" dot={false} />
         </AreaChart>
       </ResponsiveContainer>
     );
@@ -182,7 +182,7 @@ function TeamChart({ data, tab }: { data: ChartDataPoint[]; tab: ChartTab }) {
         <Tooltip />
         <Legend />
         <Bar dataKey="fatigue" fill="#ef444422" stroke="#ef4444" strokeWidth={1} name="疲労" radius={[2,2,0,0]} />
-        <Line type="monotone" dataKey="fitness" stroke="#16a34a" strokeWidth={2.5} dot={false} name="フィットネス" />
+        <Line type="monotone" dataKey="fitness" stroke="#16a34a" strokeWidth={2.5} dot={false} name="体力（フィットネス）" />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -202,9 +202,14 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const [activeTab, setActiveTab] = useState<ChartTab>("acwr");
 
-  // 7AM Monopoly mode: show by default before 10am, or toggle manually
-  const isBeforeTen = useMemo(() => new Date().getHours() < 10, []);
-  const [monopolyMode, setMonopolyMode] = useState(isBeforeTen && (criticalCount + watchlistCount) > 0);
+  // 7AM Monopoly mode: activate client-side only to avoid hydration mismatch
+  const [monopolyMode, setMonopolyMode] = useState(false);
+  useEffect(() => {
+    const isBeforeTen = new Date().getHours() < 10;
+    if (isBeforeTen && (criticalCount + watchlistCount) > 0) {
+      setMonopolyMode(true);
+    }
+  }, [criticalCount, watchlistCount]);
 
   const alertCount = criticalCount + watchlistCount;
   const normalCount = teamCondition?.normal_count ?? 0;
@@ -238,6 +243,7 @@ export function DashboardClient({
   }
 
   // Future Canvas data: past 14 + future 7 days
+  // Deterministic seed to avoid SSR/CSR hydration mismatch (no Math.random)
   const futureCanvasData = useMemo(() => {
     const past = chartData.map((d) => ({
       date: d.date,
@@ -246,18 +252,18 @@ export function DashboardClient({
       acwr: d.ACWR * 20,
       isFuture: false,
     }));
-    // Generate 7 future days with projected trend
+    // Generate 7 future days with deterministic projected trend
     const lastLoad = past.length > 0 ? past[past.length - 1]!.load : 50;
     const lastDmg = past.length > 0 ? past[past.length - 1]!.damage : 40;
+    const seeds = [0.12, 0.08, -0.05, 0.15, -0.02, 0.10, 0.06]; // fixed offsets
     for (let i = 1; i <= 7; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      const label = `${date.getMonth() + 1}/${date.getDate()}`;
+      const offset = seeds[i - 1]!;
+      // Use todayLabel as date anchor instead of new Date() to keep SSR/CSR consistent
       past.push({
-        date: label,
-        load: Math.round(lastLoad * (1 + Math.random() * 0.2 - 0.1)),
-        damage: Math.min(100, Math.round(lastDmg + i * 3 * Math.random())),
-        acwr: 22 + Math.random() * 6,
+        date: `+${i}日`,
+        load: Math.round(lastLoad * (1 + offset)),
+        damage: Math.min(100, Math.round(lastDmg + i * 3 * (0.5 + offset))),
+        acwr: 22 + i * 0.8,
         isFuture: true,
       });
     }
@@ -293,14 +299,14 @@ export function DashboardClient({
       {/* ── KPI Row (retained as secondary detail) ── */}
       <div className="kpi-row-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
         <KpiCard
-          title="Critical"
+          title="即時対応"
           value={String(criticalCount)}
           unit="名"
           color="red"
           emphasis
           trend={criticalCount > 0 ? "up" : "stable"}
           trendLabel="要即対応"
-          subtitle="NRS≥6 または ACWR>1.5"
+          subtitle="高負荷 または 痛み強度6以上"
         />
         <KpiCard
           title="チェックイン率"
@@ -312,23 +318,23 @@ export function DashboardClient({
           subtitle={`${totalAthletes}名中`}
         />
         <KpiCard
-          title="チーム Readiness"
+          title="チーム出場可能度"
           value={String(Math.round(avgReadiness))}
           unit=""
           color={avgReadiness >= 70 ? "green" : avgReadiness >= 50 ? "amber" : "red"}
           trend="stable"
-          trendLabel={`Zone ${zoneCount}名 / Normal ${normalCount}名`}
+          trendLabel={`フル稼働 ${normalCount}名 / 別メニュー ${zoneCount}名`}
           subtitle="チーム平均スコア"
         />
         <KpiCard
-          title="Watchlist"
+          title="要注意"
           value={String(watchlistCount)}
           unit="名"
           color="amber"
           emphasis
           trend={watchlistCount > 0 ? "up" : "stable"}
-          trendLabel="要注意観察"
-          subtitle="ACWR 1.3〜1.5 or NRS 4〜5"
+          trendLabel="経過観察中"
+          subtitle="負荷バランス注意 or 痛み4〜5"
         />
       </div>
 

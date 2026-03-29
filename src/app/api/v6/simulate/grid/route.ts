@@ -94,9 +94,8 @@ function approximateODE(load: number, currentDamage: number): ODEResponse {
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userRes = await supabase.auth.getUser();
+  const user = userRes?.data?.user ?? null;
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
 
       // If Supabase returned athletes, use real metrics
       if (athletes && athletes.length > 0) {
-        const athleteIds = athletes.map((a) => a.id);
+        const athleteIds = athletes.map((a: any) => a.id);
         const orgId: string = athletes[0].org_id as string;
 
         // Fetch last 14 days of metrics for all athletes in team
@@ -268,7 +268,7 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        const entries: TriageEntry[] = athletes.map((athlete) => {
+        const entries: TriageEntry[] = athletes.map((athlete: any) => {
           const metrics = metricsByAthlete[athlete.id] ?? [];
           return computeTriageEntryFromData(athlete as { id: string; name: string; position: string }, metrics);
         });

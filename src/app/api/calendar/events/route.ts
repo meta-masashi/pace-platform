@@ -51,17 +51,17 @@ export async function GET(req: NextRequest) {
   const athleteCount = conditionCache?.length ?? 0;
   const avgReadiness =
     athleteCount > 0
-      ? (conditionCache?.reduce((s, a) => s + (a.readiness_score ?? 0), 0) ?? 0) /
+      ? (conditionCache?.reduce((s: number, a: any) => s + ((a.readiness_score as number) ?? 0), 0) ?? 0) /
         athleteCount
       : 0;
   const avgAcwr =
     athleteCount > 0
-      ? (conditionCache?.reduce((s, a) => s + (a.acwr ?? 0), 0) ?? 0) /
+      ? (conditionCache?.reduce((s: number, a: any) => s + ((a.acwr as number) ?? 0), 0) ?? 0) /
         athleteCount
       : 0;
 
   // Simple load prediction: predict availability based on event type and current ACWR
-  const eventsWithPrediction = (events ?? []).map((event) => {
+  const eventsWithPrediction = (events ?? []).map((event: any) => {
     let predictedAvailability = 100;
     const eventType = event.event_type;
 

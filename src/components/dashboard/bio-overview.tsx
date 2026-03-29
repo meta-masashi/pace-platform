@@ -26,24 +26,23 @@ function HalfDonutGauge({ value, max = 100 }: { value: number; max?: number }) {
 
   return (
     <svg viewBox="0 0 200 110" className="w-full max-w-[200px]">
-      {/* Background arc */}
+      {/* Background arc (full) */}
       <path
         d={`M ${100 - R} 90 A ${R} ${R} 0 0 1 ${100 + R} 90`}
         fill="none"
-        stroke="#e2e8f0"
+        stroke="#f1f5f9"
         strokeWidth="16"
         strokeLinecap="round"
       />
-      {/* Value arc */}
-      {pct > 0 && (
-        <path
-          d={`M ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 0 ${x2} ${y2}`}
-          fill="none"
-          stroke={color}
-          strokeWidth="16"
-          strokeLinecap="round"
-        />
-      )}
+      {/* Value arc — always render with transition */}
+      <path
+        d={`M ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 0 ${x2} ${y2}`}
+        fill="none"
+        stroke={color}
+        strokeWidth="16"
+        strokeLinecap="round"
+        style={{ transition: "d 0.6s ease, stroke 0.4s ease" }}
+      />
     </svg>
   );
 }
@@ -112,7 +111,7 @@ export function BioOverview({
             )}
           </div>
           <p className="text-sm font-semibold text-slate-700 mt-1">
-            Team Readiness
+            チーム稼働率
           </p>
           <p className="text-xs text-slate-500">
             {fullMenuCount}/{totalAthletes}名がフルメニュー消化可能
@@ -149,7 +148,7 @@ export function BioOverview({
           {/* チーム平均ACWR */}
           <div>
             <p className="text-xs text-slate-500 font-medium mb-1">
-              チーム平均 ACWR
+              チーム負荷バランス（急性 / 慢性）
             </p>
             <span className={`text-3xl font-bold font-numeric ${acwrColor}`}>
               {teamAcwr.toFixed(2)}
