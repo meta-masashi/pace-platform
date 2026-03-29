@@ -74,8 +74,9 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await res.json();
-    const dCrit = result.d_crit ?? 80;
-    const ratio = result.damage_after / Math.max(dCrit, 0.01);
+    const damageAfter = Number.isFinite(result.damage_after) ? result.damage_after : 0;
+    const dCrit = Number.isFinite(result.d_crit) ? result.d_crit : 80;
+    const ratio = damageAfter / Math.max(dCrit, 0.01);
 
     let status: string;
     if (ratio >= 1.0) status = "RED";
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
     else status = "GREEN";
 
     return NextResponse.json({
-      predicted_damage: Math.round(result.damage_after * 10) / 10,
+      predicted_damage: Math.round(damageAfter * 10) / 10,
       repair_rate: result.repair_rate,
       status,
       d_crit: dCrit,

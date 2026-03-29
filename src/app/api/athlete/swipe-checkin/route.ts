@@ -15,25 +15,53 @@ import type { SwipeResponsePayload } from "@/types/swipe-assessment";
 const LAMBDA_HESITATION = 1.5;
 /** Default baseline reaction time (ms) */
 const DEFAULT_BASELINE_MS = 800;
+/** Minimum physiological reaction time (ms) — faster = gaming */
+const MIN_REACTION_MS = 250;
+/** Superhuman swipe velocity threshold (px/s) */
+const MAX_PLAUSIBLE_VELOCITY = 1200;
 
 /**
- * Dynamic R_k penalty based on hesitation time.
+ * Dynamic R_k penalty — BIDIRECTIONAL.
  *
- * R_k = R_base × (1 + exp(λ × (current - avg) / avg))
+ * Slow hesitation (original):
+ *   R_k = R_base × (1 + exp(λ × (current - avg) / avg))
  *
- * When an athlete hesitates significantly longer than their baseline,
- * the EKF will down-weight their subjective report and rely more on
- * objective ODE damage predictions.
+ * Fast gaming (NEW):
+ *   If reaction < MIN_REACTION_MS → penalty = 3.0 (automatic distrust)
+ *   If velocity > MAX_PLAUSIBLE_VELOCITY → penalty += 1.5
+ *
+ * The EKF down-weights subjective reports with high R_k,
+ * forcing reliance on objective ODE damage predictions.
  */
 function computeRkPenalty(
   hesitationMs: number,
+  reactionMs: number,
+  velocity: number,
   baselineMs: number,
   lambda: number = LAMBDA_HESITATION
 ): number {
-  const safeBaseline = Math.max(baselineMs, 100); // prevent div by zero
+  const safeBaseline = Math.max(baselineMs, 100);
+
+  // ── Fast-swipe gaming detection ──
+  // Sub-250ms reaction is physiologically implausible for genuine assessment
+  if (reactionMs > 0 && reactionMs < MIN_REACTION_MS) {
+    return Math.min(20.0, 3.0 + (velocity > MAX_PLAUSIBLE_VELOCITY ? 1.5 : 0));
+  }
+
+  // ── Zero hesitation (null first_touch) = suspicious ──
+  if (hesitationMs <= 0) {
+    return 2.5; // moderate distrust — no touch data available
+  }
+
+  // ── Original slow-hesitation penalty ──
   const ratio = (hesitationMs - safeBaseline) / safeBaseline;
-  const penalty = 1 + Math.exp(lambda * ratio);
-  // Clamp: minimum 1.0 (no penalty), maximum 20.0 (extreme distrust)
+  let penalty = 1 + Math.exp(lambda * ratio);
+
+  // ── Velocity bonus: superhuman fling = additional distrust ──
+  if (velocity > MAX_PLAUSIBLE_VELOCITY) {
+    penalty += 1.0;
+  }
+
   return Math.max(1.0, Math.min(20.0, penalty));
 }
 
@@ -95,10 +123,15 @@ export async function POST(req: NextRequest) {
           historicalData.length
         : DEFAULT_BASELINE_MS;
 
-    // Compute per-response R_k penalties
+    // Compute per-response R_k penalties (bidirectional: slow + fast)
     const responsesWithPenalty = responses.map((r) => ({
       ...r,
-      rk_penalty: computeRkPenalty(r.hesitation_time_ms, baselineMs),
+      rk_penalty: computeRkPenalty(
+        r.hesitation_time_ms,
+        r.reaction_latency_ms,
+        r.swipe_velocity,
+        baselineMs
+      ),
       baseline_ms: Math.round(baselineMs),
     }));
 
@@ -124,11 +157,17 @@ export async function POST(req: NextRequest) {
     // Aggregate subjective condition score
     const subjectiveScore = aggregateSubjectiveScore(responses);
 
-    // Determine if hesitation pattern suggests deception
-    const highHesitationResponses = responsesWithPenalty.filter(
-      (r) => r.rk_penalty > 3.0 && r.response === -1 // said "good" but hesitated
+    // Determine if ANY anomalous pattern suggests deception
+    // Flags: slow hesitation on "good", fast gaming, or high velocity
+    const suspiciousResponses = responsesWithPenalty.filter(
+      (r) => r.rk_penalty >= 2.5 // bidirectional: slow OR fast anomaly
     );
-    const potentialDeception = highHesitationResponses.length > 0;
+    // Batch uniformity check: all responses identical + fast = gaming
+    const allSameResponse = new Set(responses.map((r) => r.response)).size === 1;
+    const avgReaction = responses.reduce((s, r) => s + r.reaction_latency_ms, 0) / responses.length;
+    const batchGaming = allSameResponse && avgReaction < MIN_REACTION_MS;
+
+    const potentialDeception = suspiciousResponses.length > 0 || batchGaming;
 
     // Forward subjective penalty to condition cache update
     const { error: cacheError } = await supabase
@@ -148,7 +187,8 @@ export async function POST(req: NextRequest) {
       subjective_score: subjectiveScore,
       avg_rk_penalty: Math.round(avgRkPenalty * 100) / 100,
       potential_deception: potentialDeception,
-      deception_flags: highHesitationResponses.map((r) => r.question_id),
+      deception_flags: suspiciousResponses.map((r: any) => r.question_id),
+      batch_gaming: batchGaming,
       baseline_reaction_ms: Math.round(baselineMs),
       responses_count: responses.length,
     });

@@ -42,7 +42,7 @@ function ApprovalBanner({ program }: { program: RehabProgram }) {
       .join("｜");
     return (
       <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-        ✅ 診断確認済み{parts ? `｜${parts}` : ""}
+        ✅ 臨床所見 承認済み{parts ? `｜${parts}` : ""}
       </div>
     );
   }
@@ -106,7 +106,7 @@ function ApprovalPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">診断承認（マスター専用）</CardTitle>
+        <CardTitle className="text-base">臨床所見の承認（マスター専用）</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {mode === "idle" && (
@@ -129,7 +129,7 @@ function ApprovalPanel({
         {mode === "confirm_approve" && (
           <div className="space-y-3">
             <p className="text-sm text-gray-700">
-              この診断を承認してよろしいですか？承認後は選手に診断名が表示されます。
+              この臨床所見を承認してよろしいですか？承認後は選手にコンディション情報が表示されます。
             </p>
             <div className="flex gap-3">
               <button

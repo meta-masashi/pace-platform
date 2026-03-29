@@ -205,7 +205,7 @@ export function WhatIfSimulator({
               syncing ? "text-slate-400" : cfg.text
             }`}
           >
-            {result?.predicted_damage ?? "—"}
+            {result && Number.isFinite(result.predicted_damage) ? result.predicted_damage : "—"}
           </span>
           <span className="text-sm text-slate-400 mb-1">/ 100</span>
 

@@ -50,7 +50,8 @@ function getScoreColor(score: number): {
 
 export function GlowingCore({ score, label, size = 240 }: GlowingCoreProps) {
   const color = useMemo(() => getScoreColor(score), [score]);
-  const clampedScore = Math.max(0, Math.min(100, score));
+  const safeScore = Number.isFinite(score) ? score : 0;
+  const clampedScore = Math.max(0, Math.min(100, safeScore));
 
   const strokeWidth = 10;
   const radius = (size - strokeWidth) / 2;

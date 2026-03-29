@@ -24,11 +24,23 @@ function shuffle<T>(arr: T[]): T[] {
 // ─── Local Queue for offline resilience ────────────────────────────────────
 
 const QUEUE_KEY = "pace_swipe_queue";
+/** 24時間を超えた古いキューは破棄 */
+const QUEUE_TTL_MS = 24 * 60 * 60 * 1000;
+/** 送信済みIDを記録して重複排除 */
+const SENT_KEY = "pace_swipe_sent_ids";
 
-function enqueueOffline(responses: SwipeResponsePayload[]) {
+function generateIdempotencyId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function enqueueOffline(responses: SwipeResponsePayload[], idempotencyId?: string) {
   try {
     const existing = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
-    existing.push({ responses, timestamp: Date.now() });
+    existing.push({
+      responses,
+      timestamp: Date.now(),
+      idempotency_id: idempotencyId || generateIdempotencyId(),
+    });
     localStorage.setItem(QUEUE_KEY, JSON.stringify(existing));
   } catch {
     // localStorage unavailable
@@ -41,15 +53,35 @@ function flushOfflineQueue() {
     if (!raw) return;
     const queue = JSON.parse(raw);
     localStorage.removeItem(QUEUE_KEY);
+
+    // Load sent IDs for deduplication
+    const sentIds = new Set(
+      JSON.parse(localStorage.getItem(SENT_KEY) || "[]") as string[]
+    );
+
+    const now = Date.now();
     for (const item of queue) {
+      // TTL: discard items older than 24 hours
+      if (now - item.timestamp > QUEUE_TTL_MS) continue;
+      // Dedup: skip already-sent items
+      if (sentIds.has(item.idempotency_id)) continue;
+
       fetch("/api/athlete/swipe-checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ responses: item.responses }),
-      }).catch(() => {
-        // Re-queue if still offline
-        enqueueOffline(item.responses);
-      });
+        body: JSON.stringify({
+          responses: item.responses,
+          idempotency_id: item.idempotency_id,
+        }),
+      })
+        .then(() => {
+          // Mark as sent
+          sentIds.add(item.idempotency_id);
+          localStorage.setItem(SENT_KEY, JSON.stringify([...sentIds].slice(-200)));
+        })
+        .catch(() => {
+          enqueueOffline(item.responses, item.idempotency_id);
+        });
     }
   } catch {
     // noop
