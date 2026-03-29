@@ -582,6 +582,14 @@ function CalendarSection({
             ? 'Google Calendar の接続期限が切れました。再接続してください。'
             : 'Google Calendar を接続してスケジュール負荷予測を表示'}
         </p>
+        {calendarStatus === 'expired' ? (
+          <a
+            href="/settings/integrations"
+            className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+          >
+            設定ページで再接続
+          </a>
+        ) : (
         <button
           type="button"
           onClick={onConnectCalendar}
@@ -590,6 +598,7 @@ function CalendarSection({
         >
           {connectingCalendar ? '接続中...' : 'Google カレンダーを接続'}
         </button>
+        )}
       </div>
     );
   }
