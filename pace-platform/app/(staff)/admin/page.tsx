@@ -142,6 +142,37 @@ export default async function AdminDashboardPage() {
         <StatCard label="登録選手数" value={totalAthletes} href="/athletes" />
         <StatCard label="進行中アセスメント" value={activeAssessments} href="/assessment" />
       </div>
+
+      {/* データ管理リンク */}
+      <div className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold">データ管理</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <a
+            href="/assessment/import"
+            className="flex items-center gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary/30 hover:bg-accent/50"
+          >
+            <span className="text-2xl">📥</span>
+            <div>
+              <p className="text-sm font-medium">Assessment Nodes インポート</p>
+              <p className="text-xs text-muted-foreground">
+                評価ノードを CSV から一括登録（M7）
+              </p>
+            </div>
+          </a>
+          <a
+            href="/admin/billing"
+            className="flex items-center gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary/30 hover:bg-accent/50"
+          >
+            <span className="text-2xl">💳</span>
+            <div>
+              <p className="text-sm font-medium">請求・プラン管理</p>
+              <p className="text-xs text-muted-foreground">
+                サブスクリプションとプラン変更
+              </p>
+            </div>
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
