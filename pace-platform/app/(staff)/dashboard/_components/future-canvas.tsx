@@ -13,47 +13,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 
-// Recharts は SSR 無効で読み込む
-const ResponsiveContainer = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.ResponsiveContainer })),
-  { ssr: false },
-);
-const ComposedChart = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.ComposedChart })),
-  { ssr: false },
-);
-const Area = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Area })),
-  { ssr: false },
-);
-const Bar = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Bar })),
-  { ssr: false },
-);
-const Line = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Line })),
-  { ssr: false },
-);
-const XAxis = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.XAxis })),
-  { ssr: false },
-);
-const YAxis = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.YAxis })),
-  { ssr: false },
-);
-const CartesianGrid = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.CartesianGrid })),
-  { ssr: false },
-);
-const Tooltip = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.Tooltip })),
-  { ssr: false },
-);
-const ReferenceLine = dynamic(
-  () => import('recharts').then((mod) => ({ default: mod.ReferenceLine })),
-  { ssr: false },
-);
+// Recharts は SSR 無効で読み込む（型互換のため any キャスト）
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const dyn = (loader: () => Promise<any>) => dynamic(loader, { ssr: false }) as any;
+const ResponsiveContainer = dyn(() => import('recharts').then((m) => ({ default: m.ResponsiveContainer })));
+const ComposedChart = dyn(() => import('recharts').then((m) => ({ default: m.ComposedChart })));
+const Area = dyn(() => import('recharts').then((m) => ({ default: m.Area })));
+const Bar = dyn(() => import('recharts').then((m) => ({ default: m.Bar })));
+const Line = dyn(() => import('recharts').then((m) => ({ default: m.Line })));
+const XAxis = dyn(() => import('recharts').then((m) => ({ default: m.XAxis })));
+const YAxis = dyn(() => import('recharts').then((m) => ({ default: m.YAxis })));
+const CartesianGrid = dyn(() => import('recharts').then((m) => ({ default: m.CartesianGrid })));
+const Tooltip = dyn(() => import('recharts').then((m) => ({ default: m.Tooltip })));
+const ReferenceLine = dyn(() => import('recharts').then((m) => ({ default: m.ReferenceLine })));
 
 // ---------------------------------------------------------------------------
 // 型定義
