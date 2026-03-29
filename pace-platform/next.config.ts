@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const securityHeaders = [
   {
@@ -9,7 +10,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://api.stripe.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://api.stripe.com https://*.ingest.sentry.io",
       "frame-src 'self' https://js.stripe.com",
       "object-src 'none'",
       "base-uri 'self'",
@@ -61,4 +62,17 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: 'hachi-w2',
+  project: 'pace-platform',
+
+  // ソースマップを Sentry にアップロード（本番ビルド時のみ）
+  // SENTRY_AUTH_TOKEN 環境変数が必要
+  silent: !process.env.CI,
+
+  // Tree-shaking でバンドルサイズを削減
+  disableLogger: true,
+
+  // 自動的な instrumentation を有効化
+  automaticVercelMonitors: true,
+});
