@@ -28,10 +28,10 @@ jobs:
       - name: Mark all existing migrations as applied
         run: |
           # ローカルの全マイグレーションファイルを「適用済み」として CLI 経由で登録する。
-          # これにより supabase db push は新規ファイルのみを対象にする。
-          # supabase CLI の migration repair を使うことで CLI が期待する形式で書き込む。
+          # supabase migration repair は純粋な14桁数値タイムスタンプのみ受け付けるため
+          # ファイル名の数値プレフィックスのみを抽出して渡す。
           for f in supabase/migrations/*.sql; do
-            ver=$(basename "$f" .sql)
+            ver=$(basename "$f" .sql | grep -oE '^[0-9]+')
             echo "Marking as applied: ${ver}"
             supabase migration repair --status applied "$ver" || true
           done
