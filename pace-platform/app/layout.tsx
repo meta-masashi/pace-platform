@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     default: 'PACE Platform',
     template: '%s | PACE Platform',
   },
-  description: '競走馬コンディション予測・評価プラットフォーム',
+  description: 'スポーツ医療チーム向けアスリートコンディション管理・傷害予防プラットフォーム',
   robots: {
     index: false,
     follow: false,

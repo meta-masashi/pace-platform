@@ -63,11 +63,11 @@ test.describe('決済フロー — 正常系（Stripe テストモード）', ()
     await expect(page.locator('[data-testid="plan-badge"]')).toContainText('Pro')
   })
 
-  test('Starter プランへの加入フローが完了する', async ({ page }) => {
+  test('Standard プランへの加入フローが完了する', async ({ page }) => {
     await loginAsTestUser(page)
     await page.goto('/pricing')
 
-    await page.click('[data-testid="upgrade-starter-button"]')
+    await page.click('[data-testid="upgrade-standard-button"]')
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 15_000 })
 
     // テストカードで決済
@@ -141,11 +141,11 @@ test.describe('決済フロー — エラーハンドリング', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('プラン別機能ゲート（防壁3）', () => {
-  test('Starter プランユーザーが AI 機能にアクセスしようとすると Upgrade 案内が表示される', async ({ page }) => {
-    // starter プランのテストユーザーでログイン
+  test('Standard プランユーザーが AI 機能にアクセスしようとすると Upgrade 案内が表示される', async ({ page }) => {
+    // standard プランのテストユーザーでログイン
     await page.goto('/login')
-    await page.fill('[data-testid="email-input"]', process.env.TEST_STARTER_USER_EMAIL ?? 'starter@pace-platform.test')
-    await page.fill('[data-testid="password-input"]', process.env.TEST_STARTER_USER_PASSWORD ?? 'TestPassword123!')
+    await page.fill('[data-testid="email-input"]', process.env.TEST_STANDARD_USER_EMAIL ?? process.env.TEST_STARTER_USER_EMAIL ?? 'standard@pace-platform.test')
+    await page.fill('[data-testid="password-input"]', process.env.TEST_STANDARD_USER_PASSWORD ?? process.env.TEST_STARTER_USER_PASSWORD ?? 'TestPassword123!')
     await page.click('[data-testid="login-button"]')
     await page.waitForURL('/dashboard')
 

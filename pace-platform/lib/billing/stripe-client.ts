@@ -41,7 +41,8 @@ export const stripe: Stripe | null = stripeSecretKey
 // プラン定義（JPY 固定）
 // ============================================================
 
-export type PlanId = 'starter' | 'pro' | 'enterprise'
+// MASTER-SPEC v1.1: Standard / Pro / Pro+CV Addon / Enterprise
+export type PlanId = 'standard' | 'pro' | 'pro_cv' | 'enterprise'
 
 export interface PlanDefinition {
   id: PlanId
@@ -54,13 +55,14 @@ export interface PlanDefinition {
 }
 
 export const PLANS: Record<PlanId, PlanDefinition> = {
-  starter: {
-    id: 'starter',
-    name: 'Starter',
-    priceJpy: 29800,
+  standard: {
+    id: 'standard',
+    name: 'Standard',
+    priceJpy: 100000,
     maxStaff: 5,
     maxAthletes: 50,
-    priceId: process.env.STRIPE_STARTER_PRICE_ID ?? null,
+    // 後方互換: STRIPE_STANDARD_PRICE_ID がなければ STRIPE_STARTER_PRICE_ID にフォールバック
+    priceId: process.env.STRIPE_STANDARD_PRICE_ID ?? process.env.STRIPE_STARTER_PRICE_ID ?? null,
     features: [
       'feature_basic_assessment',
       'feature_daily_checkin',
@@ -69,10 +71,24 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   pro: {
     id: 'pro',
     name: 'Pro',
-    priceJpy: 79800,
+    priceJpy: 300000,
     maxStaff: 20,
     maxAthletes: 200,
     priceId: process.env.STRIPE_PRO_PRICE_ID ?? null,
+    features: [
+      'feature_basic_assessment',
+      'feature_daily_checkin',
+      'feature_rag_pipeline',
+      'feature_gemini_ai',
+    ],
+  },
+  pro_cv: {
+    id: 'pro_cv',
+    name: 'Pro + CV Addon',
+    priceJpy: 500000,
+    maxStaff: 20,
+    maxAthletes: 200,
+    priceId: process.env.STRIPE_PRO_CV_PRICE_ID ?? null,
     features: [
       'feature_basic_assessment',
       'feature_daily_checkin',
@@ -84,7 +100,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   enterprise: {
     id: 'enterprise',
     name: 'Enterprise',
-    priceJpy: null,
+    priceJpy: 600000,
     maxStaff: null,
     maxAthletes: null,
     priceId: null,  // 個別契約のため Stripe Price ID なし
@@ -96,6 +112,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       'feature_gemini_ai',
       'feature_custom_bayes',
       'feature_enterprise',
+      'feature_multi_team',
     ],
   },
 }
@@ -107,7 +124,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
 export interface CreateCheckoutSessionParams {
   orgId: string
   userId: string
-  planId: Exclude<PlanId, 'enterprise'>  // enterprise は問い合わせ制
+  planId: Exclude<PlanId, 'enterprise'>  // enterprise は個別契約のため除外
   successUrl: string
   cancelUrl: string
   customerEmail?: string

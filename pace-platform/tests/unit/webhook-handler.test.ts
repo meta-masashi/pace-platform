@@ -48,8 +48,9 @@ vi.mock('../../lib/billing/stripe-client', () => ({
     },
   },
   PLANS: {
-    starter: { priceId: 'price_starter' },
+    standard: { priceId: 'price_standard' },
     pro: { priceId: 'price_pro' },
+    pro_cv: { priceId: 'price_pro_cv' },
     enterprise: { priceId: null },
   },
 }))

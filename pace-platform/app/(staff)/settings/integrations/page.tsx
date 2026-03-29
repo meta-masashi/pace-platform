@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { DeviceProvider } from '@/lib/s2s/types';
 import { PROVIDER_LABELS } from '@/lib/s2s/types';
+import type { CalendarSyncStatus } from '@/lib/calendar/types';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -86,6 +87,13 @@ export default function IntegrationSettingsPage() {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Google Calendar 状態
+  const [calendarStatus, setCalendarStatus] = useState<CalendarSyncStatus>('disconnected');
+  const [calendarCalendarId, setCalendarCalendarId] = useState<string | null>(null);
+  const [calendarLoading, setCalendarLoading] = useState(true);
+  const [connectingCalendar, setConnectingCalendar] = useState(false);
+  const [disconnectingCalendar, setDisconnectingCalendar] = useState(false);
+
   // --- 資格情報取得 ---
   const fetchCredentials = useCallback(async () => {
     try {
@@ -113,6 +121,73 @@ export default function IntegrationSettingsPage() {
   useEffect(() => {
     fetchCredentials();
   }, [fetchCredentials]);
+
+  // Google Calendar 状態を取得
+  const fetchCalendarStatus = useCallback(async () => {
+    setCalendarLoading(true);
+    try {
+      const res = await fetch('/api/calendar/connect?status=1');
+      const json = (await res.json()) as {
+        success: boolean;
+        data?: { status: CalendarSyncStatus; calendarId?: string };
+      };
+      if (json.success && json.data) {
+        setCalendarStatus(json.data.status);
+        setCalendarCalendarId(json.data.calendarId ?? null);
+      }
+    } catch {
+      setCalendarStatus('error');
+    } finally {
+      setCalendarLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCalendarStatus();
+  }, [fetchCalendarStatus]);
+
+  // Google Calendar 接続
+  const handleConnectCalendar = useCallback(async () => {
+    setConnectingCalendar(true);
+    try {
+      const res = await fetch('/api/calendar/connect');
+      const json = (await res.json()) as {
+        success: boolean;
+        data?: { authUrl: string };
+        error?: string;
+      };
+      if (!json.success || !json.data?.authUrl) {
+        setError(json.error ?? 'Google Calendar 接続 URL の取得に失敗しました。');
+        return;
+      }
+      window.location.href = json.data.authUrl;
+    } catch {
+      setError('Google Calendar 接続中にエラーが発生しました。');
+    } finally {
+      setConnectingCalendar(false);
+    }
+  }, []);
+
+  // Google Calendar 切断
+  const handleDisconnectCalendar = useCallback(async () => {
+    setDisconnectingCalendar(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/calendar/connect', { method: 'DELETE' });
+      const json = (await res.json()) as { success: boolean; error?: string };
+      if (!json.success) {
+        setError(json.error ?? 'Google Calendar の切断に失敗しました。');
+        return;
+      }
+      setCalendarStatus('disconnected');
+      setCalendarCalendarId(null);
+      setSuccessMessage('Google Calendar の連携を解除しました。');
+    } catch {
+      setError('Google Calendar 切断中にエラーが発生しました。');
+    } finally {
+      setDisconnectingCalendar(false);
+    }
+  }, []);
 
   // --- APIキー生成 ---
   const handleGenerateKey = async (provider: DeviceProvider) => {
@@ -257,6 +332,82 @@ export default function IntegrationSettingsPage() {
           </button>
         </div>
       )}
+
+      {/* Google Calendar 連携（M15） */}
+      <div className="rounded-lg border border-border bg-card p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-100 text-xl font-bold text-red-600">
+              G
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">
+                Google Calendar
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                チームスケジュール（試合・高強度練習・リカバリー）を同期して負荷予測オーバーレイを表示
+              </p>
+            </div>
+          </div>
+
+          {calendarLoading ? (
+            <div className="h-8 w-24 animate-pulse rounded bg-muted" />
+          ) : calendarStatus === 'connected' ? (
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                接続済み
+              </span>
+              <button
+                type="button"
+                onClick={handleDisconnectCalendar}
+                disabled={disconnectingCalendar}
+                className="rounded-md border border-destructive/50 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+              >
+                {disconnectingCalendar ? '切断中...' : '切断'}
+              </button>
+            </div>
+          ) : calendarStatus === 'expired' ? (
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                期限切れ
+              </span>
+              <button
+                type="button"
+                onClick={handleConnectCalendar}
+                disabled={connectingCalendar}
+                className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {connectingCalendar ? '接続中...' : '再接続'}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleConnectCalendar}
+              disabled={connectingCalendar}
+              className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {connectingCalendar ? '接続中...' : 'Google アカウントで接続'}
+            </button>
+          )}
+        </div>
+
+        {calendarStatus === 'connected' && calendarCalendarId && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            同期カレンダー: <span className="font-mono">{calendarCalendarId}</span>
+          </p>
+        )}
+
+        {calendarStatus === 'expired' && (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="text-xs text-amber-700">
+              ⚠️ アクセストークンの期限が切れています。再接続してスケジュール同期を再開してください。
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* プロバイダー一覧 */}
       <div className="space-y-4">

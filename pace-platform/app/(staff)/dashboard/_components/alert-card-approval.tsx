@@ -6,12 +6,18 @@
  * 個別アスリートのリスクアラートカード。
  * NLG エビデンステキスト・修正メニューの表示、承認・修正・却下アクションを提供する。
  *
+ * M20: P1(critical)/P2(watchlist) は有資格スタッフ承認必須。
+ *       全 AI 出力に医療免責事項を表示。
+ *
  * Props:
  *   alertCard — API レスポンスの AlertCard オブジェクト
  *   onActionComplete — アクション完了時のコールバック
  */
 
 import { useCallback, useState } from 'react';
+
+const MEDICAL_DISCLAIMER =
+  "※ この出力はAIによる補助情報です。最終的な判断・処置は必ず有資格スタッフが行ってください。";
 
 // ---------------------------------------------------------------------------
 // 型定義（NLG types から抽出 — クライアントコンポーネント用）
@@ -111,8 +117,14 @@ export function AlertCardApproval({
   const [submitting, setSubmitting] = useState(false);
   const [completedAction, setCompletedAction] = useState<string | null>(null);
   const [completedLogId, setCompletedLogId] = useState<string | null>(null);
+  // M20: P1/P2 は承認前に有資格スタッフが内容を確認した旨の明示的な承認が必要
+  const [p1Acknowledged, setP1Acknowledged] = useState(false);
 
   const config = RISK_LEVEL_CONFIG[alertCard.riskLevel];
+  const isP1 = alertCard.riskLevel === 'critical';
+  const isP2 = alertCard.riskLevel === 'watchlist';
+  const requiresAcknowledgment = isP1 || isP2;
+  const actionsEnabled = !requiresAcknowledgment || p1Acknowledged;
 
   /** 承認アクションを実行する */
   const handleAction = useCallback(
@@ -135,6 +147,7 @@ export function AlertCardApproval({
             evidenceText: alertCard.nlgText,
             nlgText: alertCard.nlgText,
             riskScore: alertCard.riskMultiplier,
+            riskLevel: alertCard.riskLevel,
             diagnosisContext: {
               posteriorProbability: alertCard.posteriorProbability,
               evidenceTrail: alertCard.evidenceTrail,
@@ -216,10 +229,37 @@ export function AlertCardApproval({
         </button>
       </div>
 
+      {/* M20: P1/P2 承認必須バナー */}
+      {requiresAcknowledgment && (
+        <div className={`border-b px-5 py-3 ${isP1 ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+          <p className={`text-xs font-semibold ${isP1 ? 'text-red-800' : 'text-amber-800'}`}>
+            {isP1 ? '⛔ P1 推奨 — 有資格スタッフ承認必須' : '⚠️ P2 推奨 — 有資格スタッフ承認必須'}
+          </p>
+          <p className={`mt-0.5 text-xs ${isP1 ? 'text-red-700' : 'text-amber-700'}`}>
+            MASTER-SPEC M20: この推奨は有資格スタッフ (AT/PT) が内容を確認の上、承認してください。
+          </p>
+          <label className="mt-2 flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={p1Acknowledged}
+              onChange={(e) => setP1Acknowledged(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-gray-300 accent-current"
+            />
+            <span className={`text-xs font-medium ${isP1 ? 'text-red-800' : 'text-amber-800'}`}>
+              内容を確認しました。有資格スタッフとして承認します。
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* NLG エビデンステキスト */}
       <div className="px-5 py-3">
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
           {alertCard.nlgText}
+        </p>
+        {/* M20: 医療免責事項 */}
+        <p className="mt-3 border-t border-border/50 pt-2 text-[11px] leading-snug text-muted-foreground">
+          {MEDICAL_DISCLAIMER}
         </p>
       </div>
 
@@ -290,9 +330,10 @@ export function AlertCardApproval({
           <button
             key={action.type}
             type="button"
-            disabled={submitting}
+            disabled={submitting || !actionsEnabled}
             onClick={() => handleAction(action.type)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 ${ACTION_BUTTON_CONFIG[action.type]}`}
+            title={!actionsEnabled ? '上の確認チェックボックスにチェックしてください' : undefined}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40 ${ACTION_BUTTON_CONFIG[action.type]}`}
           >
             {submitting ? '処理中...' : action.label}
           </button>

@@ -4,9 +4,10 @@
  * プラン別権限制御
  * Supabase RLS と連携したプラン別機能ゲート
  *
- * starter:    基本アセスメント・日次チェックイン
- * pro:        CV解析・RAGパイプライン・Gemini AI機能
- * enterprise: 全機能 + カスタムベイズノード
+ * standard:   基本アセスメント・日次チェックイン・SOAP（¥100,000/月）
+ * pro:        Standard + LLM分析・高度ダッシュボード（¥300,000/月）
+ * pro_cv:     Pro + CV解析API 50本/月（¥500,000/月）
+ * enterprise: Pro+CV Addon + 複数チーム管理（¥600,000/月）
  * ============================================================
  */
 
@@ -20,19 +21,26 @@ import type { PlanId } from './stripe-client'
 export type Feature =
   | 'feature_basic_assessment'   // 基本アセスメント
   | 'feature_daily_checkin'      // 日次チェックイン
-  | 'feature_cv_analysis'        // CV（コンピュータビジョン）解析
+  | 'feature_cv_analysis'        // CV（コンピュータビジョン）解析 ※pro_cv以上
   | 'feature_rag_pipeline'       // RAG パイプライン
   | 'feature_gemini_ai'          // Gemini AI機能
   | 'feature_custom_bayes'       // カスタムベイズノード
   | 'feature_enterprise'         // エンタープライズ専用機能
+  | 'feature_multi_team'         // 複数チーム管理
 
-// プラン別に許可される機能
+// プラン別に許可される機能 (MASTER-SPEC v1.1)
 export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
-  starter: [
+  standard: [
     'feature_basic_assessment',
     'feature_daily_checkin',
   ],
   pro: [
+    'feature_basic_assessment',
+    'feature_daily_checkin',
+    'feature_rag_pipeline',
+    'feature_gemini_ai',
+  ],
+  pro_cv: [
     'feature_basic_assessment',
     'feature_daily_checkin',
     'feature_cv_analysis',
@@ -47,6 +55,7 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_gemini_ai',
     'feature_custom_bayes',
     'feature_enterprise',
+    'feature_multi_team',
   ],
 }
 
@@ -60,11 +69,15 @@ export interface PlanLimits {
 }
 
 export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
-  starter: {
+  standard: {
     maxStaff: 5,
     maxAthletes: 50,
   },
   pro: {
+    maxStaff: 20,
+    maxAthletes: 200,
+  },
+  pro_cv: {
     maxStaff: 20,
     maxAthletes: 200,
   },
@@ -209,7 +222,7 @@ export async function checkStaffLimit(
     .eq('org_id', orgId)
     .single()
 
-  const plan = (subscription?.plan as PlanId) ?? 'starter'
+  const plan = (subscription?.plan as PlanId) ?? 'standard'
   const limit = PLAN_LIMITS[plan].maxStaff
 
   const { count } = await supabaseClient
@@ -245,7 +258,7 @@ export async function checkAthleteLimit(
     .eq('org_id', orgId)
     .single()
 
-  const plan = (subscription?.plan as PlanId) ?? 'starter'
+  const plan = (subscription?.plan as PlanId) ?? 'standard'
   const limit = PLAN_LIMITS[plan].maxAthletes
 
   const { count } = await supabaseClient
@@ -276,26 +289,33 @@ function getUpgradeHint(currentPlan: PlanId, feature: Feature): string {
   const featureToMinPlan: Record<Feature, PlanId | null> = {
     feature_basic_assessment: null,       // 全プランで利用可能
     feature_daily_checkin: null,
-    feature_cv_analysis: 'pro',
+    feature_cv_analysis: 'pro_cv',        // Pro + CV Addon 以上
     feature_rag_pipeline: 'pro',
     feature_gemini_ai: 'pro',
     feature_custom_bayes: 'enterprise',
     feature_enterprise: 'enterprise',
+    feature_multi_team: 'enterprise',
   }
 
   const minPlan = featureToMinPlan[feature]
 
   if (!minPlan) return ''
 
-  const planOrder: PlanId[] = ['starter', 'pro', 'enterprise']
+  const planOrder: PlanId[] = ['standard', 'pro', 'pro_cv', 'enterprise']
   const currentIndex = planOrder.indexOf(currentPlan)
   const requiredIndex = planOrder.indexOf(minPlan)
 
   if (currentIndex < requiredIndex) {
+    const planNames: Record<PlanId, string> = {
+      standard: 'Standard',
+      pro: 'Pro',
+      pro_cv: 'Pro + CV Addon',
+      enterprise: 'Enterprise',
+    }
     if (minPlan === 'enterprise') {
       return `Enterprise プランへのアップグレードまたはお問い合わせが必要です。`
     }
-    return `${minPlan.charAt(0).toUpperCase() + minPlan.slice(1)} プランへのアップグレードが必要です。`
+    return `${planNames[minPlan]} プランへのアップグレードが必要です。`
   }
 
   return ''
@@ -307,9 +327,10 @@ function getUpgradeHint(currentPlan: PlanId, feature: Feature): string {
 
 export function getPlanDisplayName(plan: PlanId): string {
   const names: Record<PlanId, string> = {
-    starter: 'Starter（¥29,800/月）',
-    pro: 'Pro（¥79,800/月）',
-    enterprise: 'Enterprise（要問合せ）',
+    standard: 'Standard（¥100,000/月）',
+    pro: 'Pro（¥300,000/月）',
+    pro_cv: 'Pro + CV Addon（¥500,000/月）',
+    enterprise: 'Enterprise（要お問合せ）',
   }
   return names[plan]
 }

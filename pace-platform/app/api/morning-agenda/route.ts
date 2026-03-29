@@ -24,6 +24,7 @@ import {
   determineRiskLevel,
 } from "@/lib/nlg/template-generator";
 import { shapeWithGemini } from "@/lib/nlg/gemini-shaper";
+import { MEDICAL_DISCLAIMER } from "@/lib/gemini/client";
 import type {
   EvidenceAlert,
   AlertCard,
@@ -396,7 +397,7 @@ async function applyGeminiShaping(
 
       result.push({
         ...card,
-        nlgText: shapeResult.text,
+        nlgText: `${shapeResult.text} ${MEDICAL_DISCLAIMER}`,
       });
     } catch {
       // Gemini 失敗 — テンプレートテキストのまま

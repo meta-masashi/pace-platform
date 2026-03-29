@@ -376,8 +376,8 @@ async function handleSubscriptionDeleted(
 
 function resolvePlanFromSubscription(subscription: Stripe.Subscription): PlanId {
   const priceId = subscription.items.data[0]?.price?.id
-  if (!priceId) return 'starter'
+  if (!priceId) return 'standard'
 
   const found = Object.entries(PLANS).find(([, p]) => p.priceId === priceId)
-  return (found?.[0] as PlanId | undefined) ?? 'starter'
+  return (found?.[0] as PlanId | undefined) ?? 'standard'
 }

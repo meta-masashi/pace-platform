@@ -25,14 +25,26 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: Mark all existing migrations as applied
+      - name: Sync migration history
         run: |
-          # ローカルの全マイグレーションファイルを「適用済み」として CLI 経由で登録する。
-          # これにより supabase db push は新規ファイルのみを対象にする。
-          # supabase CLI の migration repair を使うことで CLI が期待する形式で書き込む。
+          # schema_migrations をローカルファイルと完全に同期する。
+          # 1. 管理 API 経由で既存エントリをすべて削除（孤立バージョンを排除）
+          # 2. ローカルファイルの数値プレフィックスを applied として登録
+          # これにより db push は新規ファイルのみを対象にする。
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          MGMT_API="https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query"
+
+          echo "Truncating schema_migrations..."
+          curl -s -X POST "$MGMT_API" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"TRUNCATE supabase_migrations.schema_migrations"}' || true
+
+          echo "Registering local migration files..."
           for f in supabase/migrations/*.sql; do
-            ver=$(basename "$f" .sql)
-            echo "Marking as applied: ${ver}"
+            ver=$(basename "$f" .sql | grep -oE '^[0-9]+')
+            [ -z "$ver" ] && continue
+            echo "  applied: ${ver}"
             supabase migration repair --status applied "$ver" || true
           done
         env:
@@ -132,21 +144,6 @@ jobs:
 
       - name: Deploy weekly-learning-batch
         run: supabase functions deploy weekly-learning-batch
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Deploy dify-workflow
-        run: supabase functions deploy dify-workflow
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Deploy rag-query
-        run: supabase functions deploy rag-query
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Deploy eval-runner
-        run: supabase functions deploy eval-runner
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 

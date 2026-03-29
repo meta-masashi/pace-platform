@@ -44,9 +44,12 @@ export default async function AdminBillingPage() {
   ]);
 
   const planLabel: Record<string, string> = {
-    starter: 'Starter',
+    standard: 'Standard',
     pro: 'Pro',
+    pro_cv: 'Pro + CV Addon',
     enterprise: 'Enterprise',
+    // 後方互換: 旧 starter プランのレコードが残っている場合
+    starter: 'Standard',
   };
 
   const statusLabel: Record<string, string> = {
