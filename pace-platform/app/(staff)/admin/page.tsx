@@ -63,10 +63,11 @@ export default async function AdminDashboardPage() {
   const activeAssessments = assessmentResult.count ?? 0;
 
   const planLabel: Record<string, string> = {
-    starter: "Starter",
-    pro: "Pro",
-    enterprise: "Enterprise",
     standard: "Standard",
+    starter: "Standard", // 後方互換
+    pro: "Pro",
+    pro_cv: "Pro + CV Addon",
+    enterprise: "Enterprise",
   };
 
   const statusLabel: Record<string, string> = {
