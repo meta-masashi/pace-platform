@@ -27,9 +27,18 @@ jobs:
 
       - name: Repair stale remote migrations
         run: |
-          # リモートDBにのみ存在する旧マイグレーションを reverted に修正
-          supabase migration list 2>&1 | grep -oP '^\d{14}' | while read ver; do
-            if [ ! -f "supabase/migrations/${ver}_*.sql" ]; then
+          # リモートDBの migration history を Management API で直接取得し、
+          # ローカルにファイルが存在しないバージョンを reverted に修正する。
+          # CLI の出力をパースする方式と異なり、バージョン桁数に依存しない。
+          REMOTE_VERS=$(curl -s -X POST \
+            "https://api.supabase.com/v1/projects/${{ secrets.SUPABASE_PROJECT_REF }}/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"SELECT version FROM supabase_migrations.schema_migrations ORDER BY version ASC;"}' \
+            | python3 -c "import sys,json; [print(r['version']) for r in json.load(sys.stdin)]" 2>/dev/null || true)
+
+          for ver in $REMOTE_VERS; do
+            if [ -z "$(ls supabase/migrations/${ver}*.sql 2>/dev/null)" ]; then
               echo "Repairing orphan migration: ${ver}"
               supabase migration repair --status reverted "$ver" || true
             fi

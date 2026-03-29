@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { TeamSelector } from '../dashboard/_components/team-selector';
+import { OfflineBadge } from '@/app/_components/offline-badge';
 
 interface StaffHeaderProps {
   user: User;
@@ -32,6 +33,8 @@ export function StaffHeader({ user }: StaffHeaderProps) {
         <TeamSelector />
       </div>
 
+      <div className="flex items-center gap-3">
+        <OfflineBadge />
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((v) => !v)}
@@ -67,6 +70,7 @@ export function StaffHeader({ user }: StaffHeaderProps) {
             </form>
           </div>
         )}
+      </div>
       </div>
     </header>
   );
