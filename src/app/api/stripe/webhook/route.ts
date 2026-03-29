@@ -3,7 +3,7 @@
  *
  * ADR-010 準拠:
  *  1. stripe.webhooks.constructEvent() で署名検証（必須）
- *  2. stripe_webhook_events テーブルで DEDUP（冪等性）
+ *  2. stripe_events テーブルで DEDUP（冪等性）— ADR-010
  *  3. checkout.session.completed → organizations.plan 更新 + subscriptions INSERT
  *  4. invoice.payment_failed → plan を 'standard' にダウングレード
  *  5. customer.subscription.deleted → plan を 'standard' にリセット
@@ -37,7 +37,7 @@ function getDb() {
 async function isDuplicate(eventId: string): Promise<boolean> {
   const db = getDb();
   const { data } = await db
-    .from("stripe_webhook_events")
+    .from("stripe_events")
     .select("id")
     .eq("stripe_event_id", eventId)
     .maybeSingle();
@@ -46,7 +46,7 @@ async function isDuplicate(eventId: string): Promise<boolean> {
 
 async function markProcessed(eventId: string, eventType: string): Promise<void> {
   const db = getDb();
-  await db.from("stripe_webhook_events").insert({
+  await db.from("stripe_events").insert({
     stripe_event_id: eventId,
     event_type: eventType,
     processed_at: new Date().toISOString(),

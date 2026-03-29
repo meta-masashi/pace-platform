@@ -6,7 +6,7 @@ import { AlertTriangle, ListChecks, TrendingUp } from "lucide-react";
 // ─── Half-donut gauge (SVG) ───────────────────────────────────────────────
 
 function HalfDonutGauge({ value, max = 100 }: { value: number; max?: number }) {
-  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   // Arc: 180° half-circle, radius 80, center at (100,90)
   const R = 80;
   const startAngle = Math.PI; // left

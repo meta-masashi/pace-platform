@@ -18,6 +18,7 @@ import { PerformanceCompass } from "./performance-compass";
 import type { PerformanceCompassProps } from "./performance-compass";
 import { InsightCard } from "./insight-card";
 import { BreakdownCard } from "./breakdown-card";
+import { DailyCoachCard } from "./daily-coach-card";
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -256,6 +257,13 @@ export function AthleteHomeContent({
 
       {/* ═══ Layer 2: ナラティブ ═══ */}
       <div className="info-layer-narrative flex flex-col gap-4">
+        {/* M5: AI デイリーコーチ */}
+        <DailyCoachCard
+          score={score}
+          displayName={displayName}
+          actionOfDay={actionOfDay}
+        />
+
         {/* パフォーマンスコンパス */}
         <div className="flex justify-center">
           <PerformanceCompass {...compassProps} />

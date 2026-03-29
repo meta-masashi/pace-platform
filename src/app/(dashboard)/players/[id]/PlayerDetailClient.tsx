@@ -16,6 +16,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
+import { CalibrationUpdateLog } from "@/components/athlete/calibration-update-toast";
+import { PredictionHorizon } from "@/components/athlete/prediction-horizon";
+import { TruthValidation } from "@/components/athlete/truth-validation";
+import { AiProficiencyRadar } from "@/components/athlete/ai-proficiency-radar";
 import type { Athlete, Workout, DiagnosisResult, Priority } from "@/types";
 
 const statusLabel: Record<Priority, string> = {
@@ -44,7 +48,7 @@ export function PlayerDetailClient({
   differentials,
   workout,
 }: PlayerDetailClientProps) {
-  const [activeTab, setActiveTab] = useState<"status" | "program" | "soap">("status");
+  const [activeTab, setActiveTab] = useState<"status" | "program" | "soap" | "ai">("status");
   const [openReasons, setOpenReasons] = useState<Record<string, boolean>>({});
   const [soapS, setSoapS] = useState("");
   const [soapO, setSoapO] = useState("");
@@ -83,8 +87,8 @@ export function PlayerDetailClient({
       </div>
 
       <div className="flex gap-1 border-b border-gray-200">
-        {(["status", "program", "soap"] as const).map((tab) => {
-          const labels = { status: "ステータス", program: "個別プログラム承認", soap: "SOAPノート" };
+        {(["status", "program", "soap", "ai"] as const).map((tab) => {
+          const labels = { status: "ステータス", program: "個別プログラム承認", soap: "SOAPノート", ai: "AI習熟度" };
           return (
             <button
               key={tab}
@@ -303,6 +307,69 @@ export function PlayerDetailClient({
               </CardContent>
             </Card>
           )}
+        </div>
+      )}
+
+      {activeTab === "ai" && (
+        <div className="space-y-4">
+          {/* 精度アップデートログ */}
+          <CalibrationUpdateLog
+            events={[
+              {
+                feature: "ハムストリングスの回復速度",
+                improvementPct: 12,
+                dataDays: 21,
+                updatedAt: new Date(Date.now() - 3600000).toISOString(),
+              },
+              {
+                feature: "ACWR感受性",
+                improvementPct: 8,
+                dataDays: 21,
+                updatedAt: new Date(Date.now() - 7200000).toISOString(),
+              },
+            ]}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 予測の視界 */}
+            <PredictionHorizon
+              streakDays={5}
+              lastCheckinDate={new Date(Date.now() - 86400000).toISOString()}
+              fullHorizonDays={14}
+            />
+
+            {/* AI習熟度マップ */}
+            <AiProficiencyRadar
+              dataDays={21}
+              metrics={[
+                { label: "リカバリー特性", value: 90 },
+                { label: "インテンシティ耐性", value: 65 },
+                { label: "スプリント相関", value: 40 },
+                { label: "睡眠感度", value: 55 },
+                { label: "心理的負荷", value: 30 },
+              ]}
+            />
+          </div>
+
+          {/* 答え合わせ */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <TruthValidation
+              athleteId={athlete.id}
+              target="damage_prediction"
+              predictedValue={68}
+              predictionDate={new Date().toISOString()}
+            />
+            <TruthValidation
+              athleteId={athlete.id}
+              target="readiness_score"
+              predictedValue={74}
+              predictionDate={new Date().toISOString()}
+            />
+          </div>
+
+          <p className="text-2xs text-slate-400 text-center">
+            ※ AI習熟度はチェックインデータの蓄積とともに向上します
+          </p>
         </div>
       )}
 

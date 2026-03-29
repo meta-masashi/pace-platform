@@ -7,6 +7,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { OfflineBadge } from "@/app/_components/offline-badge";
 
 export const metadata: Metadata = {
   title: "アスリートホーム",
@@ -131,6 +132,11 @@ export default function AthleteLayout({
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      {/* オフライン状態バッジ (M16) */}
+      <div className="fixed right-3 top-3 z-50">
+        <OfflineBadge />
+      </div>
+
       {/* メインコンテンツ（最大幅430pxで中央寄せ） */}
       <main className="mx-auto w-full max-w-[430px] flex-1 px-4 pb-20 pt-6">
         {children}

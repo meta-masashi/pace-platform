@@ -63,7 +63,7 @@ function lerp(grid: GridPoint[], scale: number): GridPoint {
     const lo = grid[i]!;
     const hi = grid[i + 1]!;
     if (clamped >= lo.scale && clamped <= hi.scale) {
-      const t = (clamped - lo.scale) / (hi.scale - lo.scale);
+      const t = hi.scale > lo.scale ? (clamped - lo.scale) / (hi.scale - lo.scale) : 0;
       const dmg = lo.predicted_damage + t * (hi.predicted_damage - lo.predicted_damage);
       const status = dmg > 90 ? "RED" : dmg > 60 ? "YELLOW" : "GREEN";
       return { scale: clamped, predicted_damage: Math.round(dmg * 10) / 10, status };

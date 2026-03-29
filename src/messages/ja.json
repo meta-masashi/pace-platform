@@ -1,0 +1,95 @@
+{
+  "common": {
+    "loading": "読み込み中...",
+    "error": "エラーが発生しました",
+    "retry": "再試行",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "delete": "削除",
+    "confirm": "確認",
+    "close": "閉じる",
+    "back": "戻る",
+    "next": "次へ",
+    "submit": "送信",
+    "search": "検索",
+    "noResults": "結果が見つかりませんでした"
+  },
+  "auth": {
+    "login": "ログイン",
+    "logout": "ログアウト",
+    "email": "メールアドレス",
+    "password": "パスワード",
+    "loginError": "メールアドレスまたはパスワードが正しくありません",
+    "sessionExpired": "セッションが期限切れです。再度ログインしてください",
+    "unauthorized": "この操作を行う権限がありません"
+  },
+  "subscription": {
+    "currentPlan": "現在のプラン: {plan}",
+    "expiresAt": "{date}まで有効",
+    "planFree": "フリー",
+    "planBasic": "ベーシック",
+    "planPro": "プロ",
+    "planEnterprise": "エンタープライズ",
+    "upgrade": "アップグレード",
+    "billingCycle": "請求サイクル",
+    "monthly": "月次",
+    "annual": "年次"
+  },
+  "athlete": {
+    "name": "選手名",
+    "sport": "競技種目",
+    "position": "ポジション",
+    "birthDate": "生年月日",
+    "height": "身長",
+    "weight": "体重",
+    "unit": {
+      "cm": "cm",
+      "kg": "kg"
+    }
+  },
+  "injury": {
+    "title": "傷害情報",
+    "bodyPart": "部位",
+    "severity": "重症度",
+    "occuredAt": "受傷日時",
+    "status": "状態",
+    "statusActive": "対応中",
+    "statusRecovered": "回復済み",
+    "statusMonitoring": "経過観察中"
+  },
+  "rehab": {
+    "title": "リハビリテーション",
+    "plan": "リハビリプラン",
+    "phase": "フェーズ",
+    "exercise": "エクササイズ",
+    "sets": "セット",
+    "reps": "回",
+    "duration": "時間",
+    "restPeriod": "休憩",
+    "notes": "備考",
+    "progressNote": "経過記録"
+  },
+  "soap": {
+    "title": "SOAPノート",
+    "subjective": "主観的情報 (S)",
+    "objective": "客観的情報 (O)",
+    "assessment": "評価 (A)",
+    "plan": "計画 (P)",
+    "disclaimer": "※ この出力はAIによる補助情報です。最終的な判断・処置は必ず有資格スタッフが行ってください。"
+  },
+  "validation": {
+    "required": "{field}は必須項目です",
+    "invalidEmail": "有効なメールアドレスを入力してください",
+    "minLength": "{field}は{min}文字以上で入力してください",
+    "maxLength": "{field}は{max}文字以内で入力してください",
+    "invalidPostalCode": "有効な郵便番号を入力してください（例: 123-4567）",
+    "invalidPhoneNumber": "有効な電話番号を入力してください（例: 090-1234-5678）"
+  },
+  "error": {
+    "rateLimitExceeded": "リクエスト制限に達しました。しばらく待ってから再試行してください",
+    "monthlyLimitExceeded": "今月のAI利用上限に達しました。管理者に連絡してください",
+    "aiUnavailable": "AI機能が一時的に利用できません。しばらく待ってから再試行してください",
+    "networkError": "ネットワークエラーが発生しました。接続を確認してください",
+    "serverError": "サーバーエラーが発生しました。管理者に連絡してください"
+  }
+}

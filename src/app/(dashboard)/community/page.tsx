@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Hash, Send, Link2, ShieldCheck, CheckCheck, Check, Filter } from "lucide-react";
-import { mockStaff } from "@/lib/mock-data";
 import { formatDateTime } from "@/lib/utils";
 import type { Channel, Message, Staff } from "@/types";
 import { createClient } from "@/lib/supabase/client";
@@ -27,9 +26,6 @@ const BLANK_SOAP_TEMPLATE = `【S】主訴・自覚症状\n\n【O】客観的所
 
 type FilterRole = "all" | "AT" | "PT" | "S&C" | "master";
 
-// Fallback mock staff id for unauthenticated / dev mode
-const MOCK_STAFF_ID = "staff-2";
-
 export default function CommunityPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
@@ -41,8 +37,8 @@ export default function CommunityPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // The id used for "is this my message" checks (real auth uid or mock fallback)
-  const currentStaffId = currentUserId ?? MOCK_STAFF_ID;
+  // The id used for "is this my message" checks
+  const currentStaffId = currentUserId ?? "";
 
   // ── Initial bootstrap ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -182,35 +178,19 @@ export default function CommunityPage() {
 
   // ── Send message ───────────────────────────────────────────────────────────
   async function handleSend() {
-    if (!messageText.trim() || !activeChannel) return;
+    if (!messageText.trim() || !activeChannel || !currentUserId) return;
     const content = cdsEnabled ? messageText + CDS_DISCLAIMER : messageText;
 
-    if (currentUserId) {
-      // Authenticated: persist to Supabase; Realtime subscription will add to state
-      try {
-        const supabase = createClient();
-        await supabase.from("messages").insert({
-          channel_id: activeChannel.id,
-          staff_id: currentUserId,
-          content,
-        });
-        // Do NOT optimistically add — Realtime handles it
-      } catch {
-        console.warn("[community] Failed to send message");
-      }
-    } else {
-      // Dev / unauthenticated: local mock state
-      const staff = mockStaff.find((s) => s.id === MOCK_STAFF_ID) ?? mockStaff[1];
-      const newMsg: Message = {
-        id: `msg-${Date.now()}`,
+    try {
+      const supabase = createClient();
+      await supabase.from("messages").insert({
         channel_id: activeChannel.id,
-        staff,
+        staff_id: currentUserId,
         content,
-        created_at: new Date().toISOString(),
-        cds_disclaimer: cdsEnabled,
-        read_by: [],
-      };
-      setMessages((prev) => [...prev, newMsg]);
+      });
+      // Do NOT optimistically add — Realtime handles it
+    } catch {
+      console.warn("[community] Failed to send message");
     }
 
     setMessageText("");
@@ -464,7 +444,7 @@ export default function CommunityPage() {
               />
               <button
                 onClick={handleSend}
-                disabled={!messageText.trim()}
+                disabled={!messageText.trim() || !currentUserId}
                 className="p-2.5 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
               >
                 <Send className="w-4 h-4" />
