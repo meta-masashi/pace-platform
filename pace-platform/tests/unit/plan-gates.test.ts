@@ -82,11 +82,11 @@ function createMockSupabaseWithCount(
 // ---------------------------------------------------------------------------
 
 describe('PLAN_FEATURES', () => {
-  it('starter プランは基本機能のみ含む', () => {
-    expect(PLAN_FEATURES.starter).toContain('feature_basic_assessment')
-    expect(PLAN_FEATURES.starter).toContain('feature_daily_checkin')
-    expect(PLAN_FEATURES.starter).not.toContain('feature_gemini_ai')
-    expect(PLAN_FEATURES.starter).not.toContain('feature_rag_pipeline')
+  it('standard プランは基本機能のみ含む', () => {
+    expect(PLAN_FEATURES.standard).toContain('feature_basic_assessment')
+    expect(PLAN_FEATURES.standard).toContain('feature_daily_checkin')
+    expect(PLAN_FEATURES.standard).not.toContain('feature_gemini_ai')
+    expect(PLAN_FEATURES.standard).not.toContain('feature_rag_pipeline')
   })
 
   it('pro プランは Gemini AI と RAG を含む', () => {
@@ -105,6 +105,7 @@ describe('PLAN_FEATURES', () => {
       'feature_gemini_ai',
       'feature_custom_bayes',
       'feature_enterprise',
+      'feature_multi_team',
     ]
     for (const feature of allFeatures) {
       expect(PLAN_FEATURES.enterprise).toContain(feature)
@@ -117,9 +118,9 @@ describe('PLAN_FEATURES', () => {
 // ---------------------------------------------------------------------------
 
 describe('PLAN_LIMITS', () => {
-  it('starter は maxStaff=5, maxAthletes=50', () => {
-    expect(PLAN_LIMITS.starter.maxStaff).toBe(5)
-    expect(PLAN_LIMITS.starter.maxAthletes).toBe(50)
+  it('standard は maxStaff=5, maxAthletes=50', () => {
+    expect(PLAN_LIMITS.standard.maxStaff).toBe(5)
+    expect(PLAN_LIMITS.standard.maxAthletes).toBe(50)
   })
 
   it('pro は maxStaff=20, maxAthletes=200', () => {
@@ -145,8 +146,8 @@ describe('canAccess', () => {
     expect(result.plan).toBe('pro')
   })
 
-  it('active な starter プランで feature_gemini_ai にアクセスできない', async () => {
-    const supabase = createMockSupabase({ plan: 'starter', status: 'active' })
+  it('active な standard プランで feature_gemini_ai にアクセスできない', async () => {
+    const supabase = createMockSupabase({ plan: 'standard', status: 'active' })
     const result = await canAccess(supabase, 'org-1', 'feature_gemini_ai')
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain('Pro')
@@ -180,8 +181,8 @@ describe('canAccess', () => {
     expect(result.allowed).toBe(true)
   })
 
-  it('starter プランで feature_custom_bayes は enterprise のみと案内する', async () => {
-    const supabase = createMockSupabase({ plan: 'starter', status: 'active' })
+  it('standard プランで feature_custom_bayes は enterprise のみと案内する', async () => {
+    const supabase = createMockSupabase({ plan: 'standard', status: 'active' })
     const result = await canAccess(supabase, 'org-1', 'feature_custom_bayes')
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain('Enterprise')
@@ -201,7 +202,7 @@ describe('requireAccess', () => {
   })
 
   it('アクセス拒否の場合は Error をスローする', async () => {
-    const supabase = createMockSupabase({ plan: 'starter', status: 'active' })
+    const supabase = createMockSupabase({ plan: 'standard', status: 'active' })
     await expect(
       requireAccess(supabase, 'org-1', 'feature_gemini_ai')
     ).rejects.toThrow()
@@ -213,15 +214,15 @@ describe('requireAccess', () => {
 // ---------------------------------------------------------------------------
 
 describe('getPlanDisplayName', () => {
-  it('starter の表示名に価格が含まれる', () => {
-    const name = getPlanDisplayName('starter')
-    expect(name).toContain('¥29,800')
-    expect(name).toContain('Starter')
+  it('standard の表示名に価格が含まれる', () => {
+    const name = getPlanDisplayName('standard')
+    expect(name).toContain('¥100,000')
+    expect(name).toContain('Standard')
   })
 
   it('pro の表示名に価格が含まれる', () => {
     const name = getPlanDisplayName('pro')
-    expect(name).toContain('¥79,800')
+    expect(name).toContain('¥300,000')
     expect(name).toContain('Pro')
   })
 

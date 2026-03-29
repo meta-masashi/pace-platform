@@ -14,7 +14,7 @@ interface BreakdownCardProps {
   value: number;
   unit?: string;
   trend?: number[];
-  status?: "good" | "caution" | "warning";
+  status?: "good" | "caution" | "danger";
   type?: "sparkline" | "gauge";
   /** ゲージ表示時にACWR値として渡す */
   gaugeValue?: number;
@@ -31,7 +31,7 @@ function MiniSparkline({
   status,
 }: {
   data: number[];
-  status: "good" | "caution" | "warning";
+  status: "good" | "caution" | "danger";
 }) {
   if (data.length < 2) return null;
 

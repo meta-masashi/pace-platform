@@ -68,17 +68,18 @@ function scoreToStatus(
   return "RED";
 }
 
-function getAcwrStatus(acwr: number): "good" | "caution" | "warning" {
+// MASTER-SPEC M4: safe(<0.8)/optimal(0.8-1.3)/caution(1.3-1.5)/danger(>1.5)
+function getAcwrStatus(acwr: number): "good" | "caution" | "danger" {
   if (acwr >= 0.8 && acwr <= 1.3) return "good";
   if (acwr > 1.3 && acwr <= 1.5) return "caution";
-  if (acwr > 1.5) return "warning";
+  if (acwr > 1.5) return "danger";
   return "good";
 }
 
-function getScoreStatus(score: number): "good" | "caution" | "warning" {
+function getScoreStatus(score: number): "good" | "caution" | "danger" {
   if (score >= 70) return "good";
   if (score >= 40) return "caution";
-  return "warning";
+  return "danger";
 }
 
 function generateDefaultAction(score: number): string {
@@ -227,8 +228,8 @@ export function AthleteHomeContent({
 
   // BreakdownCard 用ステータス
   const fitnessStatus = data ? getScoreStatus(data.conditioningScore) : "good";
-  const fatigueStatus: "good" | "caution" | "warning" =
-    data && data.fatigueEwma > data.fitnessEwma ? "warning" : "good";
+  const fatigueStatus: "good" | "caution" | "danger" =
+    data && data.fatigueEwma > data.fitnessEwma ? "danger" : "good";
   const acwrStatus = data ? getAcwrStatus(data.acwr) : "good";
 
   return (
