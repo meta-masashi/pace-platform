@@ -25,14 +25,15 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: Repair stale remote migrations
+      - name: Mark all existing migrations as applied
         run: |
-          # リモートDBにのみ存在する旧マイグレーションを reverted に修正
-          supabase migration list 2>&1 | grep -oP '^\d{14}' | while read ver; do
-            if [ ! -f "supabase/migrations/${ver}_*.sql" ]; then
-              echo "Repairing orphan migration: ${ver}"
-              supabase migration repair --status reverted "$ver" || true
-            fi
+          # ローカルの全マイグレーションファイルを「適用済み」として CLI 経由で登録する。
+          # これにより supabase db push は新規ファイルのみを対象にする。
+          # supabase CLI の migration repair を使うことで CLI が期待する形式で書き込む。
+          for f in supabase/migrations/*.sql; do
+            ver=$(basename "$f" .sql)
+            echo "Marking as applied: ${ver}"
+            supabase migration repair --status applied "$ver" || true
           done
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
