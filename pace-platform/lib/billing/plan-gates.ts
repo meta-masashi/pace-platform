@@ -330,7 +330,7 @@ export function getPlanDisplayName(plan: PlanId): string {
     standard: 'Standard（¥100,000/月）',
     pro: 'Pro（¥300,000/月）',
     pro_cv: 'Pro + CV Addon（¥500,000/月）',
-    enterprise: 'Enterprise（¥600,000/月）',
+    enterprise: 'Enterprise（要お問合せ）',
   }
   return names[plan]
 }
