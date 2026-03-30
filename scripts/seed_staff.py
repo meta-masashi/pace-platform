@@ -3,8 +3,8 @@
 import os, sys
 from supabase import create_client
 
-SUPABASE_URL = "https://lwoadgkwywhyixgddkow.supabase.co"
-SRK = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx3b2FkZ2t3eXdoeWl4Z2Rka293Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzk3NjU0NCwiZXhwIjoyMDg5NTUyNTQ0fQ.IErPGbmp5tKmtASAQHE37OIPpsRU09eMo-snyk2bhFA"
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SRK = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 ORG_ID = "00000000-0000-0000-0000-000000000001"
 TEAM_ID = "00000000-0000-0000-0000-000000000002"
