@@ -148,6 +148,7 @@ export function CheckinForm({ athleteId }: CheckinFormProps) {
   const [fatigueSubjective, setFatigueSubjective] = useState(3);
   const [nrs, setNrs] = useState(0);
   const [hrv, setHrv] = useState("");
+  const [nsaid24h, setNsaid24h] = useState(false);
 
   // 送信状態
   const [submitting, setSubmitting] = useState(false);
@@ -180,6 +181,10 @@ export function CheckinForm({ athleteId }: CheckinFormProps) {
 
     if (hrv && !Number.isNaN(Number(hrv)) && Number(hrv) > 0) {
       body.hrv = Number(hrv);
+    }
+
+    if (nsaid24h) {
+      body.medication_nsaid_24h = true;
     }
 
     try {
@@ -345,6 +350,22 @@ export function CheckinForm({ athleteId }: CheckinFormProps) {
         unit="ms"
         min={0}
       />
+
+      {/* NSAID 鎮痛剤チェック */}
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={nsaid24h}
+          onChange={(e) => setNsaid24h(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+        />
+        <span className="text-sm text-foreground">
+          過去24時間以内に痛み止め（NSAIDなど）を服用した
+          <span className="ml-1 text-xs text-muted-foreground">
+            （痛み NRS の安全判定に影響します）
+          </span>
+        </span>
+      </label>
 
       {/* 送信ボタン */}
       <button

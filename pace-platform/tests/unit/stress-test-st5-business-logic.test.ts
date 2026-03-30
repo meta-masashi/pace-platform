@@ -331,6 +331,51 @@ describe('ST-5.1: Priority Hierarchy Invariants', () => {
     expect(result.data.priority).toBe('P1_SAFETY');
     expect(result.data.decision).toBe('RED');
   });
+
+  // ── Sleep+Fatigue compound rule (Task 1-1) ──────────────────────────────
+  it('ST-5.1.11: P1 Sleep=1+Fatigue=9 (well inside threshold) must produce RED', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 1, fatigue: 9, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    expect(result.data.decision).toBe('RED');
+    expect(result.data.priority).toBe('P1_SAFETY');
+  });
+
+  it('ST-5.1.12: P1 Sleep=2+Fatigue=8 (exact boundary) must produce RED', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 2, fatigue: 8, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    expect(result.data.decision).toBe('RED');
+    expect(result.data.priority).toBe('P1_SAFETY');
+  });
+
+  it('ST-5.1.13: Sleep=3+Fatigue=8 (sleep just above threshold) must NOT trigger P1 via compound rule', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 3, fatigue: 8, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    // Should NOT be P1 from the compound Sleep+Fatigue rule
+    expect(result.data.priority).not.toBe('P1_SAFETY');
+  });
+
+  it('ST-5.1.14: Sleep=2+Fatigue=7 (fatigue just below threshold) must NOT trigger P1 via compound rule', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 2, fatigue: 7, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    // Should NOT be P1 from the compound Sleep+Fatigue rule
+    expect(result.data.priority).not.toBe('P1_SAFETY');
+  });
 });
 
 // ===========================================================================

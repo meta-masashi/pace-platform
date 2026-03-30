@@ -15,6 +15,7 @@ import { InferencePipeline } from '@/lib/engine/v6/pipeline';
 import type {
   AthleteContext,
   DailyInput,
+  LastKnownRecord,
   PipelineOutput,
   TissueCategory,
 } from '@/lib/engine/v6/types';
@@ -107,6 +108,33 @@ export async function POST(request: Request) {
       .eq('athlete_id', body.athleteId)
       .order('date', { ascending: false });
 
+    // 直前の有効記録を取得（LOCF/指数減衰インピュテーション用）
+    let lastKnownRecord: LastKnownRecord | undefined;
+    if (body.dailyInput.date) {
+      const { data: lastRecord } = await supabase
+        .from('daily_metrics')
+        .select('date, sleep_score, fatigue_subjective, subjective_condition, nrs, srpe, training_duration_min')
+        .eq('athlete_id', body.athleteId)
+        .lt('date', body.dailyInput.date)
+        .order('date', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (lastRecord) {
+        lastKnownRecord = {
+          date: lastRecord.date as string,
+          sleepQuality: (lastRecord.sleep_score as number) ?? 5,
+          fatigue: (lastRecord.fatigue_subjective as number) ?? 5,
+          mood: (lastRecord.subjective_condition as number) ?? 5,
+          muscleSoreness: 3, // daily_metrics に muscleSoreness カラムが追加されるまでデフォルト値
+          stressLevel: 3,    // 同上
+          painNRS: (lastRecord.nrs as number) ?? 0,
+          sRPE: (lastRecord.srpe as number) ?? 0,
+          trainingDurationMin: (lastRecord.training_duration_min as number) ?? 0,
+        };
+      }
+    }
+
     // AthleteContext を組み立てる
     const context: AthleteContext = {
       athleteId: athlete.id as string,
@@ -131,6 +159,7 @@ export async function POST(request: Request) {
         structural_hard: 21,
         neuromotor: 3,
       } satisfies Record<TissueCategory, number>,
+      ...(lastKnownRecord ? { lastKnownRecord } : {}),
     };
 
     // ----- パイプライン実行 -----

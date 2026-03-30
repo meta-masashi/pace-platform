@@ -73,8 +73,8 @@ function checkP1Safety(
   const reasons: string[] = [];
   const reasonsEn: string[] = [];
 
-  // 痛み NRS ≥ 8
-  if (input.cleanedInput.subjectiveScores.painNRS >= config.thresholds.painRedFlag) {
+  // 痛み NRS ≥ 8（NSAID 服用中はマスク: 鎮痛剤で痛みが隠蔽されている可能性があるため P1 を抑制）
+  if (!flags.isMedicationNsaid24h && input.cleanedInput.subjectiveScores.painNRS >= config.thresholds.painRedFlag) {
     reasons.push(
       `痛み NRS が ${input.cleanedInput.subjectiveScores.painNRS} で安全閾値（${config.thresholds.painRedFlag}）以上です。トレーニングの即座の中止と医療スタッフへの相談を推奨します。`,
     );
@@ -114,6 +114,18 @@ function checkP1Safety(
     );
     reasonsEn.push(
       'Within 7 days post-vaccination. Reduced intensity recommended due to myocarditis risk.',
+    );
+  }
+
+  // Sleep ≤ 2 AND Fatigue ≥ 8: 睡眠障害＋高度疲労の複合リスク
+  const sleep = input.cleanedInput.subjectiveScores.sleepQuality;
+  const fatigue = input.cleanedInput.subjectiveScores.fatigue;
+  if (sleep <= 2 && fatigue >= 8) {
+    reasons.push(
+      `睡眠の質が著しく低下（${sleep}）し、かつ疲労度が高水準（${fatigue}）です。過剰疲労・オーバートレーニングの危険域にあります。即座に休養を取り、メディカルスタッフに報告してください。`,
+    );
+    reasonsEn.push(
+      `Sleep quality severely impaired (${sleep}) combined with high fatigue (${fatigue}). Overtraining risk threshold reached.`,
     );
   }
 
