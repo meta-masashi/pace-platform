@@ -31,6 +31,7 @@ interface CheckinRequestBody {
   fatigue_subjective: number;
   hrv?: number;
   medication_nsaid_24h?: boolean;
+  menstrual_phase?: string;
 }
 
 interface CheckinResponse {
@@ -221,6 +222,7 @@ export async function POST(
           fatigue_subjective: body.fatigue_subjective,
           hrv: body.hrv ?? null,
           medication_nsaid_24h: body.medication_nsaid_24h ?? false,
+          menstrual_phase: body.menstrual_phase ?? null,
           conditioning_score: conditioning.conditioningScore,
           fitness_ewma: conditioning.fitnessEwma,
           fatigue_ewma: conditioning.fatigueEwma,
