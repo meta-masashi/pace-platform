@@ -21,9 +21,13 @@ jobs:
           version: latest
 
       - name: Link Supabase project
-        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          REF=$(printf '%s' "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
+          echo "Project ref length: ${#REF}"
+          supabase link --project-ref "$REF"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
       - name: Sync migration history
         run: |
@@ -31,7 +35,7 @@ jobs:
           # 1. 管理 API 経由で既存エントリをすべて削除（孤立バージョンを排除）
           # 2. ローカルファイルの数値プレフィックスを applied として登録
           # これにより db push は新規ファイルのみを対象にする。
-          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          PROJECT_REF=$(printf '%s' "${{ secrets.SUPABASE_PROJECT_REF }}" | tr -d '[:space:]')
           MGMT_API="https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query"
 
           echo "Truncating schema_migrations..."
@@ -98,9 +102,12 @@ jobs:
           version: latest
 
       - name: Link Supabase project
-        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          REF=$(printf '%s' "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
+          supabase link --project-ref "$REF"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
       - name: Deploy dunning-cron
         run: supabase functions deploy dunning-cron --no-verify-jwt
