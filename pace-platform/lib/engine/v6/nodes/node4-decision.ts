@@ -73,8 +73,14 @@ function checkP1Safety(
   const reasons: string[] = [];
   const reasonsEn: string[] = [];
 
-  // 痛み NRS ≥ 8（NSAID 服用中はマスク: 鎮痛剤で痛みが隠蔽されている可能性があるため P1 を抑制）
-  if (!flags.isMedicationNsaid24h && input.cleanedInput.subjectiveScores.painNRS >= config.thresholds.painRedFlag) {
+  // 痛みタイプ緩和: コンタクトスポーツ × 外傷性の場合、P1 閾値を緩和
+  // （打撲はコンタクト競技では日常的であるため）
+  const painThreshold = (_context.isContactSport && input.cleanedInput.painType === 'traumatic')
+    ? Math.ceil(config.thresholds.painRedFlag / 0.7) // 8 → 12 (事実上 P1 不発火、P2 で処理)
+    : config.thresholds.painRedFlag;
+
+  // 痛み NRS ≥ threshold（NSAID 服用中はマスク: 鎮痛剤で痛みが隠蔽されている可能性があるため P1 を抑制）
+  if (!flags.isMedicationNsaid24h && input.cleanedInput.subjectiveScores.painNRS >= painThreshold) {
     reasons.push(
       `痛み NRS が ${input.cleanedInput.subjectiveScores.painNRS} で安全閾値（${config.thresholds.painRedFlag}）以上です。トレーニングの即座の中止と医療スタッフへの相談を推奨します。`,
     );

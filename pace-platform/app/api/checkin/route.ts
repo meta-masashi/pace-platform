@@ -32,6 +32,9 @@ interface CheckinRequestBody {
   hrv?: number;
   medication_nsaid_24h?: boolean;
   menstrual_phase?: string;
+  session_number?: number;
+  calibration_anchor?: number;
+  pain_type?: string;
 }
 
 interface CheckinResponse {
@@ -223,6 +226,7 @@ export async function POST(
           hrv: body.hrv ?? null,
           medication_nsaid_24h: body.medication_nsaid_24h ?? false,
           menstrual_phase: body.menstrual_phase ?? null,
+          pain_type: body.pain_type ?? null,
           conditioning_score: conditioning.conditioningScore,
           fitness_ewma: conditioning.fitnessEwma,
           fatigue_ewma: conditioning.fatigueEwma,
@@ -237,6 +241,27 @@ export async function POST(
         { success: false, error: "コンディションデータの保存に失敗しました。" },
         { status: 500 }
       );
+    }
+
+    // ----- session_logs に個別セッション記録 -----
+    const sessionNum = body.session_number ?? 1;
+    const { error: sessionError } = await supabase
+      .from("session_logs")
+      .upsert(
+        {
+          athlete_id: body.athlete_id,
+          session_date: body.date,
+          session_number: sessionNum,
+          srpe,
+          training_duration_min: body.training_duration_min,
+          session_load: srpe,
+        },
+        { onConflict: "athlete_id,session_date,session_number" }
+      );
+
+    if (sessionError) {
+      // session_logs エラーは非致命的（daily_metrics は保存済み）
+      console.error("[checkin] session_logs upsert エラー:", sessionError);
     }
 
     // ----- レスポンス -----

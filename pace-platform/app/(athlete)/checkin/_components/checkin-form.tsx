@@ -193,6 +193,9 @@ export function CheckinForm({ athleteId, sex, lastCalibrationAt }: CheckinFormPr
   const [nsaid24h, setNsaid24h] = useState(false);
   const [menstrualPhase, setMenstrualPhase] = useState("");
   const [calibrationAnchor, setCalibrationAnchor] = useState<number | null>(null);
+  const [isAdditionalSession, setIsAdditionalSession] = useState(false);
+  const [sessionNumber, setSessionNumber] = useState(1);
+  const [painType, setPainType] = useState<string>("");
 
   // 3ヶ月以上キャリブレーション未実施なら表示
   const showCalibration = (() => {
@@ -246,6 +249,14 @@ export function CheckinForm({ athleteId, sex, lastCalibrationAt }: CheckinFormPr
 
     if (calibrationAnchor !== null) {
       body.calibration_anchor = calibrationAnchor;
+    }
+
+    if (isAdditionalSession) {
+      body.session_number = sessionNumber;
+    }
+
+    if (nrs >= 4 && painType) {
+      body.pain_type = painType;
     }
 
     try {
@@ -352,6 +363,39 @@ export function CheckinForm({ athleteId, sex, lastCalibrationAt }: CheckinFormPr
         </div>
       )}
 
+      {/* セッション番号（複数回練習対応） */}
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={isAdditionalSession}
+          onChange={(e) => {
+            setIsAdditionalSession(e.target.checked);
+            if (e.target.checked) setSessionNumber(2);
+            else setSessionNumber(1);
+          }}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+        />
+        <span className="text-sm text-foreground">
+          今日2回目以降の練習
+        </span>
+      </label>
+      {isAdditionalSession && (
+        <div className="flex items-center gap-2 pl-7">
+          <label htmlFor="session_number" className="text-xs text-muted-foreground">
+            セッション番号:
+          </label>
+          <select
+            id="session_number"
+            value={sessionNumber}
+            onChange={(e) => setSessionNumber(Number(e.target.value))}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value={2}>2回目</option>
+            <option value={3}>3回目</option>
+          </select>
+        </div>
+      )}
+
       {/* RPE */}
       <SliderField
         label="RPE（主観的運動強度）"
@@ -394,6 +438,39 @@ export function CheckinForm({ athleteId, sex, lastCalibrationAt }: CheckinFormPr
           </>
         );
       })()}
+
+      {/* 痛みタイプ分類（NRS ≥ 4 の場合のみ表示） */}
+      {nrs >= 4 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="mb-2 text-sm font-medium text-amber-900">
+            痛みの原因は？
+          </p>
+          <div className="flex gap-3">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="pain_type"
+                value="traumatic"
+                checked={painType === 'traumatic'}
+                onChange={() => setPainType('traumatic')}
+                className="accent-primary"
+              />
+              <span className="text-sm text-amber-800">ぶつかった（外傷性）</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="pain_type"
+                value="overuse"
+                checked={painType === 'overuse'}
+                onChange={() => setPainType('overuse')}
+                className="accent-primary"
+              />
+              <span className="text-sm text-amber-800">使いすぎ（障害性）</span>
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* HRV (任意) */}
       <NumberField

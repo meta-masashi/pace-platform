@@ -157,6 +157,8 @@ export interface DailyInput {
     /** 安静時心拍数（bpm、任意） */
     restingHeartRate?: number;
   };
+  /** 痛みの原因タイプ（NRS ≥ 4 時に入力） */
+  painType?: 'traumatic' | 'overuse';
   /** 客観的負荷データ（任意） */
   objectiveLoad?: {
     /** 走行距離（km） */
