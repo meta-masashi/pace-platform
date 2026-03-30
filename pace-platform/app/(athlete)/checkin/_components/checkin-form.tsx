@@ -156,7 +156,9 @@ function seededShuffle<T>(array: T[], seed: number): T[] {
     s ^= s >>> 17;
     s ^= s << 5;
     const j = ((s >>> 0) % (i + 1));
-    [shuffled[i]!, shuffled[j]!] = [shuffled[j]!, shuffled[i]!];
+    const tmp = shuffled[i]!;
+    shuffled[i] = shuffled[j]!;
+    shuffled[j] = tmp;
   }
   return shuffled;
 }
