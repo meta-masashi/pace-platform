@@ -22,6 +22,7 @@ import type {
   TissueCategory,
 } from '../types';
 import { wilsonScoreInterval } from '../adapters/bayes-adapter';
+import { callMRFEngine } from '../gateway';
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -278,7 +279,23 @@ export const node3Inference: NodeExecutor<FeatureVector, InferenceOutput> =
       const warnings: string[] = [];
 
       // ----- Step 1: リスクスコア計算 -----
-      const riskScores = calculateRiskScores(input, context, config);
+      const rawRiskScores = calculateRiskScores(input, context, config);
+
+      // ----- Step 1.5: MRF 運動連鎖リスク伝播 -----
+      const mrfResult = await callMRFEngine({
+        riskScores: rawRiskScores,
+        medicalHistory: context.medicalHistory.map((e) => ({
+          bodyPart: e.bodyPart,
+          severity: e.severity,
+          riskMultiplier: e.riskMultiplier,
+        })),
+        isContactSport: context.isContactSport,
+      });
+
+      const riskScores = mrfResult.propagatedRiskScores;
+      if (!mrfResult.fromService) {
+        warnings.push('MRF エンジン不可: フォールバックの簡易運動連鎖伝播を使用');
+      }
 
       // ----- Step 2: ベイズ事後確率更新 -----
       const posteriorProbabilities = calculatePosteriors(
@@ -300,6 +317,22 @@ export const node3Inference: NodeExecutor<FeatureVector, InferenceOutput> =
         if (!priorsSet.has(bodyPart)) {
           warnings.push(
             `部位 "${bodyPart}" の事前確率が未設定のためデフォルト値（0.05）を使用`,
+          );
+        }
+      }
+
+      // ----- Step 4: 尺度インフレ検知（Scale Monotony） -----
+      // 全 Z-Score の標準偏差が極めて小さい場合、同じ値を入力し続けている可能性
+      const zValues = Object.values(input.zScores);
+      if (zValues.length >= 6) {
+        const zMean = zValues.reduce((s, v) => s + v, 0) / zValues.length;
+        const zVariance = zValues.reduce((s, v) => s + (v - zMean) ** 2, 0) / zValues.length;
+        const zStdDev = Math.sqrt(zVariance);
+        if (zStdDev < 0.5) {
+          warnings.push(
+            'SCALE_MONOTONY_WARNING: 主観スコアのバリエーションが極めて小さいです（σ=' +
+            zStdDev.toFixed(3) +
+            '）。同じ値を繰り返し入力している可能性があります。キャリブレーション（アンカー再設定）を推奨します。',
           );
         }
       }

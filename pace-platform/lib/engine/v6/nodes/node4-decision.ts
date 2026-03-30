@@ -605,6 +605,40 @@ export const node4Decision: NodeExecutor<DecisionInput, DecisionOutput> = {
       };
     }
 
+    // ----- P4b: アロスタティック負荷（Non-Training Stress）検知 -----
+    // sRPE < 4 + Sleep Z <= -1.5 + Fatigue Z >= 1.5 の場合
+    // （3日連続の判定は履歴データ必要。ここでは当日のみの簡易検出）
+    const sleepZ = input.featureVector.zScores['sleepQuality'];
+    const fatigueZ = input.featureVector.zScores['fatigue'];
+    if (
+      input.cleanedInput.sRPE < 4 &&
+      sleepZ !== undefined && sleepZ <= -1.5 &&
+      fatigueZ !== undefined && fatigueZ >= 1.5
+    ) {
+      const allostaticPriority: InferencePriority = 'P4_GAS_EXHAUSTION';
+      return {
+        nodeId: 'node4_decision',
+        success: true,
+        executionTimeMs: performance.now() - startMs,
+        data: {
+          decision: 'YELLOW' as const,
+          priority: allostaticPriority,
+          reason: 'グラウンド外のストレッサーにより回復力が低下している兆候が検出されました。練習負荷は低いにもかかわらず、睡眠の質が著しく低下し疲労感が高い状態です。休養と生活環境の見直しを推奨します。',
+          reasonEn: 'Non-training stress detected: low sRPE with deteriorated sleep and elevated fatigue. Recovery capacity appears compromised by external stressors.',
+          overridesApplied,
+          recommendedActions: [
+            {
+              actionType: 'monitor' as const,
+              description: '生活環境・メンタルストレスの確認と、リカバリーセッションの導入を検討してください。',
+              priority: 'medium' as const,
+              requiresApproval: false,
+            },
+          ],
+        },
+        warnings,
+      };
+    }
+
     // ----- P5 判定: 正常適応 -----
     const p5 = checkP5Normal(input);
     const priority: InferencePriority = 'P5_NORMAL';

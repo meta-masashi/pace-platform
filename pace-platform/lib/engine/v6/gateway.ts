@@ -154,6 +154,63 @@ const NEUROMOTOR_FALLBACK: NeuromotorResponse = {
 };
 
 // ---------------------------------------------------------------------------
+// MRF（マルコフ確率場）型定義
+// ---------------------------------------------------------------------------
+
+/** MRF エンジンへのリクエストパラメータ */
+export interface MRFRequestParams {
+  /** 部位別リスクスコア（Node 3 から） */
+  riskScores: Record<string, number>;
+  /** 既往歴（MRF のエッジ重み調整用） */
+  medicalHistory: { bodyPart: string; severity: string; riskMultiplier: number }[];
+  /** コンタクトスポーツかどうか */
+  isContactSport: boolean;
+}
+
+/** MRF エンジンのレスポンス */
+export interface MRFResponse {
+  /** MRF 伝播後の部位別リスクスコア */
+  propagatedRiskScores: Record<string, number>;
+  /** サービスから取得できたかどうか */
+  fromService: boolean;
+}
+
+/**
+ * MRF エンジンのフォールバック。
+ * サービス不可時は簡易的な隣接伝播で推定する。
+ */
+function createMRFFallback(riskScores: Record<string, number>): MRFResponse {
+  // 簡易運動連鎖マトリクス（Anatomy Trains ベース）
+  const CHAIN_WEIGHTS: Record<string, Record<string, number>> = {
+    ankle: { knee: 0.7, calf: 0.6 },
+    knee: { ankle: 0.5, hip: 0.6, hamstring: 0.5, quadriceps: 0.5 },
+    hip: { knee: 0.5, lower_back: 0.7 },
+    lower_back: { hip: 0.6, hamstring: 0.4 },
+    hamstring: { knee: 0.5, lower_back: 0.3, calf: 0.3 },
+    quadriceps: { knee: 0.6, hip: 0.3 },
+    calf: { ankle: 0.7, hamstring: 0.3 },
+    shoulder: { general: 0.2 },
+  };
+
+  const propagated: Record<string, number> = { ...riskScores };
+
+  // 1-hop 伝播: P(j) = 1 - (1 - P_base(j)) × exp(-Σ W_ij × S_i)
+  for (const [source, neighbors] of Object.entries(CHAIN_WEIGHTS)) {
+    const sourceRisk = riskScores[source] ?? 0;
+    if (sourceRisk < 0.1) continue; // 低リスクは伝播しない
+
+    for (const [target, weight] of Object.entries(neighbors)) {
+      const baseRisk = propagated[target] ?? 0;
+      const influence = weight * sourceRisk;
+      const newRisk = 1 - (1 - baseRisk) * Math.exp(-influence);
+      propagated[target] = Math.min(1.0, Math.max(propagated[target] ?? 0, newRisk));
+    }
+  }
+
+  return { propagatedRiskScores: propagated, fromService: false };
+}
+
+// ---------------------------------------------------------------------------
 // HTTP ヘルパー
 // ---------------------------------------------------------------------------
 
@@ -300,6 +357,36 @@ export async function callEKFEngine(
  * @param params - Neuromotor 計算パラメータ
  * @returns η_NM 値
  */
+/**
+ * Python MRF エンジンを呼び出し、運動連鎖リスク伝播を計算する。
+ *
+ * P(N_j | {N_i}) = 1 - (1 - P_base(N_j)) × exp(-Σ W_ij × S_i × e^(-γ×d(i,j)))
+ *
+ * サービス不可時はフォールバックの簡易隣接伝播を使用する。
+ */
+export async function callMRFEngine(
+  params: MRFRequestParams,
+): Promise<MRFResponse> {
+  try {
+    const url = `${BIOMECHANICS_API_URL}/compute/mrf`;
+    const result = await postWithRetry<{
+      propagated_risk_scores: Record<string, number>;
+    }>(url, {
+      risk_scores: params.riskScores,
+      medical_history: params.medicalHistory,
+      is_contact_sport: params.isContactSport,
+    });
+
+    return {
+      propagatedRiskScores: result.propagated_risk_scores,
+      fromService: true,
+    };
+  } catch {
+    // サービス不可: フォールバック（簡易運動連鎖）
+    return createMRFFallback(params.riskScores);
+  }
+}
+
 export async function callNeuromotorEngine(
   params: NeuromotorRequestParams,
 ): Promise<NeuromotorResponse> {
