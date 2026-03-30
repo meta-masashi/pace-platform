@@ -18,6 +18,7 @@ import type {
   TissueCategory,
 } from '../types';
 import type { IngestionOutput } from './node0-ingestion';
+import { lambdaFromHalfLife } from '../../../decay/calculator';
 
 // ---------------------------------------------------------------------------
 // Node 1 出力型
@@ -223,34 +224,80 @@ function replaceOutliers(
 // ---------------------------------------------------------------------------
 
 /**
- * 欠損フィールドを検出し、組織別半減期に基づくデフォルト値で補完する。
+ * 欠損フィールドを検出し、補完する。
+ *
+ * 補完戦略:
+ * - `context.lastKnownRecord` あり AND gap ≤ 14日:
+ *   - 主観スコア（睡眠・疲労・気分・筋肉痛・ストレス・痛み）→ LOCF（前回値をそのまま使用）
+ *   - 負荷メトリクス（sRPE, trainingDurationMin）→ 指数減衰 e^(-λ×gap)
+ * - `context.lastKnownRecord` なし OR gap > 14日: 中立デフォルト（後方互換）
  *
  * @param input - 日次入力データ
  * @param context - 選手コンテキスト
  * @param _config - パイプライン設定
- * @returns 補完されたフィールド名リスト
+ * @returns 補完されたフィールド名リスト・補完済み入力・補完方式・ギャップ日数
  */
 function detectAndImputeMissing(
   input: DailyInput,
   context: AthleteContext,
   _config: PipelineConfig,
-): { imputedFields: string[]; imputedInput: DailyInput } {
+): { imputedFields: string[]; imputedInput: DailyInput; imputationMethod?: 'locf' | 'decay' | 'neutral' | undefined; gapDays?: number | undefined } {
   const imputedFields: string[] = [];
   const imputedInput = { ...input };
   const subjective = { ...input.subjectiveScores };
+  let imputationMethod: 'locf' | 'decay' | 'neutral' | undefined;
+  let gapDays: number | undefined;
 
-  // 安静時心拍数が未入力の場合は補完しない（任意フィールド）
-  // 客観的負荷データが未入力の場合も補完しない（任意セクション）
+  const last = context.lastKnownRecord;
 
-  // 組織半減期を使った減衰ベースの補完は、
-  // 実際には過去データが必要なため、ここでは
-  // 成熟モードに応じたデフォルト値を適用する
+  if (last) {
+    // ギャップ日数を計算（ISO date → Date）
+    const lastDate = new Date(last.date);
+    const currentDate = new Date(input.date);
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const gap = Math.round((currentDate.getTime() - lastDate.getTime()) / msPerDay);
+
+    if (gap > 0 && gap <= 14) {
+      gapDays = gap;
+
+      // ── 主観スコア: LOCF ──────────────────────────────────
+      const subjectiveLocfFields: Array<keyof typeof subjective & keyof typeof last> = [
+        'sleepQuality', 'fatigue', 'mood', 'muscleSoreness', 'stressLevel', 'painNRS',
+      ];
+      for (const field of subjectiveLocfFields) {
+        if (subjective[field] === 0) {
+          (subjective as Record<string, number>)[field] = last[field] as number;
+          imputedFields.push(field);
+        }
+      }
+
+      // ── 負荷メトリクス: 指数減衰 ─────────────────────────
+      // sRPE / trainingDurationMin に metabolic 半減期（日）でλを算出
+      if (imputedInput.sRPE === 0 && last.sRPE > 0) {
+        const lambda = lambdaFromHalfLife(context.tissueHalfLifes.metabolic);
+        imputedInput.sRPE = last.sRPE * Math.exp(-lambda * gap);
+        imputedInput.sessionLoad = imputedInput.sRPE * imputedInput.trainingDurationMin;
+        imputedFields.push('sRPE');
+      }
+      if (imputedInput.trainingDurationMin === 0 && last.trainingDurationMin > 0) {
+        const lambda = lambdaFromHalfLife(context.tissueHalfLifes.metabolic);
+        imputedInput.trainingDurationMin = last.trainingDurationMin * Math.exp(-lambda * gap);
+        imputedInput.sessionLoad = imputedInput.sRPE * imputedInput.trainingDurationMin;
+        imputedFields.push('trainingDurationMin');
+      }
+
+      if (imputedFields.length > 0) {
+        // 主観スコアのみが補完されていれば LOCF、負荷メトリクスが含まれれば decay
+        imputationMethod = imputedFields.some(f => f === 'sRPE' || f === 'trainingDurationMin')
+          ? 'decay'
+          : 'locf';
+      }
+    }
+  }
+
+  // ── フォールバック: 中立デフォルト (lastKnownRecord なし or gap > 14日) ──
   const mode = determineMaturationMode(context.validDataDays);
-
-  // safety モードでは中立値、full モードでは個人ベースラインを使用
-  // （ベースラインは context.bayesianPriors から推定）
-  if (mode === 'safety') {
-    // 各主観スコアが 0 の場合、中立値で補完
+  if (mode === 'safety' && imputationMethod === undefined) {
     if (subjective.sleepQuality === 0 && input.sRPE > 0) {
       subjective.sleepQuality = 5;
       imputedFields.push('sleepQuality');
@@ -259,10 +306,13 @@ function detectAndImputeMissing(
       subjective.mood = 5;
       imputedFields.push('mood');
     }
+    if (imputedFields.length > 0) {
+      imputationMethod = 'neutral';
+    }
   }
 
   imputedInput.subjectiveScores = subjective;
-  return { imputedFields, imputedInput };
+  return { imputedFields, imputedInput, imputationMethod, gapDays };
 }
 
 // ---------------------------------------------------------------------------
@@ -371,14 +421,15 @@ export const node1Cleaning: NodeExecutor<IngestionOutput, CleaningOutput> = {
     const afterOutlierFix = replaceOutliers(normalizedInput, outlierFields);
 
     // ----- Step 3: 欠損値補完 -----
-    const { imputedFields, imputedInput } = detectAndImputeMissing(
+    const { imputedFields, imputedInput, imputationMethod, gapDays } = detectAndImputeMissing(
       afterOutlierFix,
       context,
       config,
     );
     if (imputedFields.length > 0) {
+      const methodLabel = imputationMethod ?? 'neutral';
       warnings.push(
-        `欠損値補完: ${imputedFields.join(', ')} をデフォルト値で補完`,
+        `欠損値補完(${methodLabel}): ${imputedFields.join(', ')} を補完`,
       );
     }
 
@@ -399,6 +450,8 @@ export const node1Cleaning: NodeExecutor<IngestionOutput, CleaningOutput> = {
       imputedFields,
       outlierFields,
       maturationMode,
+      ...(imputationMethod !== undefined ? { imputationMethod } : {}),
+      ...(gapDays !== undefined ? { gapDays } : {}),
     };
 
     return {

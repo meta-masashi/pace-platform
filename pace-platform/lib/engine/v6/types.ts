@@ -54,6 +54,8 @@ export interface ContextFlags {
   isPostVaccination: boolean;
   /** 発熱後7日以内 */
   isPostFever: boolean;
+  /** 過去24時間以内に鎮痛剤（NSAID）を服用した（Pain NRS の P1 チェックをマスク） */
+  isMedicationNsaid24h?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +74,28 @@ export interface MedicalHistoryEntry {
   severity: 'mild' | 'moderate' | 'severe';
   /** この既往歴による事前確率の倍率 */
   riskMultiplier: number;
+}
+
+/** 直前の有効日次記録（LOCF/減衰インピュテーション用） */
+export interface LastKnownRecord {
+  /** 記録日（ISO date） */
+  date: string;
+  /** 睡眠の質 */
+  sleepQuality: number;
+  /** 疲労度 */
+  fatigue: number;
+  /** 気分 */
+  mood: number;
+  /** 筋肉痛 */
+  muscleSoreness: number;
+  /** ストレス */
+  stressLevel: number;
+  /** 痛み NRS */
+  painNRS: number;
+  /** sRPE */
+  sRPE: number;
+  /** トレーニング時間（分） */
+  trainingDurationMin: number;
 }
 
 /** Node 0: 選手コンテキスト（EHR + メタデータ） */
@@ -98,6 +122,8 @@ export interface AthleteContext {
   medicalHistory: MedicalHistoryEntry[];
   /** 組織別半減期（日） */
   tissueHalfLifes: Record<TissueCategory, number>;
+  /** 直前の有効記録（LOCF/指数減衰インピュテーション用）*/
+  lastKnownRecord?: LastKnownRecord;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +218,10 @@ export interface DataQualityReport {
   outlierFields: string[];
   /** 成熟モード: Day 0-13 / 14-27 / 28+ */
   maturationMode: 'safety' | 'learning' | 'full';
+  /** 欠損補完方式（補完が発生した場合のみセット） */
+  imputationMethod?: 'locf' | 'decay' | 'neutral';
+  /** 直前記録からのギャップ日数（補完が発生した場合のみセット） */
+  gapDays?: number;
 }
 
 // ---------------------------------------------------------------------------

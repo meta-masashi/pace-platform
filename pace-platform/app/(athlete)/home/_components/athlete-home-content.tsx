@@ -57,6 +57,46 @@ interface AthleteHomeContentProps {
 }
 
 // ---------------------------------------------------------------------------
+// コールドスタート期プログレスバー
+// ---------------------------------------------------------------------------
+
+function ColdStartProgress({ validDataDays }: { validDataDays: number }) {
+  if (validDataDays >= 28) return null;
+
+  const percent = Math.min(100, Math.round((validDataDays / 28) * 100));
+  const isSafetyMode = validDataDays < 14;
+  const daysRemaining = isSafetyMode ? 14 - validDataDays : 28 - validDataDays;
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          {isSafetyMode ? "パーソナライズ学習中" : "Z-Scoreエンジン稼働中"}
+        </span>
+        <span className="text-xs font-bold tabular-nums text-primary">
+          {validDataDays}/28日
+        </span>
+      </div>
+
+      {/* プログレスバー */}
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-700"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+
+      {/* 説明文 */}
+      <p className="mt-2 text-xs text-muted-foreground">
+        {isSafetyMode
+          ? `セーフティモードで動作中です。あと ${daysRemaining} 日で学習フェーズに移行します。`
+          : `あと ${daysRemaining} 日で全推論エンジンがアンロックされます。`}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ステータス判定（既存 API フォールバック用）
 // ---------------------------------------------------------------------------
 
@@ -100,6 +140,7 @@ export function AthleteHomeContent({
 }: AthleteHomeContentProps) {
   const [data, setData] = useState<ConditioningData | null>(null);
   const [v6Data, setV6Data] = useState<V6PipelineResult | null>(null);
+  const [validDataDays, setValidDataDays] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,6 +187,9 @@ export function AthleteHomeContent({
             fatigueTrend: d.fatigueTrend,
             insight: d.insight,
           });
+          if (typeof d.validDataDays === 'number') {
+            setValidDataDays(d.validDataDays);
+          }
         }
       } catch {
         setError("ネットワークエラーが発生しました。");
@@ -244,6 +288,9 @@ export function AthleteHomeContent({
           {data?.date ?? new Date().toISOString().split("T")[0]} 時点
         </p>
       </div>
+
+      {/* コールドスタート期プログレスバー */}
+      {validDataDays !== null && <ColdStartProgress validDataDays={validDataDays} />}
 
       {/* ═══ Layer 1: ステータス一目把握 ═══ */}
       <div className="info-layer-status flex justify-center">

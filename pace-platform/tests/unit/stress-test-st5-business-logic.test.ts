@@ -331,6 +331,104 @@ describe('ST-5.1: Priority Hierarchy Invariants', () => {
     expect(result.data.priority).toBe('P1_SAFETY');
     expect(result.data.decision).toBe('RED');
   });
+
+  // ── Sleep+Fatigue compound rule (Task 1-1) ──────────────────────────────
+  it('ST-5.1.11: P1 Sleep=1+Fatigue=9 (well inside threshold) must produce RED', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 1, fatigue: 9, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    expect(result.data.decision).toBe('RED');
+    expect(result.data.priority).toBe('P1_SAFETY');
+  });
+
+  it('ST-5.1.12: P1 Sleep=2+Fatigue=8 (exact boundary) must produce RED', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 2, fatigue: 8, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    expect(result.data.decision).toBe('RED');
+    expect(result.data.priority).toBe('P1_SAFETY');
+  });
+
+  it('ST-5.1.13: Sleep=3+Fatigue=8 (sleep just above threshold) must NOT trigger P1 via compound rule', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 3, fatigue: 8, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    // Should NOT be P1 from the compound Sleep+Fatigue rule
+    expect(result.data.priority).not.toBe('P1_SAFETY');
+  });
+
+  it('ST-5.1.14: Sleep=2+Fatigue=7 (fatigue just below threshold) must NOT trigger P1 via compound rule', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 2, fatigue: 7, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    // Should NOT be P1 from the compound Sleep+Fatigue rule
+    expect(result.data.priority).not.toBe('P1_SAFETY');
+  });
+
+  // ── PHV age correction (Task 2-4) ─────────────────────────────────────
+  it('ST-5.1.15: PHV (age 15) ACWR=1.35 must trigger P2 (threshold lowered to ~1.3)', async () => {
+    const youthContext = makeAthleteContext({ age: 15 });
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 7, fatigue: 3, mood: 7, muscleSoreness: 3, stressLevel: 3 },
+      },
+      featureVector: { acwr: 1.35 }, // Above 1.3 but below 1.5
+    });
+    const result = await node4Decision.execute(input, youthContext, config);
+    expect(result.data.decision).toBe('ORANGE');
+    expect(result.data.priority).toBe('P2_MECHANICAL_RISK');
+  });
+
+  it('ST-5.1.16: Adult (age 25) ACWR=1.35 must NOT trigger P2 (threshold remains 1.5)', async () => {
+    const adultContext = makeAthleteContext({ age: 25 });
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 0, sleepQuality: 7, fatigue: 3, mood: 7, muscleSoreness: 3, stressLevel: 3 },
+      },
+      featureVector: { acwr: 1.35 },
+    });
+    const result = await node4Decision.execute(input, adultContext, config);
+    // ACWR 1.35 < 1.5 for adults → should NOT be P2
+    expect(result.data.priority).not.toBe('P2_MECHANICAL_RISK');
+  });
+
+  // ── NSAID masking (Task 1-3) ──────────────────────────────────────────
+  it('ST-5.1.17: Pain=10+NSAID=true must NOT trigger P1 via pain rule', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 10, sleepQuality: 7, fatigue: 3, mood: 7, muscleSoreness: 3, stressLevel: 3 },
+        contextFlags: { isMedicationNsaid24h: true, isGameDay: false, isGameDayMinus1: false, isAcclimatization: false, isWeightMaking: false, isPostVaccination: false, isPostFever: false },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    // Pain P1 should be masked by NSAID, no other P1 triggers → NOT P1
+    expect(result.data.priority).not.toBe('P1_SAFETY');
+  });
+
+  it('ST-5.1.18: Sleep=1+Fatigue=9+NSAID=true must STILL trigger P1 (compound rule not masked)', async () => {
+    const input = makeDecisionInput({
+      cleanedInput: {
+        subjectiveScores: { painNRS: 10, sleepQuality: 1, fatigue: 9, mood: 5, muscleSoreness: 3, stressLevel: 3 },
+        contextFlags: { isMedicationNsaid24h: true, isGameDay: false, isGameDayMinus1: false, isAcclimatization: false, isWeightMaking: false, isPostVaccination: false, isPostFever: false },
+      },
+    });
+    const result = await node4Decision.execute(input, context, config);
+    // Sleep+Fatigue compound rule is NOT masked by NSAID
+    expect(result.data.decision).toBe('RED');
+    expect(result.data.priority).toBe('P1_SAFETY');
+  });
 });
 
 // ===========================================================================
