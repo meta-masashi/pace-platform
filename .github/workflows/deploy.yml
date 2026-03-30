@@ -84,15 +84,18 @@ jobs:
 
       - name: Health check (frontend)
         run: |
+          SITE_URL="${NEXT_PUBLIC_SITE_URL:-https://hachi-riskon.com}"
           echo "Waiting for deployment to propagate..."
           sleep 15
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.NEXT_PUBLIC_SITE_URL }}/auth/login" || echo "000")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}/auth/login" || echo "000")
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
             echo "Frontend health check passed (HTTP ${STATUS})"
           else
             echo "Frontend health check FAILED (HTTP ${STATUS})"
             exit 1
           fi
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
 
   # ── 3. Edge Functions デプロイ ───────────────────────────────────────────
   deploy-edge-functions:
