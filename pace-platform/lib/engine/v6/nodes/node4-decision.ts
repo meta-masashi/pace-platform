@@ -152,13 +152,18 @@ function checkP2MechanicalRisk(
   const reasons: string[] = [];
   const reasonsEn: string[] = [];
 
+  // PHV（Peak Height Velocity）成長期: 13〜17歳は ACWR 閾値を引き下げ
+  const acwrThreshold = (_context.age >= 13 && _context.age <= 17)
+    ? config.thresholds.acwrRedLine * 0.867 // 1.5 × 0.867 ≈ 1.3
+    : config.thresholds.acwrRedLine;
+
   // ACWR 超過
-  if (input.featureVector.acwr > config.thresholds.acwrRedLine) {
+  if (input.featureVector.acwr > acwrThreshold) {
     reasons.push(
-      `ACWR が ${input.featureVector.acwr.toFixed(2)} で危険域（${config.thresholds.acwrRedLine}）を超えています。急激な負荷増加による傷害リスクが高まっています。負荷の段階的調整を推奨します。`,
+      `ACWR が ${input.featureVector.acwr.toFixed(2)} で危険域（${acwrThreshold.toFixed(2)}）を超えています。急激な負荷増加による傷害リスクが高まっています。負荷の段階的調整を推奨します。`,
     );
     reasonsEn.push(
-      `ACWR is ${input.featureVector.acwr.toFixed(2)}, exceeding red line (${config.thresholds.acwrRedLine}).`,
+      `ACWR is ${input.featureVector.acwr.toFixed(2)}, exceeding red line (${acwrThreshold.toFixed(2)}).`,
     );
   }
 

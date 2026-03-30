@@ -123,6 +123,37 @@ const EKF_FALLBACK: EKFResponse = {
 };
 
 // ---------------------------------------------------------------------------
+// Neuromotor SampEn 型定義
+// ---------------------------------------------------------------------------
+
+/** Neuromotor エンジンへのリクエストパラメータ */
+export interface NeuromotorRequestParams {
+  /** IMU 3軸加速度データ */
+  accelerometerData: number[][];
+  /** ベースライン SampEn μ */
+  baselineSampEn: number;
+  /** 既往歴ノード η 増幅用 */
+  historyAlpha: number;
+}
+
+/** Neuromotor エンジンのレスポンス */
+export interface NeuromotorResponse {
+  /** η_NM: ニューロモーター増幅係数（0.0 = 増幅なし） */
+  etaNM: number;
+  /** サービスから取得できたかどうか */
+  fromService: boolean;
+}
+
+/**
+ * Neuromotor エンジンのフォールバック推定値。
+ * サービス不可時は増幅なし（η_NM = 0.0）を返す。
+ */
+const NEUROMOTOR_FALLBACK: NeuromotorResponse = {
+  etaNM: 0.0,
+  fromService: false,
+};
+
+// ---------------------------------------------------------------------------
 // HTTP ヘルパー
 // ---------------------------------------------------------------------------
 
@@ -255,5 +286,39 @@ export async function callEKFEngine(
   } catch {
     // サービス不可: フォールバック
     return EKF_FALLBACK;
+  }
+}
+
+/**
+ * Python Neuromotor エンジンを呼び出し、η_NM を計算する。
+ *
+ * η_NM = sigmoid(SampEn - μ_baseline) × (1 + α × HistoryNode0)
+ * Effective_Acute = Acute_raw × (1 + η_NM)
+ *
+ * サービス不可時はフォールバックとして増幅なし（η_NM = 0.0）を返す。
+ *
+ * @param params - Neuromotor 計算パラメータ
+ * @returns η_NM 値
+ */
+export async function callNeuromotorEngine(
+  params: NeuromotorRequestParams,
+): Promise<NeuromotorResponse> {
+  try {
+    const url = `${BIOMECHANICS_API_URL}/compute/neuromotor`;
+    const result = await postWithRetry<{
+      eta_nm: number;
+    }>(url, {
+      accelerometer_data: params.accelerometerData,
+      baseline_sampen: params.baselineSampEn,
+      history_alpha: params.historyAlpha,
+    });
+
+    return {
+      etaNM: result.eta_nm,
+      fromService: true,
+    };
+  } catch {
+    // サービス不可: フォールバック（増幅なし）
+    return NEUROMOTOR_FALLBACK;
   }
 }

@@ -95,11 +95,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // 選手の蓄積データ日数を取得
-    const { count: validDataDays } = await supabase
+    // baseline_reset_at を取得（ベースラインリセット対応）
+    const { data: conditionCache } = await supabase
+      .from('athlete_condition_cache')
+      .select('baseline_reset_at')
+      .eq('athlete_id', body.athleteId)
+      .single();
+
+    const baselineResetAt = (conditionCache?.baseline_reset_at as string) ?? null;
+
+    // 選手の蓄積データ日数を取得（baseline_reset_at 以降のみカウント）
+    let validDataDaysQuery = supabase
       .from('daily_inputs')
       .select('id', { count: 'exact', head: true })
       .eq('athlete_id', body.athleteId);
+
+    if (baselineResetAt) {
+      validDataDaysQuery = validDataDaysQuery.gte('created_at', baselineResetAt);
+    }
+
+    const { count: validDataDays } = await validDataDaysQuery;
 
     // 既往歴を取得
     const { data: medicalHistory } = await supabase
