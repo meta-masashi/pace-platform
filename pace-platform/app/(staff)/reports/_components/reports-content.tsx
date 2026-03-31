@@ -64,6 +64,10 @@ export function ReportsContent() {
         }
         if (teamsRes.teams) {
           setTeams(teamsRes.teams);
+          // 自動で最初のチームを選択（仕様: ログイン時に紐付け済み）
+          if (teamsRes.teams.length > 0 && !selectedTeamId) {
+            setSelectedTeamId(teamsRes.teams[0].id);
+          }
         }
       } catch (e) {
         console.error('マスターデータ取得エラー:', e);

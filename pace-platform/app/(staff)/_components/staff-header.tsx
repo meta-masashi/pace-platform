@@ -2,14 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { TeamSelector } from '../dashboard/_components/team-selector';
 import { OfflineBadge } from '@/app/_components/offline-badge';
 
 interface StaffHeaderProps {
   user: User;
+  teamName?: string;
 }
 
-export function StaffHeader({ user }: StaffHeaderProps) {
+export function StaffHeader({ user, teamName }: StaffHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -30,7 +30,9 @@ export function StaffHeader({ user }: StaffHeaderProps) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4">
       <div className="flex items-center gap-4">
-        <TeamSelector />
+        {teamName && (
+          <span className="text-sm font-semibold text-foreground">{teamName}</span>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
