@@ -50,7 +50,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) ||
     pathname.startsWith('/_next/') ||
-    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/api/') ||
     pathname.includes('.')
   ) {
     const response = NextResponse.next();
@@ -58,59 +58,59 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Create Supabase client for server-side session check
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  try {
+    // Create Supabase client for server-side session check
+    let response = NextResponse.next({
+      request: {
+        headers: request.headers,
+      },
+    });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL'];
+    const supabaseAnonKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'];
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error(
-      '[middleware] CRITICAL: Supabase env vars missing!',
-      'NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? 'SET' : 'MISSING',
-      'NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'SET' : 'MISSING',
-    );
-    // Allow through — redirecting to login here causes infinite loop
-    // when env vars are not set, since /login itself hits middleware
+    if (!supabaseUrl || !supabaseAnonKey) {
+      // Allow through if env vars are missing
+      return response;
+    }
+
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          for (const { name, value } of cookiesToSet) {
+            request.cookies.set(name, value);
+          }
+          response = NextResponse.next({ request });
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options);
+          }
+        },
+      },
+    });
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // If no user session, redirect to login
+    if (!user) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    applySecurityHeaders(response, pathname);
+    return response;
+  } catch (err) {
+    // Middleware crash fallback — allow through to prevent 500
+    console.error('[middleware] Error:', err);
+    const response = NextResponse.next();
+    applySecurityHeaders(response, pathname);
     return response;
   }
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>) {
-        cookiesToSet.forEach(({ name, value }: { name: string; value: string }) =>
-          request.cookies.set(name, value),
-        );
-        response = NextResponse.next({
-          request,
-        });
-        cookiesToSet.forEach(({ name, value, options }: { name: string; value: string; options?: Parameters<typeof response.cookies.set>[2] }) =>
-          response.cookies.set(name, value, options ?? {}),
-        );
-      },
-    },
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // If no user session, redirect to login
-  if (!user) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  applySecurityHeaders(response, pathname);
-  return response;
 }
 
 export const config = {
