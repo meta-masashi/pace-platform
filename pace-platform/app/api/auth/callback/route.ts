@@ -59,6 +59,18 @@ export async function GET(request: Request): Promise<NextResponse> {
   } = await supabase.auth.getUser();
 
   if (user) {
+    // アスリート判定: athletes.user_id にマッチ
+    const { data: athlete } = await supabase
+      .from("athletes")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (athlete) {
+      return NextResponse.redirect(`${origin}/home`);
+    }
+
+    // スタッフ判定
     const { data: staff } = await supabase
       .from("staff")
       .select("role")
@@ -66,11 +78,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       .single();
 
     if (staff) {
-      // スタッフ → ダッシュボード
       return NextResponse.redirect(`${origin}/dashboard`);
     }
   }
 
-  // アスリートまたはロール不明 → ホーム
-  return NextResponse.redirect(`${origin}/`);
+  // ロール不明 → ログイン
+  return NextResponse.redirect(`${origin}/login`);
 }
