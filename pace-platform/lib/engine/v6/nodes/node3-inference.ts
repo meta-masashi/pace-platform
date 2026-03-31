@@ -28,20 +28,25 @@ import { callMRFEngine } from '../gateway';
 // 定数
 // ---------------------------------------------------------------------------
 
-/** リスクスコアの特徴量重み */
+/**
+ * リスクスコアの特徴量重み（Level 2 以上で支持された変数のみ）
+ *
+ * - acwr_excess: Level 2a (Qin 2025 メタアナリシス)
+ * - wellness_decline: Level 2a (Saw 2016 SR)
+ * - injury_history_risk: Level 2b (Esmaeili 2018)
+ * - monotony_info: Level 2a 否定的 → 補助情報のみ（低重み）
+ *
+ * [REMOVED] tissue_damage (ODE, Level 5), decoupling (EKF, 論文ゼロ)
+ */
 const FEATURE_WEIGHTS: Record<string, number> = {
-  /** ACWR 超過分の重み */
-  acwr_excess: 2.0,
-  /** 単調性超過分の重み */
-  monotony_excess: 1.5,
-  /** プレパレッドネス負値の重み */
-  preparedness_deficit: 1.0,
-  /** 組織ダメージの重み */
-  tissue_damage: 2.5,
-  /** Z-Score 悪化の重み */
-  z_score_negative: 0.8,
-  /** デカップリングの重み */
-  decoupling: 1.8,
+  /** ACWR 超過分の重み（Level 2a: Qin 2025） */
+  acwr_excess: 2.5,
+  /** ウェルネス悪化の重み（Level 2a: Saw 2016） */
+  wellness_decline: 2.0,
+  /** 既往歴リスクの重み（Level 2b: Esmaeili 2018） */
+  injury_history_risk: 1.5,
+  /** 単調性（Level 2a 否定的: 補助情報のみ） */
+  monotony_info: 0.3,
 };
 
 /** ACWR の正常上限（これ超過で加重） */
@@ -116,19 +121,13 @@ function calculateRiskScores(
     featureVector.monotonyIndex - MONOTONY_NORMAL_UPPER,
   );
 
-  // プレパレッドネス不足分（負値のみ加重）
-  const preparednessDeficit = Math.max(0, -featureVector.preparedness);
-
-  // Z-Score の悪化度合い（負の Z-Score の絶対値合計）
-  let zScoreNegativeSum = 0;
+  // ウェルネス悪化度合い（Z ≤ -1.0 の項目数 × 深さ）
+  let wellnessDeclineSum = 0;
   for (const z of Object.values(featureVector.zScores)) {
-    if (z < 0) {
-      zScoreNegativeSum += Math.abs(z);
+    if (z <= -1.0) {
+      wellnessDeclineSum += Math.abs(z);
     }
   }
-
-  // デカップリングスコア
-  const decouplingContribution = featureVector.decouplingScore ?? 0;
 
   // 各身体部位のリスクスコアを計算
   const bodyParts = new Set<string>([
@@ -152,14 +151,12 @@ function calculateRiskScores(
     // 既往歴に基づくリスク乗数
     const riskMultiplier = context.riskMultipliers[bodyPart] ?? 1.0;
 
-    // 重み付き特徴量の合計（ゼロ中心からの偏差）
+    // 重み付き特徴量の合計（Level 2+ エビデンスベース変数のみ）
     const weightedSum =
       FEATURE_WEIGHTS['acwr_excess']! * acwrExcess +
-      FEATURE_WEIGHTS['monotony_excess']! * monotonyExcess +
-      FEATURE_WEIGHTS['preparedness_deficit']! * preparednessDeficit +
-      FEATURE_WEIGHTS['tissue_damage']! * tissueContribution +
-      FEATURE_WEIGHTS['z_score_negative']! * zScoreNegativeSum * 0.1 +
-      FEATURE_WEIGHTS['decoupling']! * decouplingContribution;
+      FEATURE_WEIGHTS['wellness_decline']! * wellnessDeclineSum * 0.2 +
+      FEATURE_WEIGHTS['injury_history_risk']! * tissueContribution +
+      FEATURE_WEIGHTS['monotony_info']! * monotonyExcess;
 
     // ロジスティック関数でリスクスコアに変換（-3 シフトで 0.5 をベースライン付近に）
     const rawRisk = sigmoid(weightedSum - 3);

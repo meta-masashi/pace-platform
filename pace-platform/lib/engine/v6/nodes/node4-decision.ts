@@ -145,10 +145,12 @@ function checkP1Safety(
 /**
  * P2 判定: 力学的崩壊リスクの検出。
  *
- * 以下の条件のいずれかに該当する場合:
- * - ACWR > 1.5
- * - Monotony > 2.0
- * - ODE D > D_crit（臨界ダメージ超過）
+ * エビデンスベース複合条件（REMEDIATION-PLAN-v2）:
+ * - RED: ACWR > 1.5 AND ウェルネス Z ≤ -1.0 が 2項目以上（Level 2a+2b）
+ * - ORANGE: ACWR > 1.5 のみ（ウェルネスは正常）
+ *
+ * [REMOVED] Monotony 単独トリガー（Level 2a 否定的）
+ * [REMOVED] ODE 組織ダメージ（Level 5）
  */
 function checkP2MechanicalRisk(
   input: DecisionInput,
@@ -158,46 +160,34 @@ function checkP2MechanicalRisk(
   const reasons: string[] = [];
   const reasonsEn: string[] = [];
 
-  // PHV（Peak Height Velocity）成長期: 13〜17歳は ACWR 閾値を引き下げ
+  // PHV 成長期: 13〜17歳は ACWR 閾値を引き下げ
   const acwrThreshold = (_context.age >= 13 && _context.age <= 17)
-    ? config.thresholds.acwrRedLine * 0.867 // 1.5 × 0.867 ≈ 1.3
+    ? config.thresholds.acwrRedLine * 0.867
     : config.thresholds.acwrRedLine;
 
-  // ACWR 超過
-  if (input.featureVector.acwr > acwrThreshold) {
+  const isACWRHigh = input.featureVector.acwr > acwrThreshold;
+
+  // ウェルネス Z ≤ -1.0 の項目数（Level 2b: Thorpe 2017）
+  const declinedItems = Object.values(input.featureVector.zScores)
+    .filter((z) => z <= -1.0).length;
+  const isWellnessDeclined = declinedItems >= 2;
+
+  // 複合条件: ACWR高値 + ウェルネス悪化 → RED
+  if (isACWRHigh && isWellnessDeclined) {
     reasons.push(
-      `ACWR が ${input.featureVector.acwr.toFixed(2)} で危険域（${acwrThreshold.toFixed(2)}）を超えています。急激な負荷増加による傷害リスクが高まっています。負荷の段階的調整を推奨します。`,
+      `急性負荷比（ACWR=${input.featureVector.acwr.toFixed(2)}）が安全域（${acwrThreshold.toFixed(2)}）を超過し、同時に主観的コンディション${declinedItems}項目が悪化しています。強度の大幅な制限を推奨します。`,
     );
     reasonsEn.push(
-      `ACWR is ${input.featureVector.acwr.toFixed(2)}, exceeding red line (${acwrThreshold.toFixed(2)}).`,
+      `ACWR ${input.featureVector.acwr.toFixed(2)} exceeds safe zone with ${declinedItems} wellness items declining.`,
     );
-  }
-
-  // Monotony 超過
-  if (
-    input.featureVector.monotonyIndex > config.thresholds.monotonyRedLine
-  ) {
+  } else if (isACWRHigh) {
+    // ACWR高値のみ → ORANGE（注意喚起）
     reasons.push(
-      `単調性指標が ${input.featureVector.monotonyIndex.toFixed(2)} で警告域（${config.thresholds.monotonyRedLine}）を超えています。トレーニング変動の不足により疲労蓄積のリスクがあります。メニューのバリエーションを推奨します。`,
+      `急性負荷比（ACWR=${input.featureVector.acwr.toFixed(2)}）が上昇しています。主観的コンディションは現時点で良好ですが、負荷管理に注意してください。`,
     );
     reasonsEn.push(
-      `Monotony index is ${input.featureVector.monotonyIndex.toFixed(2)}, exceeding red line (${config.thresholds.monotonyRedLine}).`,
+      `ACWR ${input.featureVector.acwr.toFixed(2)} elevated. Wellness currently stable but load management advised.`,
     );
-  }
-
-  // ODE 組織ダメージ超過
-  for (const [category, damage] of Object.entries(
-    input.featureVector.tissueDamage,
-  )) {
-    if (damage > 0.8) {
-      const categoryLabel = TISSUE_CATEGORY_LABELS[category] ?? category;
-      reasons.push(
-        `${categoryLabel}の組織ダメージが高水準（${damage.toFixed(2)}）です。回復に十分な時間を確保し、該当組織への負荷を軽減してください。`,
-      );
-      reasonsEn.push(
-        `${category} tissue damage is high (${damage.toFixed(2)}).`,
-      );
-    }
   }
 
   return { triggered: reasons.length > 0, reasons, reasonsEn };
@@ -208,25 +198,39 @@ function checkP2MechanicalRisk(
 // ---------------------------------------------------------------------------
 
 /**
- * P3 判定: 主観-客観デカップリングの検出。
+ * P3 判定: 慢性的不適応（ウェルネス持続悪化パターン）
+ *
+ * エビデンス（REMEDIATION-PLAN-v2）:
+ * - Palacios-Ceña (2021) Level 2: 睡眠行動と非接触傷害の関連
+ * - Saw (2016) Level 2a: 主観指標の持続的悪化がオーバートレーニングの兆候
+ *
+ * 条件: ACWR は正常域（0.8-1.3）だが、
+ * ウェルネス Z ≤ -1.5 が 3項目以上
+ *
+ * [REMOVED] EKF デカップリング（学術論文ゼロ）
  */
-function checkP3Decoupling(
+function checkP3ChronicMaladaptation(
   input: DecisionInput,
   _context: AthleteContext,
-  config: PipelineConfig,
+  _config: PipelineConfig,
 ): { triggered: boolean; reasons: string[]; reasonsEn: string[] } {
   const reasons: string[] = [];
   const reasonsEn: string[] = [];
 
-  if (
-    input.featureVector.decouplingScore !== undefined &&
-    input.featureVector.decouplingScore > config.thresholds.decouplingThreshold
-  ) {
+  const acwr = input.featureVector.acwr;
+  const isACWRNormal = acwr >= 0.8 && acwr <= 1.3;
+
+  const severeDeclineCount = Object.values(input.featureVector.zScores)
+    .filter((z) => z <= -1.5).length;
+
+  if (isACWRNormal && severeDeclineCount >= 3) {
     reasons.push(
-      `主観的負荷と客観的負荷の乖離（デカップリング: ${input.featureVector.decouplingScore.toFixed(2)}）が検出されました。主観評価と実際の生理的負荷にギャップがある可能性があります。客観データの確認を推奨します。`,
+      '練習負荷は適正範囲ですが、主観的コンディションの複数項目が大幅に悪化しています。' +
+      'グラウンド外のストレスや睡眠の質の低下が回復力を阻害している可能性があります。' +
+      '調整メニューへの切り替えを検討してください。',
     );
     reasonsEn.push(
-      `Subjective-objective load decoupling detected (score: ${input.featureVector.decouplingScore.toFixed(2)}).`,
+      `Workload is normal (ACWR=${acwr.toFixed(2)}) but ${severeDeclineCount} wellness indicators show severe decline.`,
     );
   }
 
@@ -566,9 +570,9 @@ export const node4Decision: NodeExecutor<DecisionInput, DecisionOutput> = {
     }
 
     // ----- P3 判定 -----
-    const p3 = checkP3Decoupling(input, context, config);
+    const p3 = checkP3ChronicMaladaptation(input, context, config);
     if (p3.triggered) {
-      const priority: InferencePriority = 'P3_DECOUPLING';
+      const priority: InferencePriority = 'P3_DECOUPLING'; // 型互換のため名称維持
       return {
         nodeId: 'node4_decision',
         success: true,
