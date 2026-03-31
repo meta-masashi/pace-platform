@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { SoapForm } from './_components/soap-form';
+import { SoapWizard } from './_components/soap-wizard';
 
 export const metadata: Metadata = {
   title: '新規SOAPノート作成',
 };
 
 /**
- * 新規SOAPノート作成ページ
+ * 新規SOAPノート作成ページ（ステップ型ウィザード）
  *
  * クエリパラメータ ?athleteId= でアスリートIDを事前設定可能。
  */
@@ -17,22 +17,17 @@ export default function NewSoapNotePage() {
       <div>
         <h1 className="text-xl font-bold tracking-tight">新規SOAPノート作成</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          アスリートの評価記録を作成します。AI補助で各セクションを生成できます。
+          ステップ形式で記録を作成します。各セクションでAI補助が利用できます。
         </p>
       </div>
       <Suspense
         fallback={
-          <div className="space-y-4">
-            <div className="h-12 animate-pulse rounded-lg bg-muted" />
-            <div className="h-16 animate-pulse rounded-lg bg-muted" />
-            <div className="h-32 animate-pulse rounded-lg bg-muted" />
-            <div className="h-32 animate-pulse rounded-lg bg-muted" />
-            <div className="h-32 animate-pulse rounded-lg bg-muted" />
-            <div className="h-32 animate-pulse rounded-lg bg-muted" />
+          <div className="flex items-center justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           </div>
         }
       >
-        <SoapForm />
+        <SoapWizard />
       </Suspense>
     </div>
   );
