@@ -99,7 +99,12 @@ export async function middleware(request: NextRequest) {
     if (!user) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
+      const redirectResponse = NextResponse.redirect(loginUrl);
+      // Cookie をリダイレクトレスポンスにも引き継ぐ（トークンリフレッシュ対応）
+      response.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value);
+      });
+      return redirectResponse;
     }
 
     applySecurityHeaders(response, pathname);
