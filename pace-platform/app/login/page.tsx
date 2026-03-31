@@ -5,20 +5,7 @@ import {
   signInWithMagicLink,
   signInWithGoogle,
 } from '@/lib/supabase/auth-helpers';
-import { createClient } from '@supabase/supabase-js';
-
-// ---------------------------------------------------------------------------
-// Supabase クライアント（Email/Password 用）
-// ---------------------------------------------------------------------------
-
-function getSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error('Supabase環境変数が設定されていません');
-  }
-  return createClient(url, key);
-}
+import { createClient } from '@/lib/supabase/client';
 
 // ---------------------------------------------------------------------------
 // 認証タブ定義
@@ -123,7 +110,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const supabase = getSupabaseClient();
+      const supabase = createClient();
       const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,

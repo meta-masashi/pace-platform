@@ -5,20 +5,15 @@
  * クライアントサイドでの認証操作を一元的に管理する。
  */
 
-import { createClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
+import { createClient } from "./client";
 
 // ---------------------------------------------------------------------------
-// Supabase クライアント（ブラウザ用）
+// Supabase クライアント（ブラウザ用 — Cookie ベース SSR 互換）
 // ---------------------------------------------------------------------------
 
 function getBrowserClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error("Supabase環境変数が設定されていません");
-  }
-  return createClient(url, key);
+  return createClient();
 }
 
 // ---------------------------------------------------------------------------
