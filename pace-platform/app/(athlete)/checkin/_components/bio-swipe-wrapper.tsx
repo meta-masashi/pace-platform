@@ -27,7 +27,7 @@ interface BioSwipeWrapperProps {
   athleteId: string;
 }
 
-type Phase = 'loading' | 'swipe' | 'compass' | 'fallback';
+type Phase = 'loading' | 'swipe' | 'form' | 'compass' | 'fallback';
 
 // デフォルト質問セット（API未接続時のフォールバック）
 const DEFAULT_QUESTIONS: BioSwipeQuestion[] = [
@@ -174,12 +174,27 @@ export function BioSwipeWrapper({ athleteId }: BioSwipeWrapperProps) {
   // Swipe UI
   if (phase === 'swipe' && questions.length > 0) {
     return (
-      <BioSwipeCheckin
-        athleteId={athleteId}
-        questions={questions}
-        onComplete={handleSwipeComplete}
-      />
+      <div className="flex flex-col h-full">
+        <BioSwipeCheckin
+          athleteId={athleteId}
+          questions={questions}
+          onComplete={handleSwipeComplete}
+        />
+        <div className="fixed bottom-20 left-0 right-0 flex justify-center z-50">
+          <button
+            onClick={() => setPhase('form')}
+            className="rounded-full bg-white/10 px-4 py-2 text-xs text-white/60 backdrop-blur-sm transition-colors hover:bg-white/20"
+          >
+            スキップして入力フォームへ →
+          </button>
+        </div>
+      </div>
     );
+  }
+
+  // 従来の入力フォーム
+  if (phase === 'form') {
+    return <CheckinForm athleteId={athleteId} />;
   }
 
   // Daily Compass (Action Screen)
