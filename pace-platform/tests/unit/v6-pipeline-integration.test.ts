@@ -385,10 +385,47 @@ describe('v6.0 パイプライン統合テスト', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 5. P2: Monotony 高値
+  // 5. P2: ACWR + Wellness compound (Monotony solo trigger removed)
   // -----------------------------------------------------------------------
-  describe('P2: Monotony 高値', () => {
-    it('7日間同一負荷 → 単調性超過で P2_MECHANICAL_RISK', async () => {
+  describe('P2: ACWR + Wellness compound condition', () => {
+    it('ACWR > 1.5 + ウェルネス2項目悪化 → P2_MECHANICAL_RISK, ORANGE', async () => {
+      const context = createMockAthleteContext();
+      const todayInput = createMockDailyInput();
+
+      const decisionResult = await node4Decision.execute(
+        {
+          inference: {
+            riskScores: {},
+            posteriorProbabilities: {},
+            confidenceIntervals: {},
+          },
+          featureVector: {
+            acwr: 1.8, // ACWR > 1.5
+            monotonyIndex: 1.0,
+            preparedness: 10,
+            tissueDamage: {
+              metabolic: 0,
+              structural_soft: 0,
+              structural_hard: 0,
+              neuromotor: 0,
+            },
+            zScores: {
+              sleepQuality: -1.2,
+              fatigue: -1.5,
+            },
+          },
+          cleanedInput: todayInput,
+        },
+        context,
+        new InferencePipeline().getConfig(),
+      );
+
+      expect(decisionResult.success).toBe(true);
+      expect(decisionResult.data.priority).toBe('P2_MECHANICAL_RISK');
+      expect(decisionResult.data.reason).toContain('ACWR');
+    });
+
+    it('Monotony > 2.0 のみ → P2 不発火（単独トリガー排除済み）', async () => {
       const context = createMockAthleteContext();
       const todayInput = createMockDailyInput();
 
@@ -401,13 +438,13 @@ describe('v6.0 パイプライン統合テスト', () => {
           },
           featureVector: {
             acwr: 1.0,
-            monotonyIndex: 3.0, // Monotony > 2.0
+            monotonyIndex: 3.0,
             preparedness: 10,
             tissueDamage: {
-              metabolic: 0.1,
-              structural_soft: 0.1,
-              structural_hard: 0.1,
-              neuromotor: 0.1,
+              metabolic: 0,
+              structural_soft: 0,
+              structural_hard: 0,
+              neuromotor: 0,
             },
             zScores: {},
           },
@@ -418,9 +455,8 @@ describe('v6.0 パイプライン統合テスト', () => {
       );
 
       expect(decisionResult.success).toBe(true);
-      expect(decisionResult.data.decision).toBe('ORANGE');
-      expect(decisionResult.data.priority).toBe('P2_MECHANICAL_RISK');
-      expect(decisionResult.data.reason).toContain('単調性');
+      // Monotony alone should NOT trigger P2
+      expect(decisionResult.data.priority).not.toBe('P2_MECHANICAL_RISK');
     });
   });
 
@@ -428,7 +464,7 @@ describe('v6.0 パイプライン統合テスト', () => {
   // 6. P4: GAS 疲憊期
   // -----------------------------------------------------------------------
   describe('P4: GAS 疲憊期', () => {
-    it('複数のZ-Score ≤ -1.5 → P4_GAS_EXHAUSTION, YELLOW', async () => {
+    it('Z-Score ≤ -1.5 が 2項目 + ACWR 正常 → P4_GAS_EXHAUSTION, YELLOW', async () => {
       const context = createMockAthleteContext();
       const todayInput = createMockDailyInput();
 
@@ -444,10 +480,53 @@ describe('v6.0 パイプライン統合テスト', () => {
             monotonyIndex: 1.0,
             preparedness: 5,
             tissueDamage: {
-              metabolic: 0.1,
-              structural_soft: 0.1,
-              structural_hard: 0.1,
-              neuromotor: 0.1,
+              metabolic: 0,
+              structural_soft: 0,
+              structural_hard: 0,
+              neuromotor: 0,
+            },
+            zScores: {
+              sleepQuality: -2.0,
+              fatigue: -1.8,
+              // 2項目のみ（3項目以上だと P3 Chronic Maladaptation が先に発火）
+            },
+          },
+          cleanedInput: todayInput,
+        },
+        context,
+        new InferencePipeline().getConfig(),
+      );
+
+      expect(decisionResult.success).toBe(true);
+      expect(decisionResult.data.decision).toBe('YELLOW');
+      expect(decisionResult.data.priority).toBe('P4_GAS_EXHAUSTION');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 6b. P3: 慢性的不適応（Wellness 持続悪化パターン）
+  // -----------------------------------------------------------------------
+  describe('P3: Chronic Maladaptation', () => {
+    it('ACWR 正常 + Z ≤ -1.5 が 3項目以上 → P3_DECOUPLING (chronic maladaptation)', async () => {
+      const context = createMockAthleteContext();
+      const todayInput = createMockDailyInput();
+
+      const decisionResult = await node4Decision.execute(
+        {
+          inference: {
+            riskScores: {},
+            posteriorProbabilities: {},
+            confidenceIntervals: {},
+          },
+          featureVector: {
+            acwr: 1.0, // 正常域
+            monotonyIndex: 1.0,
+            preparedness: 5,
+            tissueDamage: {
+              metabolic: 0,
+              structural_soft: 0,
+              structural_hard: 0,
+              neuromotor: 0,
             },
             zScores: {
               sleepQuality: -2.0,
@@ -463,8 +542,8 @@ describe('v6.0 パイプライン統合テスト', () => {
 
       expect(decisionResult.success).toBe(true);
       expect(decisionResult.data.decision).toBe('YELLOW');
-      expect(decisionResult.data.priority).toBe('P4_GAS_EXHAUSTION');
-      expect(decisionResult.data.reason).toContain('疲憊');
+      expect(decisionResult.data.priority).toBe('P3_DECOUPLING'); // 型互換名
+      expect(decisionResult.data.reason).toContain('適正範囲');
     });
   });
 
