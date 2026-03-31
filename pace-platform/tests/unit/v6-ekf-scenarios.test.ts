@@ -169,18 +169,23 @@ describe('v6.0 EKF デカップリングシナリオ', () => {
       const input = createTestDailyInput();
       const config = DEFAULT_PIPELINE_CONFIG;
 
+      // EKF decouplingScore は排除済み（REMEDIATION-PLAN-v2）
+      // P3 は chronic maladaptation（ウェルネス持続悪化）に書き換え済み
       const featureVector: FeatureVector = {
-        acwr: 1.0,
+        acwr: 1.0, // 正常域
         monotonyIndex: 1.0,
         preparedness: 10,
         tissueDamage: {
-          metabolic: 0.1,
-          structural_soft: 0.1,
-          structural_hard: 0.1,
-          neuromotor: 0.1,
+          metabolic: 0,
+          structural_soft: 0,
+          structural_hard: 0,
+          neuromotor: 0,
         },
-        zScores: {},
-        decouplingScore: 2.0, // 閾値 1.5 超過
+        zScores: {
+          sleepQuality: -2.0,
+          fatigue: -1.8,
+          mood: -1.6,
+        }, // 3項目以上が Z ≤ -1.5
       };
 
       const result = await node4Decision.execute(
@@ -197,9 +202,9 @@ describe('v6.0 EKF デカップリングシナリオ', () => {
         config,
       );
 
-      expect(result.data.priority).toBe('P3_DECOUPLING');
+      expect(result.data.priority).toBe('P3_DECOUPLING'); // 型互換名
       expect(result.data.decision).toBe('YELLOW');
-      expect(result.data.reason).toContain('デカップリング');
+      expect(result.data.reason).toContain('適正範囲');
     });
   });
 
