@@ -69,12 +69,14 @@ export async function middleware(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    // If env vars are missing, allow through in development
-    if (process.env.NODE_ENV === 'development') {
-      return response;
-    }
-    // In production, redirect to login
-    return NextResponse.redirect(new URL('/login', request.url));
+    console.error(
+      '[middleware] CRITICAL: Supabase env vars missing!',
+      'NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? 'SET' : 'MISSING',
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'SET' : 'MISSING',
+    );
+    // Allow through — redirecting to login here causes infinite loop
+    // when env vars are not set, since /login itself hits middleware
+    return response;
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
