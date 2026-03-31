@@ -4,17 +4,41 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'ダッシュボード', icon: DashboardIcon },
-  { href: '/copilot', label: 'MDT Copilot', icon: CopilotIcon },
-  { href: '/triage', label: 'トリアージ', icon: TriageIcon },
-  { href: '/athletes', label: '選手一覧', icon: AthletesIcon },
-  { href: '/assessment', label: 'アセスメント', icon: AssessmentIcon },
-  { href: '/rehab', label: 'リハビリ', icon: RehabIcon },
-  { href: '/training', label: 'トレーニング', icon: TrainingIcon },
-  { href: '/what-if', label: '介入シミュレーター', icon: WhatIfIcon },
+/** 仕様書 v6.0: 4つのアクションハブ */
+const NAV_HUBS = [
+  {
+    href: '/dashboard',
+    label: 'チーム',
+    sublabel: 'コンディション・トリアージ',
+    icon: DashboardIcon,
+    matchPaths: ['/dashboard', '/triage', '/copilot'],
+  },
+  {
+    href: '/players',
+    label: '選手',
+    sublabel: 'データ・アセスメント',
+    icon: AthletesIcon,
+    matchPaths: ['/players', '/athletes', '/assessment', '/rehabilitation', '/rehab'],
+  },
+  {
+    href: '/training',
+    label: '計画',
+    sublabel: 'カレンダー・AIサジェスト',
+    icon: TrainingIcon,
+    matchPaths: ['/training', '/training-plans', '/schedule', '/team-training', '/menus', '/what-if'],
+  },
+  {
+    href: '/stats',
+    label: 'Analytics',
+    sublabel: 'データ分析・レポート',
+    icon: SettingsIcon,
+    matchPaths: ['/stats'],
+  },
+] as const;
+
+/** ユーティリティリンク */
+const UTILITY_ITEMS = [
   { href: '/community', label: 'コミュニティ', icon: CommunityIcon },
-  { href: '/menus', label: 'メニュー管理', icon: MenuIcon },
   { href: '/settings', label: '設定', icon: SettingsIcon },
 ] as const;
 
@@ -53,32 +77,60 @@ export function StaffSidebar() {
         <span className="text-lg font-semibold tracking-tight">PACE</span>
       </div>
 
-      {/* Navigation */}
+      {/* 4 Action Hubs */}
       <nav className="flex-1 overflow-y-auto p-3">
         <div className="space-y-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const isActive =
-              pathname === href || pathname.startsWith(`${href}/`);
+          {NAV_HUBS.map(({ href, label, sublabel, icon: Icon, matchPaths }) => {
+            const isActive = matchPaths.some(
+              (p) => pathname === p || pathname.startsWith(`${p}/`),
+            );
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
+                <Icon className="h-5 w-5 shrink-0" />
+                <div className="flex flex-col">
+                  <span>{label}</span>
+                  <span className="text-[10px] font-normal text-muted-foreground">{sublabel}</span>
+                </div>
               </Link>
             );
           })}
         </div>
 
+        {/* ユーティリティ */}
+        <div className="mt-6 border-t border-border pt-4">
+          <div className="space-y-1">
+            {UTILITY_ITEMS.map(({ href, label, icon: Icon }) => {
+              const isActive =
+                pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
         {/* 管理セクション (master only) */}
         {isMaster && (
-          <div className="mt-6">
+          <div className="mt-4 border-t border-border pt-4">
             <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               管理
             </p>
@@ -110,7 +162,7 @@ export function StaffSidebar() {
 
       {/* Footer */}
       <div className="border-t border-border p-3">
-        <p className="text-xs text-muted-foreground">PACE Platform v3.2</p>
+        <p className="text-xs text-muted-foreground">PACE Platform v6.0</p>
       </div>
     </aside>
   );
