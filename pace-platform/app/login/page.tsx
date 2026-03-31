@@ -123,6 +123,23 @@ export default function LoginPage() {
         return;
       }
 
+      // ロール判定: athletes.user_id にマッチすればアスリート → /home
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: athlete } = await supabase
+          .from('athletes')
+          .select('id')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        if (athlete) {
+          router.push('/home');
+          router.refresh();
+          return;
+        }
+      }
+
+      // スタッフ → /dashboard
       router.push('/dashboard');
       router.refresh();
     } catch (err) {
