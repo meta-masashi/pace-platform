@@ -66,8 +66,10 @@ export async function middleware(request: NextRequest) {
       },
     });
 
-    const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL'];
-    const supabaseAnonKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'];
+    // ドット記法必須: Next.js はビルド時に process.env.NEXT_PUBLIC_* をインライン化する
+    // ブラケット記法 process.env['...'] ではインライン化されず undefined になる
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
       // Allow through if env vars are missing
