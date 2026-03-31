@@ -1,48 +1,63 @@
+'use client';
+
 /**
  * PACE Platform -- アスリートホーム画面
  *
- * コンディショニングスコアリング、AI インサイト、
- * ブレークダウンカード（フィットネス蓄積・疲労負荷・ACWR）を表示。
- *
- * データは /api/conditioning/[athleteId] から取得。
+ * 認証チェックは middleware に委譲。
+ * Client Component でアスリートIDを取得してコンテンツを表示。
  */
 
-import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import { AthleteHomeContent } from "./_components/athlete-home-content";
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { AthleteHomeContent } from './_components/athlete-home-content';
 
-export const metadata: Metadata = {
-  title: "ホーム",
-};
+export default function AthleteHomePage() {
+  const [athleteId, setAthleteId] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [loading, setLoading] = useState(true);
 
-export default async function AthleteHomePage() {
-  // サーバーサイドで認証ユーザーのアスリートIDを取得
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  useEffect(() => {
+    async function load() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-  if (!user) {
-    redirect("/login");
+        const { data: athlete } = await supabase
+          .from('athletes')
+          .select('id, name')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (athlete) {
+          setAthleteId(athlete.id as string);
+          setDisplayName((athlete.name as string) ?? '');
+        }
+      } catch {
+        // silently fail
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 pt-20">
+        <div className="h-[240px] w-[240px] animate-pulse rounded-full bg-muted" />
+        <div className="h-4 w-48 animate-pulse rounded bg-muted" />
+      </div>
+    );
   }
 
-  // ユーザーに紐づくアスリートレコードを取得
-  const { data: athlete } = await supabase
-    .from("athletes")
-    .select("id, display_name")
-    .eq("user_id", user.id)
-    .single();
-
-  if (!athlete) {
-    // アスリートレコードが無い場合（スタッフユーザーなど）
-    redirect("/login");
+  if (!athleteId) {
+    return (
+      <div className="pt-12 text-center text-sm text-muted-foreground">
+        アスリートデータが見つかりません。
+      </div>
+    );
   }
 
-  return (
-    <AthleteHomeContent
-      athleteId={athlete.id as string}
-      displayName={(athlete.display_name as string) ?? ""}
-    />
-  );
+  return <AthleteHomeContent athleteId={athleteId} displayName={displayName} />;
 }

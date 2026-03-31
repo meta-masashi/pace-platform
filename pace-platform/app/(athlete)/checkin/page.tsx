@@ -1,38 +1,59 @@
+'use client';
+
 /**
  * PACE Platform -- 日次チェックインページ
  *
- * アスリートが日次コンディションデータを入力するフォーム。
- * POST /api/checkin に送信し、算出されたスコアを表示。
+ * 認証チェックは middleware に委譲。
  */
 
-import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import { BioSwipeWrapper } from "./_components/bio-swipe-wrapper";
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { BioSwipeWrapper } from './_components/bio-swipe-wrapper';
 
-export const metadata: Metadata = {
-  title: "チェックイン",
-};
+export default function CheckinPage() {
+  const [athleteId, setAthleteId] = useState('');
+  const [loading, setLoading] = useState(true);
 
-export default async function CheckinPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  useEffect(() => {
+    async function load() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-  if (!user) {
-    redirect("/login");
+        const { data: athlete } = await supabase
+          .from('athletes')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (athlete) {
+          setAthleteId(athlete.id as string);
+        }
+      } catch {
+        // silently fail
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center pt-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
   }
 
-  const { data: athlete } = await supabase
-    .from("athletes")
-    .select("id")
-    .eq("user_id", user.id)
-    .single();
-
-  if (!athlete) {
-    redirect("/login");
+  if (!athleteId) {
+    return (
+      <div className="pt-12 text-center text-sm text-muted-foreground">
+        アスリートデータが見つかりません。
+      </div>
+    );
   }
 
-  return <BioSwipeWrapper athleteId={athlete.id as string} />;
+  return <BioSwipeWrapper athleteId={athleteId} />;
 }

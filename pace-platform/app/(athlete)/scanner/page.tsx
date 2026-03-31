@@ -1,37 +1,55 @@
+'use client';
+
 /**
  * PACE Platform -- スマート・スキャナー (The Pocket Node 6) ページ
- *
- * カメラ解析UI: ウェアラブル非装着日 or 週1定期チェック用。
  */
 
-import type { Metadata } from 'next';
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { SmartScanner } from './_components/smart-scanner';
 
-export const metadata: Metadata = {
-  title: 'スマートスキャナー',
-};
+export default function ScannerPage() {
+  const [athleteId, setAthleteId] = useState('');
+  const [loading, setLoading] = useState(true);
 
-export default async function ScannerPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  useEffect(() => {
+    async function load() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-  if (!user) {
-    redirect('/login');
+        const { data: athlete } = await supabase
+          .from('athletes')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (athlete) setAthleteId(athlete.id as string);
+      } catch {
+        // silently fail
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center pt-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
   }
 
-  const { data: athlete } = await supabase
-    .from('athletes')
-    .select('id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!athlete) {
-    redirect('/login');
+  if (!athleteId) {
+    return (
+      <div className="pt-12 text-center text-sm text-muted-foreground">
+        アスリートデータが見つかりません。
+      </div>
+    );
   }
 
-  return <SmartScanner athleteId={athlete.id as string} />;
+  return <SmartScanner athleteId={athleteId} />;
 }
