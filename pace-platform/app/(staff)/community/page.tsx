@@ -1,36 +1,55 @@
 /**
  * PACE Platform — コミュニティページ（Slack風チャット）
+ *
+ * 認証チェックは (staff)/layout.tsx に委譲。
  */
 
+'use client';
+
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { useEffect, useState } from 'react';
 import { CommunityContent } from './_components/community-content';
 
-export default async function CommunityPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+interface Channel {
+  id: string;
+  name: string;
+  type: string;
+  team_id: string | null;
+  created_at: string;
+}
 
-  if (!user) redirect('/login');
+export default function CommunityPage() {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [canCreate, setCanCreate] = useState(false);
+  const [staffId, setStaffId] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const { data: staff } = await supabase
-    .from('staff')
-    .select('id, org_id, role, is_leader, is_active')
-    .eq('id', user.id)
-    .single();
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/community/channels');
+        if (res.ok) {
+          const json = await res.json();
+          setChannels(json.channels ?? []);
+          setCanCreate(json.canCreate ?? false);
+          setStaffId(json.staffId ?? '');
+        }
+      } catch {
+        // エラー時は空表示
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
-  if (!staff) redirect('/login');
-
-  // チャンネル一覧取得
-  const { data: channels } = await supabase
-    .from('channels')
-    .select('id, name, type, team_id, created_at')
-    .eq('org_id', staff.org_id)
-    .order('created_at', { ascending: true });
-
-  const canCreate = staff.role === 'master' || staff.is_leader;
+  if (loading) {
+    return (
+      <div className="-m-6 flex items-center justify-center h-[calc(100vh-3.5rem)]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="-m-6 flex flex-col h-[calc(100vh-3.5rem)]">
@@ -52,9 +71,9 @@ export default async function CommunityPage() {
       {/* チャットコンテンツ */}
       <div className="flex flex-1 min-h-0">
         <CommunityContent
-          initialChannels={channels ?? []}
+          initialChannels={channels}
           canCreate={canCreate}
-          currentStaffId={staff.id}
+          currentStaffId={staffId}
         />
       </div>
     </div>
