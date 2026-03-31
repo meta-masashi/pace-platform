@@ -8,6 +8,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { OfflineBadge } from "@/app/_components/offline-badge";
+import { QueryProvider } from "@/app/_providers/query-provider";
 
 export const metadata: Metadata = {
   title: "アスリートホーム",
@@ -157,7 +158,7 @@ export default function AthleteLayout({
 
       {/* メインコンテンツ（最大幅430pxで中央寄せ） */}
       <main className="mx-auto w-full max-w-[430px] flex-1 px-4 pb-20 pt-6">
-        {children}
+        <QueryProvider>{children}</QueryProvider>
       </main>
 
       {/* 下部タブナビゲーション */}

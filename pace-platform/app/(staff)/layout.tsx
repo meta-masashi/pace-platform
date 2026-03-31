@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { StaffSidebar } from './_components/staff-sidebar';
 import { StaffHeader } from './_components/staff-header';
+import { QueryProvider } from '@/app/_providers/query-provider';
 
 export default async function StaffLayout({
   children,
@@ -41,7 +42,7 @@ export default async function StaffLayout({
       <div className="flex flex-1 flex-col overflow-hidden">
         <StaffHeader user={user} teamName={teamName} />
         <main className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-          {children}
+          <QueryProvider>{children}</QueryProvider>
         </main>
       </div>
     </div>
