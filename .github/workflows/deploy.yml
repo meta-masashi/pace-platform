@@ -93,7 +93,7 @@ jobs:
           SITE_URL="${NEXT_PUBLIC_SITE_URL:-https://hachi-riskon.com}"
           echo "Waiting for deployment to propagate..."
           sleep 15
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}/auth/login" || echo "000")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}/login" || echo "000")
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
             echo "Frontend health check passed (HTTP ${STATUS})"
           else
