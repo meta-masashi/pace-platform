@@ -11,6 +11,13 @@ export interface TriageAthlete {
   priority: 'critical' | 'watchlist' | 'normal';
   conditioningScore: number | null;
   lockType: 'hard' | 'soft' | null;
+  /** P2/P3 複合条件の根拠データ（エビデンスベース表示用） */
+  compoundEvidence?: {
+    acwr?: number;
+    declinedWellnessItems?: number;
+    consecutiveBadDays?: number;
+    triggerRule?: string;
+  };
 }
 
 interface TriageCardProps {
@@ -58,6 +65,36 @@ export function TriageCard({ athlete, colorScheme }: TriageCardProps) {
       <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
         {athlete.reason}
       </p>
+
+      {/* 複合条件の根拠（P2/P3 発火時） */}
+      {athlete.compoundEvidence && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {athlete.compoundEvidence.acwr !== undefined && (
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+              athlete.compoundEvidence.acwr > 1.5
+                ? 'bg-critical-100 text-critical-700'
+                : 'bg-watchlist-100 text-watchlist-700'
+            }`}>
+              ACWR {athlete.compoundEvidence.acwr.toFixed(2)}
+            </span>
+          )}
+          {athlete.compoundEvidence.declinedWellnessItems !== undefined && athlete.compoundEvidence.declinedWellnessItems > 0 && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              ウェルネス{athlete.compoundEvidence.declinedWellnessItems}項目悪化
+            </span>
+          )}
+          {athlete.compoundEvidence.consecutiveBadDays !== undefined && athlete.compoundEvidence.consecutiveBadDays >= 3 && (
+            <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">
+              {athlete.compoundEvidence.consecutiveBadDays}日連続悪化
+            </span>
+          )}
+          {athlete.compoundEvidence.triggerRule && (
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+              {athlete.compoundEvidence.triggerRule}
+            </span>
+          )}
+        </div>
+      )}
     </Link>
   );
 }
