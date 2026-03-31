@@ -11,7 +11,8 @@
  * v6 パイプライン API を優先的に使用し、フォールバックで既存 API を利用。
  */
 
-import { useEffect, useState } from "react";
+import { useAthleteHome } from "@/hooks/use-athlete-home";
+import { MetricLabel } from "@/app/_components/metric-label";
 import { GlowingCore } from "./glowing-core";
 import type { GlowingCoreProps } from "./glowing-core";
 import { PerformanceCompass } from "./performance-compass";
@@ -138,68 +139,25 @@ export function AthleteHomeContent({
   athleteId,
   displayName,
 }: AthleteHomeContentProps) {
-  const [data, setData] = useState<ConditioningData | null>(null);
-  const [v6Data, setV6Data] = useState<V6PipelineResult | null>(null);
-  const [validDataDays, setValidDataDays] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // React Query でデータ取得（キャッシュ有効、ページ遷移時の再fetch排除）
+  const { data: homeData, isLoading: loading, error: queryError } = useAthleteHome(athleteId);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-
-        // v6 パイプライン API を試行
-        let v6Result: V6PipelineResult | null = null;
-        try {
-          const v6Res = await fetch(`/api/v6/inference/${athleteId}`);
-          if (v6Res.ok) {
-            const v6Json = await v6Res.json();
-            if (v6Json.success && v6Json.data) {
-              v6Result = v6Json.data as V6PipelineResult;
-              setV6Data(v6Result);
-            }
-          }
-        } catch {
-          // v6 API 未実装の場合は無視
-        }
-
-        // 既存 API（フォールバック / ブレークダウン用データ）
-        const res = await fetch(`/api/conditioning/${athleteId}`);
-        const json = await res.json();
-
-        if (!json.success) {
-          // v6 データがあれば既存 API エラーは許容
-          if (!v6Result) {
-            setError(json.error ?? "データの取得に失敗しました。");
-            return;
-          }
-        } else {
-          const d = json.data;
-          setData({
-            athleteId: d.athlete_id,
-            date: d.latest_date,
-            conditioningScore: d.current.conditioningScore,
-            fitnessEwma: d.current.fitnessEwma,
-            fatigueEwma: d.current.fatigueEwma,
-            acwr: d.current.acwr,
-            fitnessTrend: d.fitnessTrend,
-            fatigueTrend: d.fatigueTrend,
-            insight: d.insight,
-          });
-          if (typeof d.validDataDays === 'number') {
-            setValidDataDays(d.validDataDays);
-          }
-        }
-      } catch {
-        setError("ネットワークエラーが発生しました。");
-      } finally {
-        setLoading(false);
+  const v6Data = homeData?.v6 as V6PipelineResult | undefined ?? null;
+  const data: ConditioningData | null = homeData?.conditioning
+    ? {
+        athleteId,
+        date: homeData.conditioning.latestDate,
+        conditioningScore: homeData.conditioning.conditioningScore,
+        fitnessEwma: homeData.conditioning.fitnessEwma,
+        fatigueEwma: homeData.conditioning.fatigueEwma,
+        acwr: homeData.conditioning.acwr,
+        fitnessTrend: homeData.conditioning.fitnessTrend,
+        fatigueTrend: homeData.conditioning.fatigueTrend,
+        insight: homeData.conditioning.insight,
       }
-    }
-
-    fetchData();
-  }, [athleteId]);
+    : null;
+  const validDataDays = homeData?.validDataDays ?? null;
+  const error = queryError ? "データの取得に失敗しました。" : null;
 
   // ──────── ローディング ────────
 
@@ -292,6 +250,21 @@ export function AthleteHomeContent({
       {/* コールドスタート期プログレスバー */}
       {validDataDays !== null && <ColdStartProgress validDataDays={validDataDays} />}
 
+      {/* AI コンディションサマリ（1文） */}
+      {data && (
+        <div className="rounded-xl bg-primary/5 px-4 py-3">
+          <p className="text-sm text-foreground">
+            {data.conditioningScore >= 70
+              ? `${displayName || 'あなた'}のコンディションは良好です。計画通りのトレーニングを実施できます。`
+              : data.conditioningScore >= 50
+                ? `やや疲労が見られます。ウォーミングアップを入念に行い、強度を調整してください。`
+                : data.conditioningScore >= 30
+                  ? `回復が追いついていません。リカバリーメニューへの切り替えを推奨します。`
+                  : `休養が必要です。スタッフに報告してください。`}
+          </p>
+        </div>
+      )}
+
       {/* ═══ Layer 1: ステータス一目把握 ═══ */}
       <div className="info-layer-status flex justify-center">
         <GlowingCore
@@ -320,15 +293,23 @@ export function AthleteHomeContent({
         {insight && <InsightCard insight={insight} />}
       </div>
 
-      {/* ═══ Layer 3: エビデンス（ブレークダウン） ═══ */}
+      {/* ═══ Layer 3: わかりやすい指標（二層表現） ═══ */}
       {data && (
         <div className="info-layer-evidence flex flex-col gap-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            詳細データ
+            あなたの数値
           </h3>
 
+          <div className="grid grid-cols-2 gap-2">
+            <MetricLabel metricId="readiness" value={data.conditioningScore} mode="athlete" />
+            <MetricLabel metricId="acwr" value={data.acwr} mode="athlete" />
+            <MetricLabel metricId="fitness" value={data.fitnessEwma} mode="athlete" />
+            <MetricLabel metricId="fatigue" value={data.fatigueEwma} mode="athlete" />
+          </div>
+
+          {/* 詳細チャート */}
           <BreakdownCard
-            label="フィットネス蓄積"
+            label="体力の蓄積"
             value={data.fitnessEwma}
             unit="42日 EWMA"
             trend={data.fitnessTrend}
@@ -338,7 +319,7 @@ export function AthleteHomeContent({
           />
 
           <BreakdownCard
-            label="疲労負荷"
+            label="疲労の推移"
             value={data.fatigueEwma}
             unit="7日 EWMA"
             trend={data.fatigueTrend}
@@ -348,7 +329,7 @@ export function AthleteHomeContent({
           />
 
           <BreakdownCard
-            label="ACWR"
+            label="負荷バランス"
             value={data.acwr}
             status={acwrStatus}
             type="gauge"
