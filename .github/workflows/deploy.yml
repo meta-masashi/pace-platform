@@ -75,7 +75,6 @@ jobs:
       - name: Deploy to Vercel
         run: |
           npm install -g vercel@latest
-          # トークンの前後の空白・改行を除去（シークレットのコピー時に混入する場合がある）
           CLEAN_TOKEN=$(printf '%s' "$VERCEL_TOKEN" | tr -d '[:space:]')
           cd pace-platform
           vercel pull --yes --environment=production --token "$CLEAN_TOKEN"
@@ -85,6 +84,9 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
 
       - name: Health check (frontend)
         run: |
