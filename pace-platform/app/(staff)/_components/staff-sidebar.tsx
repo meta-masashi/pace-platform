@@ -14,25 +14,25 @@ const NAV_HUBS = [
     matchPaths: ['/dashboard', '/triage', '/copilot'],
   },
   {
-    href: '/players',
+    href: '/athletes',
     label: '選手',
     sublabel: 'データ・アセスメント',
     icon: AthletesIcon,
-    matchPaths: ['/players', '/athletes', '/assessment', '/rehabilitation', '/rehab'],
+    matchPaths: ['/athletes', '/assessment', '/rehab', '/soap'],
   },
   {
     href: '/training',
     label: '計画',
     sublabel: 'カレンダー・AIサジェスト',
     icon: TrainingIcon,
-    matchPaths: ['/training', '/training-plans', '/schedule', '/team-training', '/menus', '/what-if'],
+    matchPaths: ['/training', '/what-if'],
   },
   {
-    href: '/stats',
+    href: '/reports',
     label: 'Analytics',
     sublabel: 'データ分析・レポート',
-    icon: SettingsIcon,
-    matchPaths: ['/stats'],
+    icon: RehabIcon,
+    matchPaths: ['/reports'],
   },
 ] as const;
 
