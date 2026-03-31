@@ -52,9 +52,9 @@ const ADMIN_ITEMS = [
 export function StaffSidebar() {
   const pathname = usePathname();
   const [isMaster, setIsMaster] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    // ロールを取得して master かどうかを判定
     async function checkRole() {
       try {
         const { getUserRole } = await import('@/lib/supabase/auth-helpers');
@@ -68,17 +68,32 @@ export function StaffSidebar() {
   }, []);
 
   return (
-    <aside className="hidden w-60 shrink-0 border-r border-border bg-card md:flex md:flex-col">
-      {/* Logo */}
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <span className="text-sm font-bold text-primary-foreground">P</span>
+    <aside
+      className={`hidden shrink-0 border-r border-border bg-card md:flex md:flex-col transition-all duration-200 ${
+        collapsed ? 'w-[68px]' : 'w-60'
+      }`}
+    >
+      {/* Logo + Collapse Toggle */}
+      <div className="flex h-14 items-center justify-between border-b border-border px-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
+            <span className="text-sm font-bold text-primary-foreground">P</span>
+          </div>
+          {!collapsed && (
+            <span className="text-lg font-semibold tracking-tight">PACE</span>
+          )}
         </div>
-        <span className="text-lg font-semibold tracking-tight">PACE</span>
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          title={collapsed ? '展開' : '折りたたむ'}
+        >
+          <CollapseIcon className="h-4 w-4" collapsed={collapsed} />
+        </button>
       </div>
 
       {/* 4 Action Hubs */}
-      <nav className="flex-1 overflow-y-auto p-3">
+      <nav className="flex-1 overflow-y-auto p-2">
         <div className="space-y-1">
           {NAV_HUBS.map(({ href, label, sublabel, icon: Icon, matchPaths }) => {
             const isActive = matchPaths.some(
@@ -88,6 +103,7 @@ export function StaffSidebar() {
               <Link
                 key={href}
                 href={href}
+                title={collapsed ? `${label} — ${sublabel}` : undefined}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-primary/10 text-primary'
@@ -95,10 +111,12 @@ export function StaffSidebar() {
                 }`}
               >
                 <Icon className="h-5 w-5 shrink-0" />
-                <div className="flex flex-col">
-                  <span>{label}</span>
-                  <span className="text-[10px] font-normal text-muted-foreground">{sublabel}</span>
-                </div>
+                {!collapsed && (
+                  <div className="flex flex-col">
+                    <span>{label}</span>
+                    <span className="text-[10px] font-normal text-muted-foreground">{sublabel}</span>
+                  </div>
+                )}
               </Link>
             );
           })}
@@ -114,6 +132,7 @@ export function StaffSidebar() {
                 <Link
                   key={href}
                   href={href}
+                  title={collapsed ? label : undefined}
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
                       ? 'bg-primary/10 text-primary'
@@ -121,7 +140,7 @@ export function StaffSidebar() {
                   }`}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  {label}
+                  {!collapsed && label}
                 </Link>
               );
             })}
@@ -131,9 +150,11 @@ export function StaffSidebar() {
         {/* 管理セクション (master only) */}
         {isMaster && (
           <div className="mt-4 border-t border-border pt-4">
-            <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              管理
-            </p>
+            {!collapsed && (
+              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                管理
+              </p>
+            )}
             <div className="space-y-1">
               {ADMIN_ITEMS.map(({ href, label, icon: Icon }) => {
                 const isActive =
@@ -144,6 +165,7 @@ export function StaffSidebar() {
                   <Link
                     key={href}
                     href={href}
+                    title={collapsed ? label : undefined}
                     className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                       isActive
                         ? 'bg-primary/10 text-primary'
@@ -151,7 +173,7 @@ export function StaffSidebar() {
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    {label}
+                    {!collapsed && label}
                   </Link>
                 );
               })}
@@ -162,9 +184,30 @@ export function StaffSidebar() {
 
       {/* Footer */}
       <div className="border-t border-border p-3">
-        <p className="text-xs text-muted-foreground">PACE Platform v6.0</p>
+        {!collapsed && (
+          <p className="text-xs text-muted-foreground">PACE Platform v6.0</p>
+        )}
       </div>
     </aside>
+  );
+}
+
+// コラプストグルアイコン
+function CollapseIcon({ className, collapsed }: { className?: string; collapsed: boolean }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {collapsed ? (
+        <>
+          <path d="M13 17l5-5-5-5" />
+          <path d="M6 17l5-5-5-5" />
+        </>
+      ) : (
+        <>
+          <path d="M11 17l-5-5 5-5" />
+          <path d="M18 17l-5-5 5-5" />
+        </>
+      )}
+    </svg>
   );
 }
 
