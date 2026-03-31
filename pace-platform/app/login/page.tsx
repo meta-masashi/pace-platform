@@ -117,13 +117,14 @@ export default function LoginPage() {
       });
 
       if (authError) {
-        setError(authError.message);
+        setError(`認証エラー: ${authError.message}`);
         return;
       }
 
       window.location.href = '/dashboard';
-    } catch {
-      setError('ログイン中にエラーが発生しました。');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`ログインエラー: ${msg}`);
     } finally {
       setLoading(false);
     }
