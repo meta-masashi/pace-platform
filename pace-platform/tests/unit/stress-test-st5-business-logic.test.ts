@@ -254,7 +254,7 @@ describe('ST-5.1: Priority Hierarchy Invariants', () => {
     expect(result.data.priority).toBe('P2_MECHANICAL_RISK');
   });
 
-  it('ST-5.1.6: P2 (Monotony > 2.0) must produce ORANGE', async () => {
+  it('ST-5.1.6: Monotony > 2.0 alone must NOT trigger P2 (solo trigger removed)', async () => {
     const input = makeDecisionInput({
       cleanedInput: {
         subjectiveScores: { painNRS: 0, sleepQuality: 7, fatigue: 3, mood: 7, muscleSoreness: 3, stressLevel: 3 },
@@ -263,28 +263,27 @@ describe('ST-5.1: Priority Hierarchy Invariants', () => {
     });
 
     const result = await node4Decision.execute(input, context, config);
-    expect(result.data.decision).toBe('ORANGE');
-    expect(result.data.priority).toBe('P2_MECHANICAL_RISK');
+    // Monotony solo trigger removed per REMEDIATION-PLAN-v2 (Level 2a negative evidence)
+    expect(result.data.priority).not.toBe('P2_MECHANICAL_RISK');
   });
 
-  it('ST-5.1.7: P2 (tissue damage > 0.8) must produce ORANGE', async () => {
+  it('ST-5.1.7: P2 compound (ACWR > 1.5 + wellness decline 2+) must produce ORANGE', async () => {
     const input = makeDecisionInput({
       cleanedInput: {
         subjectiveScores: { painNRS: 0, sleepQuality: 7, fatigue: 3, mood: 7, muscleSoreness: 3, stressLevel: 3 },
       },
       featureVector: {
-        acwr: 1.0,
+        acwr: 1.8,
         monotonyIndex: 1.0,
-        tissueDamage: { metabolic: 0.9, structural_soft: 0.1, structural_hard: 0.1, neuromotor: 0.1 },
+        zScores: { sleepQuality: -1.2, fatigue: -1.5 },
       },
     });
 
     const result = await node4Decision.execute(input, context, config);
-    expect(result.data.decision).toBe('ORANGE');
     expect(result.data.priority).toBe('P2_MECHANICAL_RISK');
   });
 
-  it('ST-5.1.8: P3 (decoupling) must produce YELLOW', async () => {
+  it('ST-5.1.8: P3 chronic maladaptation (ACWR normal + 3 severe Z declines) must produce YELLOW', async () => {
     const input = makeDecisionInput({
       cleanedInput: {
         subjectiveScores: { painNRS: 0, sleepQuality: 7, fatigue: 3, mood: 7, muscleSoreness: 3, stressLevel: 3 },
@@ -292,13 +291,13 @@ describe('ST-5.1: Priority Hierarchy Invariants', () => {
       featureVector: {
         acwr: 1.0,
         monotonyIndex: 1.0,
-        decouplingScore: 3.0, // > 1.5 threshold
+        zScores: { sleepQuality: -2.0, fatigue: -1.8, mood: -1.6 },
       },
     });
 
     const result = await node4Decision.execute(input, context, config);
     expect(result.data.decision).toBe('YELLOW');
-    expect(result.data.priority).toBe('P3_DECOUPLING');
+    expect(result.data.priority).toBe('P3_DECOUPLING'); // 型互換名
   });
 
   it('ST-5.1.9: P5 (all normal) must produce GREEN', async () => {
