@@ -114,11 +114,29 @@ function ProfileIcon() {
   );
 }
 
+function HistoryIcon() {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  );
+}
+
 const TABS: TabItem[] = [
   { href: "/home", label: "ホーム", icon: <HomeIcon /> },
-  { href: "/checkin", label: "チェックイン", icon: <CheckInIcon /> },
+  { href: "/checkin", label: "入力", icon: <CheckInIcon /> },
+  { href: "/history", label: "履歴", icon: <HistoryIcon /> },
   { href: "/scanner", label: "スキャン", icon: <ScannerIcon /> },
-  { href: "/profile", label: "プロフィール", icon: <ProfileIcon /> },
+  { href: "/profile", label: "マイ", icon: <ProfileIcon /> },
 ];
 
 // ---------------------------------------------------------------------------
