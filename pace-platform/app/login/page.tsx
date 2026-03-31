@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   signInWithMagicLink,
   signInWithGoogle,
@@ -51,6 +52,7 @@ function GoogleIcon({ className }: { className?: string }) {
 // ---------------------------------------------------------------------------
 
 export default function LoginPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AuthTab>('magic-link');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -121,7 +123,8 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = '/dashboard';
+      router.push('/dashboard');
+      router.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`ログインエラー: ${msg}`);
