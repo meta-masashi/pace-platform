@@ -2,6 +2,7 @@
  * PACE Platform — コミュニティページ（Slack風チャット）
  */
 
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { CommunityContent } from './_components/community-content';
@@ -32,12 +33,30 @@ export default async function CommunityPage() {
   const canCreate = staff.role === 'master' || staff.is_leader;
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-3.5rem)]">
-      <CommunityContent
-        initialChannels={channels ?? []}
-        canCreate={canCreate}
-        currentStaffId={staff.id}
-      />
+    <div className="-m-6 flex flex-col h-[calc(100vh-3.5rem)]">
+      {/* ヘッダー: 戻るボタン + タイトル */}
+      <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-2.5 shrink-0">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5" />
+            <path d="M12 19l-7-7 7-7" />
+          </svg>
+          ダッシュボードに戻る
+        </Link>
+        <span className="text-sm font-semibold text-foreground">コミュニティ</span>
+      </div>
+
+      {/* チャットコンテンツ */}
+      <div className="flex flex-1 min-h-0">
+        <CommunityContent
+          initialChannels={channels ?? []}
+          canCreate={canCreate}
+          currentStaffId={staff.id}
+        />
+      </div>
     </div>
   );
 }
