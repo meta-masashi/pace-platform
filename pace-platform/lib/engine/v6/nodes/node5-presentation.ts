@@ -79,6 +79,43 @@ function generateTraceId(): string {
 // NLG テンプレート
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// FIFA 11+ 介入推奨（Level 1a エビデンス）
+// ---------------------------------------------------------------------------
+
+/**
+ * FIFA 11+ に基づく介入推奨を生成する。
+ *
+ * エビデンス（Level 1a — 最高レベル）:
+ * - FIFA 11+ Ankle SR/メタアナリシス (2025): 足関節傷害 33% 減
+ * - FIFA 11+ Lower Back SR (2025): 腰部傷害 63% 減
+ */
+export function generateFIFA11Recommendations(
+  decision: InferenceDecision,
+): string[] {
+  switch (decision) {
+    case 'GREEN':
+      return [
+        'ウォーミングアップに FIFA 11+ プログラムの実施を推奨します（傷害予防効果: 足関節33%減, 腰部63%減）。',
+      ];
+    case 'YELLOW':
+      return [
+        'FIFA 11+ Level 2（中級）のバランス・固有受容覚トレーニングを重点的に実施してください。',
+        '練習強度を下げ、神経筋コントロールの質を重視したメニューに切り替えることを推奨します。',
+      ];
+    case 'ORANGE':
+      return [
+        'FIFA 11+ Level 1（基礎）の神経筋トレーニングに限定してください。',
+        '高速走行・方向転換を含むメニューの大幅な制限を推奨します。',
+      ];
+    case 'RED':
+      return [
+        'トレーニング参加を見送り、医療スタッフの評価を受けてください。',
+        '復帰時には FIFA 11+ Level 1 から段階的に負荷を戻すプロトコルを推奨します。',
+      ];
+  }
+}
+
 /** 判定色の日本語ラベル */
 const DECISION_LABELS: Record<InferenceDecision, string> = {
   RED: '停止',
@@ -91,7 +128,7 @@ const DECISION_LABELS: Record<InferenceDecision, string> = {
 const PRIORITY_LABELS: Record<InferencePriority, string> = {
   P1_SAFETY: '安全性（P1）',
   P2_MECHANICAL_RISK: '力学的リスク（P2）',
-  P3_DECOUPLING: 'デカップリング（P3）',
+  P3_DECOUPLING: '慢性的不適応（P3）',
   P4_GAS_EXHAUSTION: 'GAS 疲憊期（P4）',
   P5_NORMAL: '正常適応（P5）',
 };

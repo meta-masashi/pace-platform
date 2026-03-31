@@ -26,7 +26,8 @@ import type {
 } from '../types';
 import type { CleaningOutput } from './node1-cleaning';
 import { adaptACWR } from '../adapters/conditioning-adapter';
-import { callODEEngine, callEKFEngine } from '../gateway';
+// ODE・EKF は Level 5 エビデンスのため排除（REMEDIATION-PLAN-v2）
+// import { callODEEngine, callEKFEngine } from '../gateway';
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -198,87 +199,16 @@ function calculateZScores(
  * @param config - パイプライン設定
  * @returns 組織カテゴリ別ダメージ値
  */
-async function calculateTissueDamage(
-  history: DailyInput[],
-  context: AthleteContext,
-  config: PipelineConfig,
-): Promise<Record<TissueCategory, number>> {
-  const loadHistory = history.map((d) => d.sessionLoad);
-  const results: Record<TissueCategory, number> = {
-    metabolic: 0,
-    structural_soft: 0,
-    structural_hard: 0,
-    neuromotor: 0,
-  };
-
-  // 各組織カテゴリで並行して ODE 計算を実行
-  const promises = TISSUE_CATEGORIES.map(async (category) => {
-    const tissueParams = config.tissueDefaults[category];
-    const response = await callODEEngine({
-      tissueCategory: category,
-      loadHistory,
-      tissueParams: {
-        halfLifeDays:
-          context.tissueHalfLifes[category] ?? tissueParams.halfLifeDays,
-        alpha: tissueParams.alpha,
-        beta: tissueParams.beta,
-        tau: tissueParams.tau,
-        m: tissueParams.m,
-      },
-    });
-    results[category] = response.damage;
-  });
-
-  await Promise.all(promises);
-
-  return results;
-}
-
-// ---------------------------------------------------------------------------
-// EKF デカップリング計算
-// ---------------------------------------------------------------------------
+// [REMOVED] calculateTissueDamage — ODE エンジン排除（Level 5、ヒト未検証）
+// [REMOVED] calculateDecoupling — EKF 排除（学術論文ゼロ、偽陽性30%超）
+// 代替: Phase 1 の複合条件ロジック（Task 1-2, 1-3）
 
 /**
- * EKF デカップリングスコアを計算する。
- *
- * 客観的負荷データが利用可能な場合のみ実行する。
- * Python EKF エンジンに主観/客観負荷履歴を送信し、
- * デカップリングスコアを取得する。
- *
- * @param history - 日次入力データの履歴（古い順）
- * @param todayInput - 当日の入力データ
- * @returns デカップリングスコア（客観負荷がない場合は undefined）
+ * 組織ダメージのフォールバック値を返す。
+ * ODE エンジン排除後、tissueDamage は全て 0（未測定）として扱う。
  */
-async function calculateDecoupling(
-  history: DailyInput[],
-  todayInput: DailyInput,
-): Promise<number | undefined> {
-  // 客観的負荷データがない場合はスキップ
-  if (!todayInput.objectiveLoad) {
-    return undefined;
-  }
-
-  const subjectiveLoadHistory = history.map((d) => d.sessionLoad);
-  const objectiveLoadHistory = history
-    .filter((d) => d.objectiveLoad != null)
-    .map((d) => {
-      const obj = d.objectiveLoad;
-      // 客観負荷の代表値としてプレーヤーロードまたは走行距離を使用
-      return obj?.playerLoad ?? (obj?.distanceKm ?? 0) * 100;
-    });
-
-  // 客観負荷履歴が不足している場合はスキップ
-  if (objectiveLoadHistory.length < Z_SCORE_MIN_DAYS) {
-    return undefined;
-  }
-
-  const response = await callEKFEngine({
-    subjectiveLoadHistory,
-    objectiveLoadHistory,
-    deviceKappa: todayInput.objectiveLoad.deviceKappa,
-  });
-
-  return response.decouplingScore;
+function getDefaultTissueDamage(): Record<TissueCategory, number> {
+  return { metabolic: 0, structural_soft: 0, structural_hard: 0, neuromotor: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -389,27 +319,28 @@ export const node2FeatureEngineering: NodeExecutor<
       );
     }
 
-    // ----- Step 4: ODE 組織ダメージ計算 -----
-    const tissueDamage = await calculateTissueDamage(
-      fullHistory,
-      context,
-      config,
-    );
+    // ----- Step 4: 組織ダメージ（ODE排除 → デフォルト値） -----
+    const tissueDamage = getDefaultTissueDamage();
 
-    // ----- Step 5: EKF デカップリング計算 -----
-    const decouplingScore = await calculateDecoupling(history, cleanedInput);
+    // ----- Step 5: [REMOVED] EKF デカップリング排除 -----
 
-    // ----- Step 6: プレパレッドネス計算 -----
-    // 組織別急性負荷の最大値
-    const maxTissueAcuteLoad = Math.max(
-      ...Object.values(tissueDamage),
-      0,
-    );
-    const preparedness = calculatePreparedness(
-      acwrResult.chronicEWMA,
-      maxTissueAcuteLoad,
-      config,
-    );
+    // ----- Step 6: 複合 Readiness スコア（FFM排除、Level 2a+2b ベース） -----
+    // ACWR Sweet Spot スコア（Qin 2025: 0.8-1.3 = 最適）
+    const acwrScore = (acwrResult.acwr >= 0.8 && acwrResult.acwr <= 1.3)
+      ? 100
+      : Math.max(0, 100 - Math.abs(acwrResult.acwr - 1.05) * 100);
+
+    // ウェルネス平均 Z-Score スコア（Saw 2016）
+    const zValues = Object.values(zScores);
+    const avgZ = zValues.length > 0
+      ? zValues.reduce((a, b) => a + b, 0) / zValues.length
+      : 0;
+    const wellnessScore = Math.max(0, Math.min(100, 50 + avgZ * 25));
+
+    // 複合 Readiness（重み: ACWR 40% + Wellness 40% + ベースライン 20%）
+    const preparedness = Math.max(0, Math.min(100,
+      acwrScore * 0.4 + wellnessScore * 0.4 + 20,
+    ));
 
     // ----- Step 6.5: 構造的脆弱性テンソル -----
     const structuralVulnerability = calculateStructuralVulnerability(context);
@@ -421,7 +352,6 @@ export const node2FeatureEngineering: NodeExecutor<
       preparedness,
       tissueDamage,
       zScores,
-      ...(decouplingScore !== undefined ? { decouplingScore } : {}),
       ...(structuralVulnerability > 0 ? { structuralVulnerability } : {}),
     };
 

@@ -130,6 +130,16 @@ export interface AthleteContext {
 // 日次入力データ
 // ---------------------------------------------------------------------------
 
+/** GPS 外部負荷データ（Level 2b: Hickey 2021, Matas-Bustos 2025） */
+export interface GPSExternalLoad {
+  totalDistanceKm: number;
+  highSpeedRunningM: number;     // >18km/h
+  sprintDistanceM: number;       // >24km/h
+  accelerationCount: number;     // >2m/s²
+  decelerationCount: number;     // <-2m/s²
+  playerLoad?: number;           // 3軸加速度複合指標 (Catapult)
+}
+
 /** 日次入力データ */
 export interface DailyInput {
   /** 日付（ISO date） */
@@ -157,6 +167,10 @@ export interface DailyInput {
     /** 安静時心拍数（bpm、任意） */
     restingHeartRate?: number;
   };
+  /** 痛みの原因タイプ（NRS ≥ 4 時に入力） */
+  painType?: 'traumatic' | 'overuse';
+  /** GPS 外部負荷データ（Level 2b: Catapult/STATSports 連携） */
+  gpsLoad?: GPSExternalLoad;
   /** 客観的負荷データ（任意） */
   objectiveLoad?: {
     /** 走行距離（km） */
