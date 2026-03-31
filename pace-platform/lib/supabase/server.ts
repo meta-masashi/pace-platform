@@ -31,11 +31,24 @@ import { cookies } from "next/headers";
  * ```
  */
 export async function createClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    console.error('[supabase/server] ENV MISSING:', { url: !!url, key: !!key });
+  }
+
   const cookieStore = await cookies();
+  const allCookies = cookieStore.getAll();
+  const sbCookies = allCookies.filter(c => c.name.startsWith('sb-'));
+
+  if (sbCookies.length === 0) {
+    console.warn('[supabase/server] No Supabase session cookies found. Total cookies:', allCookies.length);
+  }
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url ?? '',
+    key ?? '',
     {
       cookies: {
         getAll() {
