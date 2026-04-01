@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import { OfflineBadge } from '@/app/_components/offline-badge';
 
@@ -9,9 +10,16 @@ interface StaffHeaderProps {
   teamName?: string;
 }
 
+/** ダッシュボード（トップレベル）のパス — 戻るボタン不要 */
+const TOP_LEVEL_PATHS = ['/dashboard'];
+
 export function StaffHeader({ user, teamName }: StaffHeaderProps) {
+  const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const showBack = !TOP_LEVEL_PATHS.includes(pathname);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -29,7 +37,18 @@ export function StaffHeader({ user, teamName }: StaffHeaderProps) {
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {showBack && (
+          <button
+            onClick={() => router.back()}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5" />
+              <path d="M12 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
         {teamName && (
           <span className="text-sm font-semibold text-foreground">{teamName}</span>
         )}
