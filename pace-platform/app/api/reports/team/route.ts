@@ -89,7 +89,7 @@ export async function GET(request: Request) {
               .from('daily_metrics')
               .select('conditioning_score, acwr')
               .eq('athlete_id', ath.id)
-              .order('recorded_date', { ascending: false })
+              .order('date', { ascending: false })
               .limit(1),
 
             supabase

@@ -88,9 +88,9 @@ export async function GET(request: Request) {
       // 最新のメトリクス
       supabase
         .from('daily_metrics')
-        .select('conditioning_score, acwr, recorded_date')
+        .select('conditioning_score, acwr, date')
         .eq('athlete_id', athleteId)
-        .order('recorded_date', { ascending: false })
+        .order('date', { ascending: false })
         .limit(1),
 
       // アセスメント結果（最新セッション）
@@ -229,7 +229,7 @@ export async function GET(request: Request) {
     // 減衰ステータス（detailed のみ）
     let decayStatus: DecayEntry[] | undefined;
     if (format === 'detailed' && latestMetrics) {
-      const recordedDate = String(latestMetrics.recorded_date ?? '');
+      const recordedDate = String(latestMetrics.date ?? '');
       const daysSince = recordedDate
         ? Math.floor(
             (Date.now() - new Date(recordedDate).getTime()) / (1000 * 60 * 60 * 24)

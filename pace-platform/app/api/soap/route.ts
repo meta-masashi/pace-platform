@@ -90,7 +90,7 @@ export async function GET(
     // ----- SOAPノート取得（RLS で org_id フィルタリング）-----
     const { data: notes, error: fetchError, count } = await supabase
       .from("soap_notes")
-      .select("*", { count: "exact" })
+      .select("*, staff:staff_id(name)", { count: "exact" })
       .eq("athlete_id", athleteId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);

@@ -98,7 +98,12 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
   useEffect(() => {
     async function fetchAthletes() {
       try {
-        const res = await fetch('/api/team/dashboard?team_id=00000000-0000-0000-0000-000000000002');
+        // Get team list first, then fetch athletes from first team
+        const teamRes = await fetch('/api/team/list');
+        const teamJson = await teamRes.json();
+        const teamId = teamJson.teams?.[0]?.id;
+        if (!teamId) return;
+        const res = await fetch(`/api/team/dashboard?team_id=${encodeURIComponent(teamId)}`);
         if (!res.ok) return;
         const json = await res.json();
         if (json.success && json.data?.alerts) {
@@ -218,14 +223,14 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
         body: JSON.stringify({
           athleteId: selectedAthleteId,
           targetDate: targetDate || undefined,
-          riskNodeId: selectedRiskNodeId,
-          intervention: {
+          targetNodeId: selectedRiskNodeId,
+          interventions: [{
             trainingIntensity: intervention.trainingIntensity,
             sprintEnabled: intervention.sprintEnabled,
             jumpLandingEnabled: intervention.jumpLandingEnabled,
             directionChangeEnabled: intervention.directionChangeEnabled,
             contactEnabled: intervention.contactEnabled,
-          },
+          }],
         }),
       });
 
@@ -479,6 +484,32 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
               isReduced={isReduced}
               loading={simulating && !simulationResult}
             />
+
+            {/* シミュレーション結果 → アセスメント連携 */}
+            {simulationResult && selectedAthleteId && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                <p className="mb-2 text-sm font-semibold text-primary">
+                  シミュレーション結果に基づくアクション
+                </p>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  シミュレーション結果を踏まえて、アセスメントを開始するか、SOAPノートに記録してください。
+                </p>
+                <div className="flex gap-2">
+                  <a
+                    href={`/assessment/new?athlete=${selectedAthleteId}`}
+                    className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    アセスメント開始
+                  </a>
+                  <a
+                    href={`/soap/new?athleteId=${selectedAthleteId}`}
+                    className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                  >
+                    SOAP記録
+                  </a>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
