@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { AssessmentType } from '@/lib/bayes/types';
 
 interface Athlete {
@@ -34,26 +34,33 @@ const ASSESSMENT_TYPES: { value: AssessmentType; label: string; description: str
 
 export function NewAssessmentForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialAthleteId = searchParams.get('athlete') ?? '';
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState('');
   const [athletes, setAthletes] = useState<Athlete[]>([]);
-  const [selectedAthlete, setSelectedAthlete] = useState('');
+  const [selectedAthlete, setSelectedAthlete] = useState(initialAthleteId);
   const [assessmentType, setAssessmentType] = useState<AssessmentType>('acute');
   const [loading, setLoading] = useState(false);
   const [fetchingTeams, setFetchingTeams] = useState(true);
   const [fetchingAthletes, setFetchingAthletes] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch teams
+  // Fetch teams (auto-select first team, or the team containing the URL athlete)
   useEffect(() => {
     async function fetchTeams() {
       try {
         const res = await fetch('/api/team/list');
         const json = await res.json();
-        setTeams(json.teams ?? []);
-        if (json.teams?.length === 1) {
-          setSelectedTeam(json.teams[0].id);
+        const teamList = json.teams ?? [];
+        setTeams(teamList);
+
+        // Auto-select team: use first team (single-team orgs) or find athlete's team
+        if (teamList.length === 1) {
+          setSelectedTeam(teamList[0].id);
+        } else if (teamList.length > 0 && !selectedTeam) {
+          setSelectedTeam(teamList[0].id);
         }
       } catch (err) { void err; // silently handled
         setError('チーム一覧の取得に失敗しました。');
