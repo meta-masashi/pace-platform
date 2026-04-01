@@ -42,8 +42,8 @@ const UTILITY_ITEMS = [
   { href: '/settings', label: '設定', icon: SettingsIcon },
 ] as const;
 
+/** 管理リンク（設定セクション内に表示、masterのみ） */
 const ADMIN_ITEMS = [
-  { href: '/admin', label: '管理ダッシュボード', icon: AdminIcon },
   { href: '/admin/staff', label: 'スタッフ管理', icon: StaffManageIcon },
   { href: '/admin/teams', label: 'チーム管理', icon: TeamManageIcon },
   { href: '/admin/billing', label: '請求管理', icon: BillingIcon },
@@ -147,37 +147,27 @@ export function StaffSidebar() {
           </div>
         </div>
 
-        {/* 管理セクション (master only) */}
+        {/* 管理メニュー（設定内、master のみ表示） */}
         {isMaster && (
-          <div className="mt-4 border-t border-border pt-4">
-            {!collapsed && (
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                管理
-              </p>
-            )}
-            <div className="space-y-1">
-              {ADMIN_ITEMS.map(({ href, label, icon: Icon }) => {
-                const isActive =
-                  href === '/admin'
-                    ? pathname === '/admin'
-                    : pathname === href || pathname.startsWith(`${href}/`);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    title={collapsed ? label : undefined}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    {!collapsed && label}
-                  </Link>
-                );
-              })}
-            </div>
+          <div className="mt-1 space-y-1">
+            {ADMIN_ITEMS.map(({ href, label, icon: Icon }) => {
+              const isActive = pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  title={collapsed ? label : undefined}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {!collapsed && label}
+                </Link>
+              );
+            })}
           </div>
         )}
       </nav>
