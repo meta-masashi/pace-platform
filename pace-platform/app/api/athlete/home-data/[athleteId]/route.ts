@@ -3,13 +3,14 @@
  *
  * GET /api/athlete/home-data/:athleteId
  *
- * v6 パイプライン結果 + コンディショニングデータを1リクエストで返す。
- * v6 API は 5秒タイムアウトでフォールバック。
+ * 直接DBクエリでコンディショニングデータを取得（内部fetch廃止）。
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateUUID } from '@/lib/security/input-validator';
+import { calculateConditioningScore } from '@/lib/conditioning/engine';
+import type { DailyMetricRow, ConditioningInput } from '@/lib/conditioning/types';
 
 export async function GET(
   _request: Request,
@@ -37,59 +38,57 @@ export async function GET(
       );
     }
 
-    // v6 パイプラインとコンディショニングを並列取得
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://hachi-riskon.com';
+    // 直近42日分の daily_metrics を取得
+    const fortyTwoDaysAgo = new Date();
+    fortyTwoDaysAgo.setDate(fortyTwoDaysAgo.getDate() - 42);
+    const fromDate = fortyTwoDaysAgo.toISOString().split('T')[0]!;
 
-    const v6Controller = new AbortController();
-    const v6Timeout = setTimeout(() => v6Controller.abort(), 5000);
+    const { data: rows, error: fetchError } = await supabase
+      .from('daily_metrics')
+      .select('date, srpe, sleep_score, fatigue_subjective, hrv, hrv_baseline, conditioning_score, fitness_ewma, fatigue_ewma, acwr')
+      .eq('athlete_id', athleteId)
+      .gte('date', fromDate)
+      .order('date', { ascending: true });
 
-    const [v6Result, condResult, daysResult] = await Promise.allSettled([
-      // v6 パイプライン
-      fetch(`${baseUrl}/api/v6/inference/${athleteId}`, {
-        signal: v6Controller.signal,
-      })
-        .then((r) => r.json())
-        .finally(() => clearTimeout(v6Timeout)),
-
-      // コンディショニングデータ
-      fetch(`${baseUrl}/api/conditioning/${athleteId}`).then((r) => r.json()),
-
-      // データ蓄積日数
-      supabase
-        .from('daily_metrics')
-        .select('id', { count: 'exact', head: true })
-        .eq('athlete_id', athleteId),
-    ]);
-
-    // v6 データ
-    let v6 = undefined;
-    if (v6Result.status === 'fulfilled' && v6Result.value?.success) {
-      v6 = v6Result.value.data;
+    if (fetchError) {
+      console.error('[athlete/home-data] DB error:', fetchError);
+      return NextResponse.json(
+        { success: false, error: 'データの取得に失敗しました。' },
+        { status: 500 },
+      );
     }
 
-    // コンディショニングデータ
+    const allRows = rows ?? [];
+
+    // 最新行からコンディショニングデータを構築
+    const latestRow = allRows.length > 0 ? allRows[allRows.length - 1] : null;
+
     let conditioning = undefined;
-    if (condResult.status === 'fulfilled' && condResult.value?.success) {
-      const d = condResult.value.data;
+    if (latestRow) {
       conditioning = {
-        conditioningScore: d.current?.conditioningScore ?? 0,
-        fitnessEwma: d.current?.fitnessEwma ?? 0,
-        fatigueEwma: d.current?.fatigueEwma ?? 0,
-        acwr: d.current?.acwr ?? 0,
-        fitnessTrend: d.fitnessTrend ?? [],
-        fatigueTrend: d.fatigueTrend ?? [],
-        insight: d.insight ?? '',
-        latestDate: d.latest_date ?? '',
+        conditioningScore: (latestRow.conditioning_score as number) ?? 0,
+        fitnessEwma: (latestRow.fitness_ewma as number) ?? 0,
+        fatigueEwma: (latestRow.fatigue_ewma as number) ?? 0,
+        acwr: (latestRow.acwr as number) ?? 0,
+        fitnessTrend: allRows.slice(-14).map((r) => (r.fitness_ewma as number) ?? 0),
+        fatigueTrend: allRows.slice(-14).map((r) => (r.fatigue_ewma as number) ?? 0),
+        insight: '',
+        latestDate: (latestRow.date as string) ?? '',
       };
     }
 
     // データ蓄積日数
-    const validDataDays =
-      daysResult.status === 'fulfilled' ? (daysResult.value.count ?? 0) : 0;
+    const { count: validDataDays } = await supabase
+      .from('daily_metrics')
+      .select('id', { count: 'exact', head: true })
+      .eq('athlete_id', athleteId);
 
     return NextResponse.json({
       success: true,
-      data: { v6, conditioning, validDataDays },
+      data: {
+        conditioning,
+        validDataDays: validDataDays ?? 0,
+      },
     });
   } catch (err) {
     console.error('[athlete/home-data] Error:', err);
