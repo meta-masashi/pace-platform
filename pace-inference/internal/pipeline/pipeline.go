@@ -111,18 +111,29 @@ func (p *Pipeline) Execute(ctx context.Context, input domain.DailyInput, athlete
 		state.NodeResults[node.id] = result
 	}
 
+	// Post-pipeline: Quality gate (may override GREEN → YELLOW)
+	ApplyQualityGate(state)
+
+	// Post-pipeline: Trend detection
+	trendNotices := DetectTrends(state)
+
+	// Expert review flag
+	expertReview := state.Decision.ConfidenceLevel == domain.ConfidenceLow &&
+		state.Decision.Decision == domain.DecisionYELLOW
+
 	// Assemble output
 	output := &domain.PipelineOutput{
-		TraceID:         state.TraceID,
-		AthleteID:       athleteCtx.AthleteID,
-		Timestamp:       time.Now().UTC().Format(time.RFC3339),
-		Decision:        state.Decision,
-		FeatureVector:   state.FeatureVector,
-		Inference:       state.Inference,
-		DataQuality:     state.DataQuality,
-		PipelineVersion: p.config.Version,
-		Engine:          "go",
-		TrendNotices:    make([]domain.TrendNotice, 0),
+		TraceID:              state.TraceID,
+		AthleteID:            athleteCtx.AthleteID,
+		Timestamp:            time.Now().UTC().Format(time.RFC3339),
+		Decision:             state.Decision,
+		FeatureVector:        state.FeatureVector,
+		Inference:            state.Inference,
+		DataQuality:          state.DataQuality,
+		PipelineVersion:      p.config.Version,
+		Engine:               "go",
+		TrendNotices:         trendNotices,
+		ExpertReviewRequired: expertReview,
 	}
 
 	return output, nil
