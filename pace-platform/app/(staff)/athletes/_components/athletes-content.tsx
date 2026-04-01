@@ -248,14 +248,14 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
                   ステータス
                 </th>
                 <SortableHeader
-                  label="CS"
+                  label="コンディション"
                   field="conditioningScore"
                   currentField={sortField}
                   currentDir={sortDir}
                   onClick={handleSort}
                 />
                 <SortableHeader
-                  label="ACWR"
+                  label="負荷バランス"
                   field="acwr"
                   currentField={sortField}
                   currentDir={sortDir}

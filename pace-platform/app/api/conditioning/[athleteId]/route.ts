@@ -282,6 +282,34 @@ export async function GET(
       user.id
     );
 
+    // ----- コーチング履歴に保存（同日重複は無視） -----
+    const coachingDate = new Date().toISOString().split('T')[0]!;
+    if (insight) {
+      const { data: athlete } = await supabase
+        .from('athletes')
+        .select('org_id')
+        .eq('id', athleteId)
+        .single();
+
+      if (athlete?.org_id) {
+        await supabase.from('coaching_history').upsert(
+          {
+            athlete_id: athleteId,
+            org_id: athlete.org_id as string,
+            coaching_date: coachingDate,
+            advice_text: insight,
+            context_snapshot: {
+              conditioningScore: current.conditioningScore,
+              fitnessEwma: current.fitnessEwma,
+              fatigueEwma: current.fatigueEwma,
+              acwr: current.acwr,
+            },
+          },
+          { onConflict: 'athlete_id,coaching_date' },
+        );
+      }
+    }
+
     // ----- レスポンス -----
     return NextResponse.json({
       success: true,
