@@ -41,14 +41,7 @@ interface SimulationResult {
   explanation: string;
 }
 
-// Mock athletes for the selector (in a real app this comes from API)
-const MOCK_ATHLETES = [
-  { id: 'ath_001', name: '田中 太郎' },
-  { id: 'ath_002', name: '鈴木 花子' },
-  { id: 'ath_003', name: '山本 健太' },
-  { id: 'ath_004', name: '佐藤 美咲' },
-  { id: 'ath_005', name: '高橋 大地' },
-];
+// 選手リストはAPIから動的に取得（下のuseEffectで実装）
 
 // ---------------------------------------------------------------------------
 // Debounce hook
@@ -99,6 +92,30 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
   const [simulationError, setSimulationError] = useState<string | null>(null);
 
   const [loadingAthlete, setLoadingAthlete] = useState(false);
+  const [athletes, setAthletes] = useState<{ id: string; name: string }[]>([]);
+
+  // ----- Fetch athlete list from API -----
+  useEffect(() => {
+    async function fetchAthletes() {
+      try {
+        const res = await fetch('/api/team/dashboard?team_id=00000000-0000-0000-0000-000000000002');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.success && json.data?.alerts) {
+          const map = new Map<string, string>();
+          for (const alert of json.data.alerts) {
+            if (alert.athleteId && alert.athleteName) {
+              map.set(alert.athleteId, alert.athleteName);
+            }
+          }
+          setAthletes(Array.from(map, ([id, name]) => ({ id, name })));
+        }
+      } catch {
+        // silent
+      }
+    }
+    fetchAthletes();
+  }, []);
 
   // ----- Fetch athlete data when selected -----
   useEffect(() => {
@@ -273,7 +290,7 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           >
             <option value="">選手を選んでください</option>
-            {MOCK_ATHLETES.map((a) => (
+            {athletes.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
               </option>
