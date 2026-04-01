@@ -277,30 +277,12 @@ function StatusTab({
         </div>
       </div>
 
-      {/* Metrics grid */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <MetricCard
-          label="フィットネス蓄積"
-          value={data.fitnessEwma.toFixed(1)}
-          unit="42日 EWMA"
-        />
-        <MetricCard
-          label="疲労負荷"
-          value={data.fatigueEwma.toFixed(1)}
-          unit="7日 EWMA"
-        />
-        <MetricCard
-          label="ACWR"
-          value={data.acwr.toFixed(2)}
-          unit=""
-          color={
-            data.acwr <= 1.3
-              ? 'text-optimal-600'
-              : data.acwr <= 1.5
-                ? 'text-watchlist-600'
-                : 'text-critical-600'
-          }
-        />
+      {/* Metrics grid (MetricLabel: staff mode) */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricLabel metricId="readiness" value={data.conditioningScore} mode="staff" />
+        <MetricLabel metricId="acwr" value={data.acwr} mode="staff" />
+        <MetricLabel metricId="fitness" value={data.fitnessEwma} mode="staff" />
+        <MetricLabel metricId="fatigue" value={data.fatigueEwma} mode="staff" />
       </div>
 
       {/* Daily metrics history */}
