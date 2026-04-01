@@ -211,59 +211,9 @@ function getDefaultTissueDamage(): Record<TissueCategory, number> {
   return { metabolic: 0, structural_soft: 0, structural_hard: 0, neuromotor: 0 };
 }
 
-// ---------------------------------------------------------------------------
-// 構造的脆弱性テンソル Φ_structural
-// ---------------------------------------------------------------------------
-
-/** アライメント異常の条件キーワード → 逸脱度マッピング */
-const ALIGNMENT_CONDITIONS: Record<string, { deviation: number; tolerance: number }> = {
-  'o-leg': { deviation: 1.5, tolerance: 1.0 },     // O脚
-  'x-leg': { deviation: 1.5, tolerance: 1.0 },     // X脚
-  'flat-foot': { deviation: 1.0, tolerance: 1.0 },  // 扁平足
-  'high-arch': { deviation: 1.0, tolerance: 1.0 },  // ハイアーチ
-  'scoliosis': { deviation: 2.0, tolerance: 1.5 },  // 側弯
-  'lordosis': { deviation: 1.5, tolerance: 1.5 },   // 前弯過剰
-  'kyphosis': { deviation: 1.5, tolerance: 1.5 },   // 後弯過剰
-  'leg-length-discrepancy': { deviation: 1.2, tolerance: 1.0 }, // 脚長差
-};
-
-/**
- * 構造的脆弱性テンソル Φ_structural を計算する。
- *
- * 仕様:
- *   Φ = Σ_k ((Alignment_Value_k - Optimal_k) / Tolerance_k)^2
- *
- * medicalHistory の condition フィールドからアライメント異常を検出し、
- * 正規化された逸脱度の二乗和を算出する。
- * アライメント異常がない場合は 0.0 を返す。
- *
- * @param context - 選手コンテキスト（medicalHistory を参照）
- * @returns Φ_structural 値（0.0〜）
- */
-function calculateStructuralVulnerability(
-  context: AthleteContext,
-): number {
-  let phiSum = 0;
-
-  for (const entry of context.medicalHistory) {
-    // condition フィールドをスネークケースに正規化して検索
-    const normalizedCondition = entry.condition
-      .toLowerCase()
-      .replace(/[\s_]+/g, '-')
-      .replace(/[（）()]/g, '');
-
-    for (const [key, params] of Object.entries(ALIGNMENT_CONDITIONS)) {
-      if (normalizedCondition.includes(key)) {
-        // (deviation / tolerance)^2 × riskMultiplier
-        const term = ((params.deviation) / params.tolerance) ** 2;
-        phiSum += term * entry.riskMultiplier;
-        break; // 同一 entry で重複マッチしない
-      }
-    }
-  }
-
-  return phiSum;
-}
+// [REMOVED] Φ_structural — Level 5（FEMベース、ヒト in vivo データなし）
+// CV-ENGINE-REMEDIATION-SOCCER-EVIDENCE-BASED.md: 排除指定
+// 代替: 傷害歴ベースのリスク乗数（context.riskMultipliers）で対応
 
 // ---------------------------------------------------------------------------
 // Node 2 本体
@@ -342,9 +292,6 @@ export const node2FeatureEngineering: NodeExecutor<
       acwrScore * 0.4 + wellnessScore * 0.4 + 20,
     ));
 
-    // ----- Step 6.5: 構造的脆弱性テンソル -----
-    const structuralVulnerability = calculateStructuralVulnerability(context);
-
     // ----- Step 7: 特徴量ベクトル組み立て -----
     const featureVector: FeatureVector = {
       acwr: acwrResult.acwr,
@@ -352,7 +299,6 @@ export const node2FeatureEngineering: NodeExecutor<
       preparedness,
       tissueDamage,
       zScores,
-      ...(structuralVulnerability > 0 ? { structuralVulnerability } : {}),
     };
 
     return {
