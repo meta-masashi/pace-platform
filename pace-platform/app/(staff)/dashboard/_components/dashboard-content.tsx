@@ -507,16 +507,7 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
       {/* Alert Action Hub */}
       <AlertActionHub alerts={data.alerts} riskReports={data.riskReports} />
 
-      {/* v6.0 Bio-War Room */}
-      <BioWarRoomSection
-        v6Data={v6Data}
-        v6Loading={v6Loading}
-        selectedAthleteId={selectedAthleteId}
-        selectedAthlete={selectedAthlete ?? null}
-        onSelectAthlete={setSelectedAthleteId}
-        onRegionClick={handleRegionClick}
-        onSimulate={handleSimulate}
-      />
+      {/* Bio-War Room removed from dashboard — use athlete detail page instead */}
     </div>
   );
 }
