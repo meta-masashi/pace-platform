@@ -20,6 +20,21 @@ const ALLOWED_ORIGINS = new Set([
 // State-changing HTTP methods that require CSRF protection
 const CSRF_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+// 静的ファイル拡張子（auth スキップ対象）
+// pathname.includes('.') の代わりに明示的な拡張子リストを使用
+const STATIC_EXTENSIONS = new Set([
+  '.ico', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif',
+  '.css', '.js', '.map', '.woff', '.woff2', '.ttf', '.eot',
+  '.json', '.xml', '.txt', '.robots', '.webmanifest',
+]);
+
+function hasStaticExtension(pathname: string): boolean {
+  const lastDot = pathname.lastIndexOf('.');
+  if (lastDot === -1) return false;
+  const ext = pathname.slice(lastDot).toLowerCase();
+  return STATIC_EXTENSIONS.has(ext);
+}
+
 // ---------------------------------------------------------------------------
 // セキュリティ・パフォーマンスヘッダー（OWASP 推奨準拠）
 // ---------------------------------------------------------------------------
@@ -43,7 +58,7 @@ function applySecurityHeaders(response: NextResponse, pathname: string): void {
       'Cache-Control',
       'public, max-age=31536000, immutable',
     );
-  } else if (pathname.includes('.') && !pathname.startsWith('/api/')) {
+  } else if (hasStaticExtension(pathname) && !pathname.startsWith('/api/')) {
     // その他の静的ファイル（favicon.ico 等）
     response.headers.set(
       'Cache-Control',
@@ -63,6 +78,13 @@ function applySecurityHeaders(response: NextResponse, pathname: string): void {
 // ---------------------------------------------------------------------------
 
 function validateOrigin(request: NextRequest): boolean {
+  // NEXT_PUBLIC_SITE_URL が未設定の場合は CSRF チェックを厳格化
+  // （空の許可リストでは Origin 付きリクエストを全拒否してしまうため）
+  if (ALLOWED_ORIGINS.size === 0) {
+    console.warn('[middleware] NEXT_PUBLIC_SITE_URL が未設定です。CSRF Origin チェックをスキップします。');
+    return true;
+  }
+
   const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
 
@@ -94,7 +116,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) ||
     pathname.startsWith('/_next/') ||
-    pathname.includes('.')
+    hasStaticExtension(pathname)
   ) {
     const response = NextResponse.next();
     applySecurityHeaders(response, pathname);
@@ -195,11 +217,24 @@ export async function middleware(request: NextRequest) {
       return redirectResponse;
     }
 
+    // 検証済みユーザー ID をヘッダーに設定（ルートハンドラーで getUser() の再呼出しを省略可能）
+    response.headers.set('x-authenticated-user-id', user.id);
+
     applySecurityHeaders(response, pathname);
     return response;
   } catch (err) {
-    // Middleware crash fallback — allow through to prevent 500
+    // Middleware crash fallback
     console.error('[middleware] Error:', err);
+
+    // API ルートは crash 時も 401 を返す（認証なしで通過させない）
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, error: '認証処理中にエラーが発生しました。' },
+        { status: 401 },
+      );
+    }
+
+    // ページルートは通過させる（500 防止）
     const response = NextResponse.next();
     applySecurityHeaders(response, pathname);
     return response;

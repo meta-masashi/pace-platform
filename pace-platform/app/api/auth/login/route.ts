@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ---------------------------------------------------------------------------
 // 設定
@@ -28,16 +29,25 @@ const MAX_IP_ATTEMPTS = 20
 const LOCKOUT_WINDOW_MS = 15 * 60 * 1000 // 15分
 
 // ---------------------------------------------------------------------------
-// Supabase service client（auth_events は RLS で保護されているため service_role 必要）
+// Supabase service client シングルトン
+// auth_events は RLS で保護されているため service_role 必要
 // ---------------------------------------------------------------------------
 
-async function getServiceClient() {
+let _serviceClient: SupabaseClient | null | undefined
+
+async function getServiceClient(): Promise<SupabaseClient | null> {
+  if (_serviceClient !== undefined) return _serviceClient
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) return null
+  if (!url || !key) {
+    _serviceClient = null
+    return null
+  }
 
   const { createClient: createServiceClient } = await import('@supabase/supabase-js')
-  return createServiceClient(url, key)
+  _serviceClient = createServiceClient(url, key)
+  return _serviceClient
 }
 
 // ---------------------------------------------------------------------------
@@ -62,29 +72,30 @@ function getClientIp(request: NextRequest): string {
 }
 
 // ---------------------------------------------------------------------------
-// ヘルパー: イベント記録
+// ヘルパー: イベント記録（fire-and-forget 可能）
 // ---------------------------------------------------------------------------
 
-async function recordAuthEvent(params: {
-  email: string
-  ipAddress: string
-  userAgent: string
-  eventType: string
-  metadata?: Record<string, unknown>
-}) {
-  const service = await getServiceClient()
-  if (!service) return
-
+async function recordAuthEvent(
+  service: SupabaseClient,
+  params: {
+    email: string
+    ipAddress: string
+    userAgent: string
+    eventType: string
+    metadata?: Record<string, unknown>
+  },
+): Promise<void> {
   try {
-    await service.from('auth_events').insert({
+    const { error } = await service.from('auth_events').insert({
       email: params.email,
       ip_address: params.ipAddress,
       user_agent: params.userAgent,
       event_type: params.eventType,
       metadata: params.metadata ?? {},
     })
+    if (error) console.warn('[auth/login] イベント記録失敗:', error.message)
   } catch (err) {
-    console.warn('[auth/login] イベント記録失敗:', err)
+    console.warn('[auth/login] イベント記録例外:', err)
   }
 }
 
@@ -93,12 +104,10 @@ async function recordAuthEvent(params: {
 // ---------------------------------------------------------------------------
 
 async function getFailedAttempts(
+  service: SupabaseClient,
   email: string,
   windowStart: string,
 ): Promise<number> {
-  const service = await getServiceClient()
-  if (!service) return 0
-
   const { count } = await service
     .from('auth_events')
     .select('id', { count: 'exact', head: true })
@@ -110,12 +119,10 @@ async function getFailedAttempts(
 }
 
 async function getIpAttempts(
+  service: SupabaseClient,
   ip: string,
   windowStart: string,
 ): Promise<number> {
-  const service = await getServiceClient()
-  if (!service) return 0
-
   const { count } = await service
     .from('auth_events')
     .select('id', { count: 'exact', head: true })
@@ -131,12 +138,10 @@ async function getIpAttempts(
 // ---------------------------------------------------------------------------
 
 async function getLastLockEvent(
+  service: SupabaseClient,
   email: string,
   windowStart: string,
 ): Promise<{ locked: boolean; lockedAt?: string }> {
-  const service = await getServiceClient()
-  if (!service) return { locked: false }
-
   // ロックイベントがウィンドウ内にあるか
   const { data: lockEvent } = await service
     .from('auth_events')
@@ -196,13 +201,33 @@ export async function POST(request: NextRequest) {
   const { email, password } = body
   const windowStart = new Date(Date.now() - LOCKOUT_WINDOW_MS).toISOString()
 
+  // --- Service client を 1 回だけ取得 ---
+  const service = await getServiceClient()
+  if (!service) {
+    // DB 不可 → フェイルオープン（ブルートフォースチェックなしでログイン処理）
+    const supabase = await createClient()
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    if (authError || !authData.user) {
+      return NextResponse.json(
+        { success: false, error: 'メールアドレスまたはパスワードが正しくありません。' },
+        { status: 401 },
+      )
+    }
+    const { data: athlete } = await supabase.from('athletes').select('id').eq('user_id', authData.user.id).maybeSingle()
+    return NextResponse.json({ success: true, redirectTo: athlete ? '/home' : '/dashboard', user: { id: authData.user.id, email: authData.user.email, role: athlete ? 'athlete' : 'staff' } })
+  }
+
+  // --- IP レート制限 + アカウントロック確認を並列実行 ---
+  const [ipAttempts, lockStatus] = await Promise.all([
+    getIpAttempts(service, ip, windowStart),
+    getLastLockEvent(service, email, windowStart),
+  ])
+
   // --- IP ベースレート制限 ---
-  const ipAttempts = await getIpAttempts(ip, windowStart)
   if (ipAttempts >= MAX_IP_ATTEMPTS) {
-    await recordAuthEvent({
-      email,
-      ipAddress: ip,
-      userAgent,
+    // fire-and-forget: イベント記録は待たない
+    void recordAuthEvent(service, {
+      email, ipAddress: ip, userAgent,
       eventType: 'login_failed',
       metadata: { reason: 'ip_rate_limit', ipAttempts },
     })
@@ -218,16 +243,13 @@ export async function POST(request: NextRequest) {
   }
 
   // --- アカウントロック確認 ---
-  const lockStatus = await getLastLockEvent(email, windowStart)
   if (lockStatus.locked && lockStatus.lockedAt) {
     const lockExpiry = new Date(new Date(lockStatus.lockedAt).getTime() + LOCKOUT_WINDOW_MS)
     const remainingMs = lockExpiry.getTime() - Date.now()
     const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60_000))
 
-    await recordAuthEvent({
-      email,
-      ipAddress: ip,
-      userAgent,
+    void recordAuthEvent(service, {
+      email, ipAddress: ip, userAgent,
       eventType: 'login_failed',
       metadata: { reason: 'account_locked', remainingMinutes },
     })
@@ -252,28 +274,21 @@ export async function POST(request: NextRequest) {
 
   // --- 認証失敗 ---
   if (authError || !authData.user) {
-    const failedCount = await getFailedAttempts(email, windowStart)
+    const failedCount = await getFailedAttempts(service, email, windowStart)
     const newFailedCount = failedCount + 1
     const remainingAttempts = Math.max(0, MAX_FAILED_ATTEMPTS - newFailedCount)
 
-    await recordAuthEvent({
-      email,
-      ipAddress: ip,
-      userAgent,
+    // イベント記録（fire-and-forget）
+    void recordAuthEvent(service, {
+      email, ipAddress: ip, userAgent,
       eventType: 'login_failed',
-      metadata: {
-        reason: 'invalid_credentials',
-        failedCount: newFailedCount,
-        remainingAttempts,
-      },
+      metadata: { reason: 'invalid_credentials', failedCount: newFailedCount, remainingAttempts },
     })
 
     // ロック閾値到達 → ロックイベント記録
     if (newFailedCount >= MAX_FAILED_ATTEMPTS) {
-      await recordAuthEvent({
-        email,
-        ipAddress: ip,
-        userAgent,
+      void recordAuthEvent(service, {
+        email, ipAddress: ip, userAgent,
         eventType: 'account_locked',
         metadata: { failedCount: newFailedCount, lockDurationMinutes: LOCKOUT_WINDOW_MS / 60_000 },
       })
@@ -300,10 +315,8 @@ export async function POST(request: NextRequest) {
   }
 
   // --- 認証成功 ---
-  await recordAuthEvent({
-    email,
-    ipAddress: ip,
-    userAgent,
+  void recordAuthEvent(service, {
+    email, ipAddress: ip, userAgent,
     eventType: 'login_success',
     metadata: { userId: authData.user.id },
   })

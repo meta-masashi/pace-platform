@@ -41,16 +41,26 @@ const DEFAULT_MAX_REQUESTS = 30
 const DEFAULT_WINDOW_MS = 60_000 // 1分
 
 // ---------------------------------------------------------------------------
-// Supabase service client（遅延ロード）
+// Supabase service client シングルトン（遅延ロード）
 // ---------------------------------------------------------------------------
 
-async function getServiceClient() {
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+let _serviceClient: SupabaseClient | null | undefined
+
+async function getServiceClient(): Promise<SupabaseClient | null> {
+  if (_serviceClient !== undefined) return _serviceClient
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) return null
+  if (!url || !key) {
+    _serviceClient = null
+    return null
+  }
 
   const { createClient } = await import('@supabase/supabase-js')
-  return createClient(url, key)
+  _serviceClient = createClient(url, key)
+  return _serviceClient
 }
 
 // ---------------------------------------------------------------------------
