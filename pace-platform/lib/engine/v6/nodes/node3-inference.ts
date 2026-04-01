@@ -22,7 +22,6 @@ import type {
   TissueCategory,
 } from '../types';
 import { wilsonScoreInterval } from '../adapters/bayes-adapter';
-import { callMRFEngine } from '../gateway';
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -276,23 +275,8 @@ export const node3Inference: NodeExecutor<FeatureVector, InferenceOutput> =
       const warnings: string[] = [];
 
       // ----- Step 1: リスクスコア計算 -----
-      const rawRiskScores = calculateRiskScores(input, context, config);
-
-      // ----- Step 1.5: MRF 運動連鎖リスク伝播 -----
-      const mrfResult = await callMRFEngine({
-        riskScores: rawRiskScores,
-        medicalHistory: context.medicalHistory.map((e) => ({
-          bodyPart: e.bodyPart,
-          severity: e.severity,
-          riskMultiplier: e.riskMultiplier,
-        })),
-        isContactSport: context.isContactSport,
-      });
-
-      const riskScores = mrfResult.propagatedRiskScores;
-      if (!mrfResult.fromService) {
-        warnings.push('MRF エンジン不可: フォールバックの簡易運動連鎖伝播を使用');
-      }
+      // MRF 運動連鎖伝播は排除（傷害歴リスク乗数 context.riskMultipliers で代替）
+      const riskScores = calculateRiskScores(input, context, config);
 
       // ----- Step 2: ベイズ事後確率更新 -----
       const posteriorProbabilities = calculatePosteriors(
