@@ -7,6 +7,7 @@ const PUBLIC_ROUTES = ['/login', '/auth/callback', '/tokushoho', '/privacy'];
 // API routes that skip session-based auth (use their own auth mechanisms)
 const API_AUTH_EXEMPT = [
   '/api/auth/callback',        // OAuth callback
+  '/api/auth/login',           // Login (pre-auth, has own brute force protection)
   '/api/s2s/ingest',           // Machine-to-machine (API key auth)
   '/api/webhooks/',            // Stripe webhooks (signature verification)
 ];
