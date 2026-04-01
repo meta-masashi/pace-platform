@@ -20,7 +20,9 @@
     "test:all": "npm run test && npm run test:e2e",
     "import:nodes": "tsx scripts/import-nodes.ts",
     "import:exercises": "tsx scripts/import-exercises.ts",
-    "import:sample": "tsx scripts/generate-sample-csv.ts"
+    "import:sample": "tsx scripts/generate-sample-csv.ts",
+    "security:audit": "npm audit --omit=dev",
+    "security:sbom": "npx @cyclonedx/cyclonedx-npm --output-file sbom.json --omit dev"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -35,6 +37,7 @@
     "recharts": "^2.13.0",
     "stripe": "^17.7.0",
     "web-vitals": "^3.5.0",
+    "zod": "^3.25.76",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

@@ -25,7 +25,7 @@ import { test, expect } from '@playwright/test'
 async function loginAsTestUser(page: import('@playwright/test').Page) {
   await page.goto('/login')
   await page.fill('[data-testid="email-input"]', process.env.TEST_USER_EMAIL ?? 'test@pace-platform.test')
-  await page.fill('[data-testid="password-input"]', process.env.TEST_USER_PASSWORD ?? 'TestPassword123!')
+  await page.fill('[data-testid="password-input"]', process.env.TEST_USER_PASSWORD!)
   await page.click('[data-testid="login-button"]')
   await page.waitForURL('/dashboard')
 }
@@ -145,7 +145,7 @@ test.describe('プラン別機能ゲート（防壁3）', () => {
     // standard プランのテストユーザーでログイン
     await page.goto('/login')
     await page.fill('[data-testid="email-input"]', process.env.TEST_STANDARD_USER_EMAIL ?? process.env.TEST_STARTER_USER_EMAIL ?? 'standard@pace-platform.test')
-    await page.fill('[data-testid="password-input"]', process.env.TEST_STANDARD_USER_PASSWORD ?? process.env.TEST_STARTER_USER_PASSWORD ?? 'TestPassword123!')
+    await page.fill('[data-testid="password-input"]', process.env.TEST_STANDARD_USER_PASSWORD ?? process.env.TEST_STARTER_USER_PASSWORD!)
     await page.click('[data-testid="login-button"]')
     await page.waitForURL('/dashboard')
 

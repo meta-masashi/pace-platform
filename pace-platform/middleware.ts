@@ -4,6 +4,21 @@ import { createServerClient } from '@supabase/ssr';
 // Routes that don't require authentication
 const PUBLIC_ROUTES = ['/login', '/auth/callback', '/tokushoho', '/privacy'];
 
+// API routes that skip session-based auth (use their own auth mechanisms)
+const API_AUTH_EXEMPT = [
+  '/api/auth/callback',        // OAuth callback
+  '/api/s2s/ingest',           // Machine-to-machine (API key auth)
+  '/api/webhooks/',            // Stripe webhooks (signature verification)
+];
+
+// Allowed origins for CSRF Origin header validation
+const ALLOWED_ORIGINS = new Set([
+  process.env.NEXT_PUBLIC_SITE_URL,
+].filter(Boolean));
+
+// State-changing HTTP methods that require CSRF protection
+const CSRF_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 // ---------------------------------------------------------------------------
 // セキュリティ・パフォーマンスヘッダー（OWASP 推奨準拠）
 // ---------------------------------------------------------------------------
@@ -42,6 +57,34 @@ function applySecurityHeaders(response: NextResponse, pathname: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// CSRF Origin 検証
+// ---------------------------------------------------------------------------
+
+function validateOrigin(request: NextRequest): boolean {
+  const origin = request.headers.get('origin');
+  const referer = request.headers.get('referer');
+
+  // Origin ヘッダーが存在する場合はそれを検証
+  if (origin) {
+    return ALLOWED_ORIGINS.has(origin);
+  }
+
+  // Origin がない場合は Referer で検証（一部ブラウザは Origin を送らない）
+  if (referer) {
+    try {
+      const refererOrigin = new URL(referer).origin;
+      return ALLOWED_ORIGINS.has(refererOrigin);
+    } catch {
+      return false;
+    }
+  }
+
+  // server-to-server リクエスト（Origin/Referer なし）は許可
+  // ブラウザからのリクエストは必ず Origin または Referer を送る
+  return true;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -50,9 +93,42 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) ||
     pathname.startsWith('/_next/') ||
-    pathname.startsWith('/api/') ||
     pathname.includes('.')
   ) {
+    const response = NextResponse.next();
+    applySecurityHeaders(response, pathname);
+    return response;
+  }
+
+  // -----------------------------------------------------------------------
+  // CSRF Origin 検証 — 状態変更リクエスト（POST/PUT/PATCH/DELETE）に適用
+  // API auth exempt ルートは Webhook 等のため除外
+  // -----------------------------------------------------------------------
+  if (
+    pathname.startsWith('/api/') &&
+    CSRF_METHODS.has(request.method) &&
+    !API_AUTH_EXEMPT.some((route) => pathname.startsWith(route))
+  ) {
+    if (!validateOrigin(request)) {
+      return NextResponse.json(
+        { success: false, error: 'CSRF 検証に失敗しました。リクエスト元が不正です。' },
+        { status: 403 },
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // API ルートの防御多層化 — セッション認証チェック
+  // 個別ルートの auth チェックに加えて middleware でも検証する
+  // -----------------------------------------------------------------------
+  if (
+    pathname.startsWith('/api/') &&
+    !API_AUTH_EXEMPT.some((route) => pathname.startsWith(route))
+  ) {
+    // API ルートには認証チェックを適用（GET 含む）
+    // 認証不要の API は API_AUTH_EXEMPT に追加する
+  } else if (pathname.startsWith('/api/')) {
+    // Auth exempt API routes — skip session check, just apply headers
     const response = NextResponse.next();
     applySecurityHeaders(response, pathname);
     return response;
@@ -97,8 +173,17 @@ export async function middleware(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // If no user session, redirect to login
+    // If no user session
     if (!user) {
+      // API ルート → 401 JSON（リダイレクトではなく）
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { success: false, error: '認証が必要です。' },
+          { status: 401 },
+        );
+      }
+
+      // ページルート → ログインへリダイレクト
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       const redirectResponse = NextResponse.redirect(loginUrl);
