@@ -1,21 +1,52 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { createClient } from '@/lib/supabase/server';
 import { AthletesContent } from './_components/athletes-content';
 
 export const metadata: Metadata = {
   title: '選手一覧',
 };
 
-export default function AthletesPage({
+export default async function AthletesPage({
   searchParams,
 }: {
   searchParams: Promise<{ team?: string; q?: string }>;
 }) {
+  const sp = await searchParams;
+
+  // チームIDが未指定の場合、ログインユーザーの組織の最初のチームを自動選択
+  if (!sp.team) {
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: staff } = await supabase
+          .from('staff')
+          .select('org_id')
+          .eq('id', user.id)
+          .single();
+        if (staff?.org_id) {
+          const { data: team } = await supabase
+            .from('teams')
+            .select('id')
+            .eq('org_id', staff.org_id)
+            .limit(1)
+            .single();
+          if (team?.id) {
+            sp.team = team.id as string;
+          }
+        }
+      }
+    } catch {
+      // フォールバック: チームなしで表示
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <h1 className="text-xl font-bold tracking-tight">選手一覧</h1>
       <Suspense fallback={<AthletesSkeleton />}>
-        <AthletesContent searchParamsPromise={searchParams} />
+        <AthletesContent searchParamsPromise={Promise.resolve(sp)} />
       </Suspense>
     </div>
   );
