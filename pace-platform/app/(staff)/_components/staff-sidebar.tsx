@@ -42,12 +42,23 @@ const UTILITY_ITEMS = [
   { href: '/settings', label: '設定', icon: SettingsIcon },
 ] as const;
 
-/** 管理リンク（設定セクション内に表示、masterのみ） */
-const ADMIN_ITEMS = [
-  { href: '/admin/staff', label: 'スタッフ管理', icon: StaffManageIcon },
-  { href: '/admin/teams', label: 'チーム管理', icon: TeamManageIcon },
-  { href: '/admin/billing', label: '請求管理', icon: BillingIcon },
+/** 管理ハブ（masterのみ、独立タブ） */
+const ADMIN_HUB = {
+  href: '/admin',
+  label: '管理',
+  sublabel: 'チーム・スタッフ',
+  icon: AdminIcon,
+  matchPaths: ['/admin'],
+} as const;
+
+const ADMIN_SUB_ITEMS = [
+  { href: '/admin', label: 'ダッシュボード', icon: AdminIcon },
+  { href: '/admin/teams', label: 'チーム作成', icon: TeamManageIcon },
+  { href: '/admin/staff', label: 'スタッフ', icon: StaffManageIcon },
 ] as const;
+
+/** 設定内の請求リンク（masterのみ） */
+const BILLING_ITEM = { href: '/admin/billing', label: '請求管理', icon: BillingIcon } as const;
 
 export function StaffSidebar() {
   const pathname = usePathname();
@@ -144,30 +155,68 @@ export function StaffSidebar() {
                 </Link>
               );
             })}
+            {/* 請求管理（設定内、masterのみ） */}
+            {isMaster && (
+              <Link
+                href={BILLING_ITEM.href}
+                title={collapsed ? BILLING_ITEM.label : undefined}
+                className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  pathname === BILLING_ITEM.href
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+              >
+                <BILLING_ITEM.icon className="h-4 w-4 shrink-0" />
+                {!collapsed && BILLING_ITEM.label}
+              </Link>
+            )}
           </div>
         </div>
 
-        {/* 管理メニュー（設定内、master のみ表示） */}
+        {/* 管理タブ（master のみ） */}
         {isMaster && (
-          <div className="mt-1 space-y-1">
-            {ADMIN_ITEMS.map(({ href, label, icon: Icon }) => {
-              const isActive = pathname === href || pathname.startsWith(`${href}/`);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  title={collapsed ? label : undefined}
-                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  }`}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && label}
-                </Link>
-              );
-            })}
+          <div className="mt-4 border-t border-border pt-4">
+            {/* 管理ハブ */}
+            <Link
+              href={ADMIN_HUB.href}
+              title={collapsed ? `${ADMIN_HUB.label} — ${ADMIN_HUB.sublabel}` : undefined}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                ADMIN_HUB.matchPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              }`}
+            >
+              <ADMIN_HUB.icon className="h-5 w-5 shrink-0" />
+              {!collapsed && (
+                <div className="flex flex-col">
+                  <span>{ADMIN_HUB.label}</span>
+                  <span className="text-[10px] font-normal text-muted-foreground">{ADMIN_HUB.sublabel}</span>
+                </div>
+              )}
+            </Link>
+            {/* 管理サブメニュー（展開時のみ） */}
+            {!collapsed && ADMIN_HUB.matchPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && (
+              <div className="ml-4 mt-1 space-y-0.5 border-l-2 border-border pl-3">
+                {ADMIN_SUB_ITEMS.map(({ href, label, icon: Icon }) => {
+                  const isActive = pathname === href;
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                        isActive
+                          ? 'text-primary'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      {label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
           </div>
         )}
       </nav>
