@@ -39,7 +39,7 @@ const METRIC_CONFIGS: Record<MetricId, MetricConfig> = {
   },
   readiness: {
     athleteLabel: 'コンディション',
-    staffLabel: 'Readiness',
+    staffLabel: 'コンディションスコア',
     thresholds: [
       { max: 40, color: 'red', label: '要注意' },
       { max: 70, color: 'amber', label: 'まずまず' },
@@ -50,7 +50,7 @@ const METRIC_CONFIGS: Record<MetricId, MetricConfig> = {
   },
   fitness: {
     athleteLabel: '体力の蓄積',
-    staffLabel: 'Fitness EWMA',
+    staffLabel: 'フィットネス（42日平均）',
     thresholds: [
       { max: 30, color: 'red', label: '不足' },
       { max: 60, color: 'amber', label: '標準' },
@@ -61,7 +61,7 @@ const METRIC_CONFIGS: Record<MetricId, MetricConfig> = {
   },
   fatigue: {
     athleteLabel: '回復度',
-    staffLabel: 'Fatigue EWMA',
+    staffLabel: '疲労度（7日平均）',
     thresholds: [
       // 反転: 疲労が低い（回復度が高い）ほど良い
       { max: 30, color: 'green', label: '回復済み' },
@@ -73,7 +73,7 @@ const METRIC_CONFIGS: Record<MetricId, MetricConfig> = {
   },
   nrs: {
     athleteLabel: '痛みの強さ',
-    staffLabel: 'Pain NRS',
+    staffLabel: '痛み（NRS）',
     thresholds: [
       { max: 2, color: 'green', label: 'なし〜軽微' },
       { max: 5, color: 'amber', label: '中程度' },
@@ -85,7 +85,7 @@ const METRIC_CONFIGS: Record<MetricId, MetricConfig> = {
   },
   hrv: {
     athleteLabel: '自律神経の回復度',
-    staffLabel: 'HRV Δbaseline',
+    staffLabel: '心拍変動（基準値差）',
     thresholds: [
       { max: -10, color: 'red', label: '低下' },
       { max: 5, color: 'amber', label: '正常' },

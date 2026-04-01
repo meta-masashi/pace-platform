@@ -485,7 +485,7 @@ function SoapTab({ athleteId }: { athleteId: string }) {
                         })}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        スタッフ: {note.staff_id.slice(0, 8)}...
+                        記録者: {((note as unknown as Record<string, unknown>).staff as Record<string, unknown> | null)?.name as string ?? note.staff_id.slice(0, 8)}
                       </span>
                     </div>
                     {note.ai_assisted && (
