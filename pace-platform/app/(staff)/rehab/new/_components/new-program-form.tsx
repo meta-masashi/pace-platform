@@ -62,7 +62,7 @@ export function NewProgramForm() {
           ) as Athlete[];
           setAthletes(unique);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // アスリート取得失敗は無視（手動入力で対応可能）
       } finally {
         setLoadingAthletes(false);
@@ -109,7 +109,7 @@ export function NewProgramForm() {
 
       // 作成成功 → 詳細ページへ遷移
       router.push(`/rehab/${json.data.programId}`);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました');
     } finally {
       setSubmitting(false);

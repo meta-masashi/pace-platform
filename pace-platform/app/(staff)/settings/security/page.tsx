@@ -49,7 +49,7 @@ export default function SecuritySettingsPage() {
       }
 
       setResetSuccess(true);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('パスワードリセットメールの送信中にエラーが発生しました。');
     } finally {
       setSendingReset(false);

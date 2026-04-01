@@ -33,7 +33,7 @@ export default function AthleteHomePage() {
           setAthleteId(athlete.id as string);
           setDisplayName((athlete.name as string) ?? '');
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // silently fail
       } finally {
         setLoading(false);

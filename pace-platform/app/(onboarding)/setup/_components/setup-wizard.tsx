@@ -161,7 +161,7 @@ export function SetupWizard() {
           })),
         ]);
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('CSV読み込み中にエラーが発生しました。');
     } finally {
       setCsvUploading(false);
@@ -224,7 +224,7 @@ export function SetupWizard() {
 
       // セットアップ完了 → ダッシュボードへ
       router.push('/dashboard');
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('セットアップ中にエラーが発生しました。');
     } finally {
       setIsSubmitting(false);

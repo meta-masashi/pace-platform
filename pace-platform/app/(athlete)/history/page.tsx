@@ -42,7 +42,7 @@ export default function HistoryPage() {
         if (json.success && json.data?.trend) {
           setTrend(json.data.trend);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // silently fail
       } finally {
         setLoading(false);

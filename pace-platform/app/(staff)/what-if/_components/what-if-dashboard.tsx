@@ -110,7 +110,7 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
           }
           setAthletes(Array.from(map, ([id, name]) => ({ id, name })));
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // silent
       }
     }
@@ -191,7 +191,7 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
             }
           }
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // Silently handle — user can still manually set values
       } finally {
         if (!cancelled) setLoadingAthlete(false);
@@ -242,7 +242,7 @@ export function WhatIfDashboard({ searchParamsPromise }: WhatIfDashboardProps) {
         timeline: json.data.timeline ?? [],
         explanation: json.data.explanation ?? '',
       });
-    } catch {
+    } catch (err) { void err; // silently handled
       setSimulationError('ネットワークエラーが発生しました。');
     } finally {
       setSimulating(false);

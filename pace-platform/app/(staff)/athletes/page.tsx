@@ -37,7 +37,7 @@ export default async function AthletesPage({
           }
         }
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       // フォールバック: チームなしで表示
     }
   }

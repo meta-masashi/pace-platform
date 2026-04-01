@@ -69,7 +69,7 @@ export function CopilotContent({ teamId, teamName }: CopilotContentProps) {
 
       setResults(data.data ?? []);
       setLastRefreshed(new Date());
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setIsLoading(false);

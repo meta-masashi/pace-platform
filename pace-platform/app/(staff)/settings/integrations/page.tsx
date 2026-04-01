@@ -111,7 +111,7 @@ export default function IntegrationSettingsPage() {
 
       setCredentials(json.data.credentials as CredentialInfo[]);
       setError(null);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('資格情報の取得中にエラーが発生しました。');
     } finally {
       setLoading(false);
@@ -135,7 +135,7 @@ export default function IntegrationSettingsPage() {
         setCalendarStatus(json.data.status);
         setCalendarCalendarId(json.data.calendarId ?? null);
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       setCalendarStatus('error');
     } finally {
       setCalendarLoading(false);
@@ -161,7 +161,7 @@ export default function IntegrationSettingsPage() {
         return;
       }
       window.location.href = json.data.authUrl;
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('Google Calendar 接続中にエラーが発生しました。');
     } finally {
       setConnectingCalendar(false);
@@ -182,7 +182,7 @@ export default function IntegrationSettingsPage() {
       setCalendarStatus('disconnected');
       setCalendarCalendarId(null);
       setSuccessMessage('Google Calendar の連携を解除しました。');
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('Google Calendar 切断中にエラーが発生しました。');
     } finally {
       setDisconnectingCalendar(false);
@@ -214,7 +214,7 @@ export default function IntegrationSettingsPage() {
       setNewKeyProvider(provider);
       setSuccessMessage('APIキーを生成しました。このキーは一度だけ表示されます。');
       await fetchCredentials();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('APIキーの生成中にエラーが発生しました。');
     } finally {
       setGeneratingKey(null);
@@ -242,7 +242,7 @@ export default function IntegrationSettingsPage() {
 
       setSuccessMessage('APIキーを無効化しました。');
       await fetchCredentials();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('無効化中にエラーが発生しました。');
     } finally {
       setRevoking(null);
@@ -255,7 +255,7 @@ export default function IntegrationSettingsPage() {
     try {
       await navigator.clipboard.writeText(newApiKey);
       setSuccessMessage('APIキーをクリップボードにコピーしました。');
-    } catch {
+    } catch (err) { void err; // silently handled
       // フォールバック
     }
   };

@@ -78,7 +78,7 @@ export function AthleteDetailContent({
           trend: d.trend,
           insight: d.insight,
         });
-      } catch {
+      } catch (err) { void err; // silently handled
         setError('ネットワークエラーが発生しました。');
       } finally {
         setLoading(false);
@@ -396,7 +396,7 @@ function SoapTab({ athleteId }: { athleteId: string }) {
       }
 
       setNotes(json.data.notes as SoapNoteData[]);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setLoading(false);

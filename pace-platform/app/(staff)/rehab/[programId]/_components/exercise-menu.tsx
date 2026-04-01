@@ -90,7 +90,9 @@ export function ExerciseMenu({
 
   /** 最新のワークアウトを取得 */
   const latestWorkout = workouts.length > 0 ? workouts[0] : null;
-  const latestMenu = latestWorkout?.menu_json as unknown as RehabMenuJson | null;
+  const latestMenu = (latestWorkout?.menu_json && typeof latestWorkout.menu_json === 'object')
+    ? (latestWorkout.menu_json as unknown as RehabMenuJson)
+    : null; // JSONB → typed object requires double cast (Supabase returns unknown)
 
   /** 表示するメニュー（新規生成 or 既存） */
   const displayMenu = generatedMenu ?? latestMenu;
@@ -118,7 +120,7 @@ export function ExerciseMenu({
       }
 
       setGeneratedMenu(json.data.menu as RehabMenuJson);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました');
     } finally {
       setGenerating(false);

@@ -196,7 +196,7 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
           setAgendaCards(json.data.alertCards ?? []);
           setAgendaSummary(json.data.teamSummary ?? null);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // Morning agenda の取得失敗はダッシュボード全体をブロックしない
         console.warn('[dashboard] 介入アジェンダの取得に失敗しました');
       } finally {
@@ -235,7 +235,7 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
           setCalendarPredictions(json.data.predictions ?? []);
           setCalendarStatus(json.data.syncStatus ?? 'disconnected');
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         if (!cancelled) setCalendarStatus('error');
       } finally {
         if (!cancelled) setCalendarLoading(false);
@@ -268,7 +268,7 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
         if (!cancelled && json.success) {
           setV6Data(json.data ?? null);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // v6 データの取得失敗はダッシュボード全体をブロックしない
         console.warn('[dashboard] v6 推論データの取得に失敗しました');
       } finally {
@@ -333,7 +333,7 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
           const json = await res.json();
           if (json.success) return json.data;
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         console.warn('[dashboard] シミュレーション API 呼び出し失敗、ローカルフォールバック使用');
       }
       // Client-side fallback estimation

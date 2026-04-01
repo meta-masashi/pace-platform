@@ -73,7 +73,7 @@ export function BioSwipeWrapper({ athleteId }: BioSwipeWrapperProps) {
         // 現時点ではデフォルト質問を使用
         setQuestions(DEFAULT_QUESTIONS);
         setPhase('swipe');
-      } catch {
+      } catch (err) { void err; // silently handled
         setPhase('fallback');
       }
     }
@@ -155,7 +155,7 @@ export function BioSwipeWrapper({ athleteId }: BioSwipeWrapperProps) {
         } else {
           setPhase('fallback');
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setPhase('fallback');
       }
     },

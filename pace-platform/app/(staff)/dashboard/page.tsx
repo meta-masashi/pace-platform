@@ -37,7 +37,7 @@ export default async function DashboardPage({
           }
         }
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       // フォールバック
     }
   }

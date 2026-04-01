@@ -16,7 +16,7 @@ export default async function LandingPage() {
     if (user) {
       redirect('/dashboard');
     }
-  } catch {
+  } catch (err) { void err; // silently handled
     // 未認証の場合はランディングページを表示
   }
 

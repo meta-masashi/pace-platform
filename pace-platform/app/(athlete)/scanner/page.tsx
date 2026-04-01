@@ -26,7 +26,7 @@ export default function ScannerPage() {
           .maybeSingle();
 
         if (athlete) setAthleteId(athlete.id as string);
-      } catch {
+      } catch (err) { void err; // silently handled
         // silently fail
       } finally {
         setLoading(false);

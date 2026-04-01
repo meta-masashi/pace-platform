@@ -71,7 +71,7 @@ export function StaffSidebar() {
         const { getUserRole } = await import('@/lib/supabase/auth-helpers');
         const role = await getUserRole();
         setIsMaster(role === 'master');
-      } catch {
+      } catch (err) { void err; // silently handled
         setIsMaster(false);
       }
     }

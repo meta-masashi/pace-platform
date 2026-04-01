@@ -109,7 +109,7 @@ export function AssessmentSession({ paramsPromise }: AssessmentSessionProps) {
             history.length > 0 ? (history.length / totalNodes) * 100 : 0,
           );
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setError('ネットワークエラーが発生しました。');
       } finally {
         setLoading(false);
@@ -183,7 +183,7 @@ export function AssessmentSession({ paramsPromise }: AssessmentSessionProps) {
             questionEndRef.current?.scrollIntoView({ behavior: 'smooth' });
           }, 100);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setError('ネットワークエラーが発生しました。');
       } finally {
         setSubmitting(false);

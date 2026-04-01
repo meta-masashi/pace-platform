@@ -157,7 +157,7 @@ export async function POST(request: Request) {
     const hardLockActive = (hardLocks ?? []).length > 0;
 
     // ----- Gemini で生成 -----
-    const athleteData = program.athletes as unknown as Record<string, unknown> | null;
+    const athleteData = (typeof program.athletes === 'object' && program.athletes !== null) ? (program.athletes as unknown as Record<string, unknown>) : null;
     const sexValue = (athleteData?.sex as string) ?? "male";
     const profile: AthleteProfile = {
       id: program.athlete_id as string,

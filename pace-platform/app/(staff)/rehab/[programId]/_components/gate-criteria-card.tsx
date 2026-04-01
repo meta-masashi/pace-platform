@@ -110,7 +110,7 @@ export function GateCriteriaCard({
       setTimeout(() => {
         onGateVerified();
       }, 1000);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました');
     } finally {
       setVerifying(false);

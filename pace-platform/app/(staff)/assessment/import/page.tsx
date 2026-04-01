@@ -149,7 +149,7 @@ export default function AssessmentImportPage() {
         nodes: json.nodes ?? [],
         errors: json.errors ?? [],
       });
-    } catch {
+    } catch (err) { void err; // silently handled
       setApiError("ネットワークエラーが発生しました。");
     } finally {
       setLoading(false);
@@ -188,7 +188,7 @@ export default function AssessmentImportPage() {
       setPreview(null);
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch {
+    } catch (err) { void err; // silently handled
       setApiError("ネットワークエラーが発生しました。");
     } finally {
       setLoading(false);

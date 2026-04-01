@@ -292,7 +292,7 @@ export function AdaptiveAssessment({
     try {
       await onSubmit(data);
       setSubmitted(true);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError("送信に失敗しました。再度お試しください。");
     } finally {
       setSubmitting(false);
