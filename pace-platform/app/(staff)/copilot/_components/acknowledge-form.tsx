@@ -66,7 +66,7 @@ export function AcknowledgeForm({ traceId, onSuccess, onCancel }: AcknowledgeFor
       }
 
       onSuccess(action);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setIsSubmitting(false);

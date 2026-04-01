@@ -63,7 +63,7 @@ export default function ProfilePage() {
           teamName,
           validDataDays: count ?? 0,
         });
-      } catch {
+      } catch (err) { void err; // silently handled
         // silently fail
       } finally {
         setLoading(false);
@@ -78,7 +78,7 @@ export default function ProfilePage() {
       const supabase = createClient();
       await supabase.auth.signOut();
       window.location.href = '/login';
-    } catch {
+    } catch (err) { void err; // silently handled
       setSigningOut(false);
     }
   }

@@ -35,7 +35,7 @@ export function ProfileForm({ initialName }: ProfileFormProps) {
       setName(data.name);
       setSuccess('プロフィールを更新しました');
       setTimeout(() => setSuccess(null), 3000);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('プロフィールの更新中にエラーが発生しました');
     } finally {
       setSaving(false);

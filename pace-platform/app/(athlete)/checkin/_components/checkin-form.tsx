@@ -269,7 +269,7 @@ export function CheckinForm({ athleteId, sex, lastCalibrationAt }: CheckinFormPr
         fatigueEwma: json.data.conditioning.fatigueEwma,
         acwr: json.data.conditioning.acwr,
       });
-    } catch {
+    } catch (err) { void err; // silently handled
       setError("ネットワークエラーが発生しました。");
     } finally {
       setSubmitting(false);

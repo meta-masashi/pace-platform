@@ -76,7 +76,7 @@ export function LockManager({ athleteId }: LockManagerProps) {
         setCurrentLock(active ?? null);
         setLockHistory(locks.slice(0, 5));
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       // ロック取得失敗は致命的ではない
       console.warn('[lock-manager] ロック状態の取得に失敗しました');
     } finally {
@@ -125,7 +125,7 @@ export function LockManager({ athleteId }: LockManagerProps) {
       setTag('injury');
       setExpiresAt('');
       await fetchLocks();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setSubmitting(false);
@@ -156,7 +156,7 @@ export function LockManager({ athleteId }: LockManagerProps) {
       }
 
       await fetchLocks();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setUnlocking(false);

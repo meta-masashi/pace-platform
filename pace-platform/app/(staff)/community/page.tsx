@@ -34,7 +34,7 @@ export default function CommunityPage() {
           setCanCreate(json.canCreate ?? false);
           setStaffId(json.staffId ?? '');
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // エラー時は空表示
       } finally {
         setLoading(false);

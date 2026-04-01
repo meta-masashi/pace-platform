@@ -167,7 +167,7 @@ export async function GET(
 
       const currentMenu: Exercise[] = (menuData ?? [])
         .map((row) => {
-          const ex = row.exercises as unknown as Record<string, unknown> | null;
+          const ex = (typeof row.exercises === 'object' && row.exercises !== null) ? (row.exercises as unknown as Record<string, unknown>) : null;
           if (!ex) return null;
           return {
             id: ex.id as string,

@@ -25,7 +25,7 @@ export function TeamSelector() {
           const data = await res.json();
           setTeams(data.teams ?? []);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // Silently handle — teams may not be configured yet
       } finally {
         setLoading(false);

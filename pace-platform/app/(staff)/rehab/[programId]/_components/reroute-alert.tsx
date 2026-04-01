@@ -68,7 +68,7 @@ export function RerouteAlert({
       if (json.success) {
         setProposals(json.data ?? []);
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       // サイレントフェイル（アラートは任意表示）
     } finally {
       setLoading(false);
@@ -92,7 +92,7 @@ export function RerouteAlert({
         setProposals((prev) => prev.filter((p) => p.id !== proposalId));
         onAction?.();
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       // エラーハンドリング
     } finally {
       setActionLoading(null);

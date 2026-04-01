@@ -48,7 +48,7 @@ export function InviteForm({ onInvited }: InviteFormProps) {
       setEmail('');
       setRole('AT');
       onInvited();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('通信エラーが発生しました。');
     } finally {
       setSubmitting(false);

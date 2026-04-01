@@ -101,7 +101,7 @@ export function SoapWizard() {
           updateField(key, json.data.text);
           setAiGenerated((prev) => ({ ...prev, [key]: true }));
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setError('AI生成に失敗しました。');
       } finally {
         setFieldLoading((prev) => ({ ...prev, [key]: false }));
@@ -143,7 +143,7 @@ export function SoapWizard() {
       } else {
         setError(json.error ?? '保存に失敗しました。');
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setSaving(false);

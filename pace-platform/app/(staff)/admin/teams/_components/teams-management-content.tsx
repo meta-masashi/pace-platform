@@ -49,7 +49,7 @@ export function TeamsManagementContent({ initialTeams, staffList }: Props) {
       } else {
         setError(json.error ?? 'チームの作成に失敗しました。');
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('通信エラーが発生しました。');
     } finally {
       setCreating(false);

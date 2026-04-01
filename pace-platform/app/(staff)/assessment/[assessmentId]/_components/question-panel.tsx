@@ -110,7 +110,7 @@ export function QuestionPanel({
       } else {
         setRoutingInfo(null);
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       // ルーティング取得失敗時はフォールバック（ヒント非表示）
       setRoutingInfo(null);
     }

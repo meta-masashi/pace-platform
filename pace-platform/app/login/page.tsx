@@ -83,7 +83,7 @@ export default function LoginPage() {
       } else {
         setError(result.error ?? 'マジックリンクの送信に失敗しました。');
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('マジックリンクの送信中にエラーが発生しました。');
     } finally {
       setLoading(false);
@@ -98,7 +98,7 @@ export default function LoginPage() {
 
     try {
       await signInWithGoogle();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('Googleログイン中にエラーが発生しました。');
       setLoading(false);
     }

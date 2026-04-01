@@ -59,7 +59,7 @@ export function ChannelList({
       } else {
         setError(json.error ?? 'チャンネルの作成に失敗しました。');
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('通信エラーが発生しました。');
     } finally {
       setSubmitting(false);

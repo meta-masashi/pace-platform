@@ -361,7 +361,9 @@ export async function GET(
     const assessmentsByAthlete = new Map<string, Array<{ category: string; posterior: number }>>();
     for (const row of allAssessments) {
       const aid = row.athlete_id as string;
-      const node = row.assessment_nodes as unknown as Record<string, unknown> | null;
+      const node = (typeof row.assessment_nodes === 'object' && row.assessment_nodes !== null)
+        ? (row.assessment_nodes as unknown as Record<string, unknown>)
+        : null;
       if (!node) continue;
       const lrYes = node.lr_yes as number ?? 2;
       const prior = node.base_prevalence as number ?? 0.1;

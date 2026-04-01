@@ -62,7 +62,7 @@ export function NewAssessmentForm() {
         } else if (teamList.length > 0 && !selectedTeam) {
           setSelectedTeam(teamList[0].id);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setError('チーム一覧の取得に失敗しました。');
       } finally {
         setFetchingTeams(false);
@@ -108,7 +108,7 @@ export function NewAssessmentForm() {
           });
           setAthletes(unique);
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setError('選手一覧の取得に失敗しました。');
       } finally {
         setFetchingAthletes(false);
@@ -144,7 +144,7 @@ export function NewAssessmentForm() {
       }
 
       router.push(`/assessment/${json.data.session_id}`);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setLoading(false);

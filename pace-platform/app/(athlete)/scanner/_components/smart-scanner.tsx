@@ -174,7 +174,7 @@ export function SmartScanner({ athleteId }: SmartScannerProps) {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setCameraError('カメラへのアクセスが許可されていません。設定から許可してください。');
       }
     }

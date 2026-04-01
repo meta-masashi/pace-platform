@@ -130,7 +130,7 @@ export function TrainingMenuContent() {
             setSelectedTeamId(data.teams[0].id);
           }
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         // silent
       } finally {
         setTeamsLoading(false);
@@ -159,7 +159,7 @@ export function TrainingMenuContent() {
         const data = await res.json();
         setError(data.error ?? 'メニューの取得に失敗しました。');
       }
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('メニューの取得に失敗しました。');
     } finally {
       setMenuLoading(false);
@@ -207,7 +207,7 @@ export function TrainingMenuContent() {
 
       // 再取得
       await fetchMenu();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('メニュー生成中にエラーが発生しました。');
     } finally {
       setGenerating(false);
@@ -237,7 +237,7 @@ export function TrainingMenuContent() {
       }
 
       await fetchMenu();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('承認に失敗しました。');
     } finally {
       setActionLoading(false);
@@ -266,7 +266,7 @@ export function TrainingMenuContent() {
       }
 
       await fetchMenu();
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('配信に失敗しました。');
     } finally {
       setActionLoading(false);

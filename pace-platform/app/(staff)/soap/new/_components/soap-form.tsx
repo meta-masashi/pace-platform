@@ -143,7 +143,7 @@ export function SoapForm() {
             pText: true,
           });
         }
-      } catch {
+      } catch (err) { void err; // silently handled
         setError('ネットワークエラーが発生しました。');
       } finally {
         if (fieldKey) {
@@ -214,7 +214,7 @@ export function SoapForm() {
       setTimeout(() => {
         router.push(`/athletes/${athleteId}`);
       }, 1500);
-    } catch {
+    } catch (err) { void err; // silently handled
       setError('ネットワークエラーが発生しました。');
     } finally {
       setSaving(false);
