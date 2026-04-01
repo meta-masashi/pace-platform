@@ -3,6 +3,7 @@
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { LockManager } from './lock-manager';
+import { MetricLabel } from '@/app/_components/metric-label';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,13 +43,7 @@ interface AthleteDetailContentProps {
   paramsPromise: Promise<{ athleteId: string }>;
 }
 
-type TabId = 'status' | 'programs' | 'soap';
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'status', label: 'ステータス' },
-  { id: 'programs', label: 'プログラム承認' },
-  { id: 'soap', label: 'SOAPノート' },
-];
+// タブ構造を廃止 → ラプソード型1画面ダッシュボード
 
 // ---------------------------------------------------------------------------
 // Component
@@ -59,7 +54,6 @@ export function AthleteDetailContent({
 }: AthleteDetailContentProps) {
   const { athleteId } = use(paramsPromise);
 
-  const [activeTab, setActiveTab] = useState<TabId>('status');
   const [data, setData] = useState<ConditioningData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,25 +90,19 @@ export function AthleteDetailContent({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* ── ヘッダー ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
             href="/athletes"
             className="flex h-8 w-8 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted"
           >
-            <svg
-              className="h-4 w-4 text-muted-foreground"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
+            <svg className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
           </Link>
           <div>
-            <h1 className="text-lg font-bold tracking-tight">選手詳細</h1>
+            <h1 className="text-lg font-bold tracking-tight">選手ダッシュボード</h1>
             <p className="text-xs text-muted-foreground">ID: {athleteId}</p>
           </div>
         </div>
@@ -123,57 +111,48 @@ export function AthleteDetailContent({
             href={`/what-if?athleteId=${athleteId}`}
             className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
           >
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z" />
-            </svg>
-            What-If シミュレーション
+            What-If
           </Link>
           <Link
             href={`/assessment/new?athlete=${athleteId}`}
             className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            アセスメント開始
+            アセスメント
+          </Link>
+          <Link
+            href={`/soap/new?athleteId=${athleteId}`}
+            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            SOAP作成
           </Link>
         </div>
       </div>
 
-      {/* Tab navigation */}
-      <div className="flex gap-1 rounded-lg bg-muted p-1">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* ── セクション1: ロック + コンディション ── */}
+      <StatusTab athleteId={athleteId} data={data} loading={loading} error={error} />
 
-      {/* Tab content */}
-      {activeTab === 'status' && (
-        <StatusTab
-          athleteId={athleteId}
-          data={data}
-          loading={loading}
-          error={error}
-        />
+      {/* ── セクション2: MetricLabel グリッド（スタッフ用技術表示） ── */}
+      {data && (
+        <div>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            パフォーマンス指標
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricLabel metricId="readiness" value={data.conditioningScore} mode="staff" />
+            <MetricLabel metricId="acwr" value={data.acwr} mode="staff" />
+            <MetricLabel metricId="fitness" value={data.fitnessEwma} mode="staff" />
+            <MetricLabel metricId="fatigue" value={data.fatigueEwma} mode="staff" />
+          </div>
+        </div>
       )}
-      {activeTab === 'programs' && <ProgramsTab />}
-      {activeTab === 'soap' && <SoapTab athleteId={athleteId} />}
+
+      {/* ── セクション3: SOAPノート ── */}
+      <div>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          SOAPノート
+        </h3>
+        <SoapTab athleteId={athleteId} />
+      </div>
     </div>
   );
 }
@@ -392,36 +371,7 @@ function StatusTab({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tab 2: プログラム承認 (placeholder)
-// ---------------------------------------------------------------------------
-
-function ProgramsTab() {
-  return (
-    <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-card">
-      <div className="text-center">
-        <svg
-          className="mx-auto h-10 w-10 text-muted-foreground/50"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-        </svg>
-        <p className="mt-2 text-sm text-muted-foreground">
-          承認待ちのリハビリプログラムはありません
-        </p>
-        <p className="text-xs text-muted-foreground/70">
-          （この機能は開発中です）
-        </p>
-      </div>
-    </div>
-  );
-}
+// ProgramsTab removed — integrated into single dashboard view
 
 // ---------------------------------------------------------------------------
 // Tab 3: SOAPノート (fully implemented)
