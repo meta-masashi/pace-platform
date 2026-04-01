@@ -1,8 +1,11 @@
 /**
- * PACE Platform -- CSV / Excel ファイル読み込みユーティリティ
+ * PACE Platform -- CSV ファイル読み込みユーティリティ
  *
- * .csv (UTF-8, BOM 対応) および .xlsx ファイルを読み込み、
+ * .csv (UTF-8, BOM 対応) を読み込み、
  * ヘッダーキーをもつ行オブジェクト配列を返す。
+ *
+ * xlsx パッケージは Prototype Pollution + ReDoS 脆弱性のため削除。
+ * Excel ファイルは CSV にエクスポートしてからインポートしてください。
  */
 
 import * as fs from "node:fs";
@@ -13,9 +16,9 @@ import * as path from "node:path";
 // ---------------------------------------------------------------------------
 
 /**
- * CSV または Excel ファイルを読み込み、行オブジェクト配列として返す。
+ * CSV ファイルを読み込み、行オブジェクト配列として返す。
  *
- * @param filePath - 読み込むファイルのパス (.csv / .xlsx)
+ * @param filePath - 読み込むファイルのパス (.csv)
  * @returns ヘッダーをキーとする行オブジェクトの配列
  */
 export async function readFile(
@@ -33,12 +36,8 @@ export async function readFile(
     return readCsv(resolved);
   }
 
-  if (ext === ".xlsx" || ext === ".xls") {
-    return readExcel(resolved);
-  }
-
   throw new Error(
-    `サポートされていないファイル形式です: ${ext} (.csv / .xlsx のみ対応)`,
+    `サポートされていないファイル形式です: ${ext}（.csv のみ対応。Excel ファイルは CSV にエクスポートしてください）`,
   );
 }
 
@@ -132,39 +131,5 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Excel 読み込み
-// ---------------------------------------------------------------------------
-
-async function readExcel(filePath: string): Promise<Record<string, string>[]> {
-  // xlsx は動的インポート（devDependency のため）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const XLSX = (await import("xlsx")) as any;
-
-  const workbook = XLSX.readFile(filePath, { type: "file", codepage: 65001 });
-  const sheetName = workbook.SheetNames[0];
-
-  if (!sheetName) {
-    throw new Error("Excel ファイルにシートが見つかりません");
-  }
-
-  const sheet = workbook.Sheets[sheetName];
-
-  if (!sheet) {
-    throw new Error(`シート "${sheetName}" の読み込みに失敗しました`);
-  }
-
-  const jsonData: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, {
-    defval: "",
-    raw: false,
-  });
-
-  // すべての値を文字列に変換
-  return jsonData.map((row: Record<string, unknown>) => {
-    const stringRow: Record<string, string> = {};
-    for (const [key, value] of Object.entries(row)) {
-      stringRow[key] = value === null || value === undefined ? "" : String(value);
-    }
-    return stringRow;
-  });
-}
+// xlsx パッケージは脆弱性 (GHSA-4r6h-8v6p-xvw6, GHSA-5pgg-2g8v-p4x9) のため削除。
+// Excel ファイルのインポートが必要な場合は、事前に CSV にエクスポートしてください。
