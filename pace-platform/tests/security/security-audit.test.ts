@@ -52,9 +52,10 @@ function findFiles(dir: string, extensions: string[], excludeDirs: string[] = []
   return results
 }
 
-// API route.ts ファイル一覧（auth/callback を除く — OAuth コールバックは別扱い）
+// API route.ts ファイル一覧（認証不要ルートを除外）
+// auth/callback: OAuth コールバック、auth/login: 独自ブルートフォース保護あり
 const routeFiles = findFiles(API_DIR, ['route.ts'], ['node_modules'])
-  .filter((f) => !f.includes('auth/callback'))
+  .filter((f) => !f.includes('auth/callback') && !f.includes('auth/login'))
 
 // ===========================================================================
 // 1. API ルート認証チェック
