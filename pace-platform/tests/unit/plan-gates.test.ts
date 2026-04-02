@@ -82,16 +82,24 @@ function createMockSupabaseWithCount(
 // ---------------------------------------------------------------------------
 
 describe('PLAN_FEATURES', () => {
-  it('standard プランは基本機能のみ含む', () => {
+  it('standard プランは基本機能 + コンディションスコアのみ含む', () => {
     expect(PLAN_FEATURES.standard).toContain('feature_basic_assessment')
     expect(PLAN_FEATURES.standard).toContain('feature_daily_checkin')
+    expect(PLAN_FEATURES.standard).toContain('feature_condition_score')
     expect(PLAN_FEATURES.standard).not.toContain('feature_gemini_ai')
     expect(PLAN_FEATURES.standard).not.toContain('feature_rag_pipeline')
+    expect(PLAN_FEATURES.standard).not.toContain('feature_insight_card')
   })
 
-  it('pro プランは Gemini AI と RAG を含む', () => {
+  it('pro プランは Gemini AI + Phase 6 新機能を含む', () => {
     expect(PLAN_FEATURES.pro).toContain('feature_gemini_ai')
     expect(PLAN_FEATURES.pro).toContain('feature_rag_pipeline')
+    expect(PLAN_FEATURES.pro).toContain('feature_condition_score_hrv')
+    expect(PLAN_FEATURES.pro).toContain('feature_insight_card')
+    expect(PLAN_FEATURES.pro).toContain('feature_calendar_sync')
+    expect(PLAN_FEATURES.pro).toContain('feature_ai_weekly_plan')
+    expect(PLAN_FEATURES.pro).toContain('feature_risk_avoidance_report')
+    expect(PLAN_FEATURES.pro).toContain('feature_acwr_trend_chart')
     expect(PLAN_FEATURES.pro).not.toContain('feature_custom_bayes')
     expect(PLAN_FEATURES.pro).not.toContain('feature_enterprise')
   })
@@ -106,6 +114,13 @@ describe('PLAN_FEATURES', () => {
       'feature_custom_bayes',
       'feature_enterprise',
       'feature_multi_team',
+      'feature_condition_score',
+      'feature_condition_score_hrv',
+      'feature_insight_card',
+      'feature_calendar_sync',
+      'feature_ai_weekly_plan',
+      'feature_risk_avoidance_report',
+      'feature_acwr_trend_chart',
     ]
     for (const feature of allFeatures) {
       expect(PLAN_FEATURES.enterprise).toContain(feature)
