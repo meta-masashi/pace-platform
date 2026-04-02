@@ -8,6 +8,8 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { staffInviteSchema, staffUpdateSchema, parseBody } from "@/lib/security/api-schemas";
+import { rateLimit, rateLimitResponse } from "@/lib/security/rate-limit";
 
 // ---------------------------------------------------------------------------
 // 共通: master 権限チェック
@@ -51,6 +53,10 @@ export async function GET() {
     }
     const { staff } = result;
 
+    // レート制限チェック
+    const rl = await rateLimit(staff.id, "admin/staff:GET", { maxRequests: 60, windowMs: 60_000 });
+    if (!rl.allowed) return rateLimitResponse(rl);
+
     const { data: staffList, error } = await supabase
       .from("staff")
       .select("id, name, email, role, is_leader, is_active, team_id, created_at, updated_at")
@@ -87,30 +93,14 @@ export async function POST(request: Request) {
     }
     const { staff } = result;
 
-    let body: { email: string; role: string; name?: string };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, error: "リクエストボディのJSONパースに失敗しました。" },
-        { status: 400 }
-      );
-    }
+    // レート制限チェック（招待は厳しめ: 10回/分）
+    const rl = await rateLimit(staff.id, "admin/staff:POST", { maxRequests: 10, windowMs: 60_000 });
+    if (!rl.allowed) return rateLimitResponse(rl);
 
-    if (!body.email || !body.role) {
-      return NextResponse.json(
-        { success: false, error: "email と role は必須です。" },
-        { status: 400 }
-      );
-    }
-
-    const validRoles = ["master", "AT", "PT", "S&C"];
-    if (!validRoles.includes(body.role)) {
-      return NextResponse.json(
-        { success: false, error: `role は ${validRoles.join(", ")} のいずれかを指定してください。` },
-        { status: 400 }
-      );
-    }
+    // Zod バリデーション
+    const parsed = await parseBody(request, staffInviteSchema);
+    if ("error" in parsed) return parsed.error;
+    const body = parsed.data;
 
     // 既存スタッフの重複チェック
     const { data: existing } = await supabase
@@ -127,63 +117,32 @@ export async function POST(request: Request) {
       );
     }
 
-    // Supabase Auth の招待メール送信
-    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
-      body.email,
-      {
-        data: {
-          role: body.role,
-          org_id: staff.org_id,
-        },
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/api/auth/callback`,
-      }
-    );
+    // 招待コード生成 + スタッフレコード作成（非アクティブ）
+    const inviteCode = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
 
-    if (inviteError) {
-      console.error("[admin/staff:POST] 招待エラー:", inviteError);
-      // Service role が無い場合のフォールバック: スタッフレコードのみ作成
-      const { data: newStaff, error: insertError } = await supabase
-        .from("staff")
-        .insert({
-          org_id: staff.org_id,
-          name: body.name ?? body.email.split("@")[0],
-          email: body.email,
-          role: body.role,
-          is_leader: false,
-          is_active: true,
-        })
-        .select("id, name, email, role")
-        .single();
-
-      if (insertError) {
-        console.error("[admin/staff:POST] スタッフ作成エラー:", insertError);
-        return NextResponse.json(
-          { success: false, error: "スタッフの招待に失敗しました。" },
-          { status: 500 }
-        );
-      }
-
-      return NextResponse.json(
-        { success: true, data: newStaff, invited: false },
-        { status: 201 }
-      );
-    }
-
-    // 招待成功 → スタッフレコード作成
-    if (inviteData?.user) {
-      await supabase.from("staff").insert({
-        id: inviteData.user.id,
+    const { data: newStaff, error: insertError } = await supabase
+      .from("staff")
+      .insert({
         org_id: staff.org_id,
         name: body.name ?? body.email.split("@")[0],
         email: body.email,
         role: body.role,
         is_leader: false,
-        is_active: true,
-      });
+        is_active: false,
+      })
+      .select("id, name, email, role")
+      .single();
+
+    if (insertError) {
+      console.error("[admin/staff:POST] スタッフ作成エラー:", insertError);
+      return NextResponse.json(
+        { success: false, error: "スタッフの招待に失敗しました。" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(
-      { success: true, data: { email: body.email, role: body.role }, invited: true },
+      { success: true, data: { ...newStaff, inviteCode }, invited: false },
       { status: 201 }
     );
   } catch (err) {
@@ -207,38 +166,14 @@ export async function PATCH(request: Request) {
     }
     const { staff } = result;
 
-    let body: {
-      staffId: string;
-      role?: string;
-      is_leader?: boolean;
-      is_active?: boolean;
-      team_id?: string | null;
-    };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, error: "リクエストボディのJSONパースに失敗しました。" },
-        { status: 400 }
-      );
-    }
+    // レート制限チェック
+    const rl = await rateLimit(staff.id, "admin/staff:PATCH", { maxRequests: 30, windowMs: 60_000 });
+    if (!rl.allowed) return rateLimitResponse(rl);
 
-    if (!body.staffId) {
-      return NextResponse.json(
-        { success: false, error: "staffId は必須です。" },
-        { status: 400 }
-      );
-    }
-
-    if (body.role) {
-      const validRoles = ["master", "AT", "PT", "S&C"];
-      if (!validRoles.includes(body.role)) {
-        return NextResponse.json(
-          { success: false, error: `role は ${validRoles.join(", ")} のいずれかを指定してください。` },
-          { status: 400 }
-        );
-      }
-    }
+    // Zod バリデーション
+    const parsed = await parseBody(request, staffUpdateSchema);
+    if ("error" in parsed) return parsed.error;
+    const body = parsed.data;
 
     // 更新対象のスタッフが同一組織か確認
     const { data: target, error: targetError } = await supabase

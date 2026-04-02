@@ -22,7 +22,8 @@ import { test, expect } from '@playwright/test'
 // ---------------------------------------------------------------------------
 
 const TEST_USER_EMAIL = process.env.TEST_USER_EMAIL ?? 'test@pace-platform.test'
-const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD ?? 'TestPassword123!'
+const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD
+if (!TEST_USER_PASSWORD) throw new Error('TEST_USER_PASSWORD env var is required for E2E tests')
 
 // ---------------------------------------------------------------------------
 // 正常系テスト

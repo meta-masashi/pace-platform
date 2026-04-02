@@ -1,14 +1,40 @@
-# PACE Platform v6.0 UI/UX デザイン仕様書
+# PACE Platform v6.2 UI/UX デザイン仕様書
 
-**バージョン:** 6.0
+**バージョン:** 6.2
 **作成日:** 2026-03-25
+**最終更新:** 2026-04-01
 **作成者:** 02-ui-ux（皮膚・感覚 / UI・UXデザイナーエージェント）
 **ステータス:** 承認済み
-**関連ADR:** ADR-026（デザインシステム v2.0）
+**準拠指示書:** implementation-change-directive.md v3.2（TeleHealth/Insurance Billing 廃止、Phase A-E）
+**関連ADR:** ADR-026（デザインシステム v2.0）, ADR-027（Google Calendar 負荷予測統合）
 
 ---
 
 ## 1. デザイン・フィロソフィー: "Complexity to Clarity"
+
+### 1.0 UI Firewall 原則（マスタープラン Phase 2 準拠）
+
+> データ入力者である「選手」と、決裁権・分析権限を持つ「スタッフ」のインターフェースを物理的かつ心理的に完全に切り離す。
+
+| 側 | 対象 | UX目標 | 情報解像度 |
+|---|---|---|---|
+| **選手側（Mobile PWA）** | アスリート | **摩擦ゼロの体験** — 考えずに入力でき、直感的に状態を把握 | 最小（感覚的ラベル + 色 + 絵文字） |
+| **スタッフ側（PC/Tablet）** | AT / PT / S&C / Doctor | **高解像度の分析環境** — 確定的ファクトに基づく意思決定 | 最大（数値 + Z-Score + ACWR + 推論トレース） |
+
+**MetricLabel 二層表現:**
+
+同一データを、ユーザーのロールに応じて解像度を動的に変換する。
+
+| 指標 | 選手向け（低解像度） | スタッフ向け（高解像度） |
+|------|-------------------|----------------------|
+| コンディション | 「好調」🟢 82/100 | Readiness 82.0 (Fitness 75.2 - Fatigue 42.3) |
+| 負荷バランス | 「最適」🟢 | ACWR 1.12 (Acute 420 / Chronic 375) |
+| 体力の蓄積 | 「標準」🟡 65 | Fitness (42日EWMA) 65.0 |
+| 回復度 | 「58%」🟢 | Fatigue (7日EWMA) 42.0 |
+| 痛みの強さ | 😟 6/10 | Pain (NRS) 6/10 — Type: muscular |
+| 自律神経 | 「良好」🟢 +5 | HRV (RMSSD Δbaseline) +5.0ms |
+
+**実装:** `MetricLabel` コンポーネントが `useUserRole()` フックでロールを判定し、同一の `MetricValue` Props から適切な表現を選択する。
 
 ### 1.1 Math-Invisible Design
 
@@ -122,6 +148,9 @@ fontFamily: {
 | A2 | チェックイン | /(athlete)/checkin | AdaptiveCheckinForm, FatigueFocusUI, VigorUI | 要 | **改修: 動的質問** |
 | A3 | Bio-Scan（CV） | /(athlete)/bioscan | CameraOverlay, SkeletonLine, ScanIndicator, MotionScore | 要 | **新規** |
 | A4 | 履歴 | /(athlete)/history | ConditioningTrendChart, CalendarView | 要 | 軽微 |
+| ~~A5~~ | ~~TeleHealth通話（選手側）~~ | -- | -- | -- | **v3.2 で廃止** |
+| A6 | リハビリロードマップ（選手側） | /(athlete)/rehab/roadmap | **AthleteRehabTimeline**, PhaseProgress, NextMilestone | 要 | **v6.1 新規** |
+| A7 | 週次トレーニング計画（選手側） | /(athlete)/training/plan | **AthleteWeeklyPlan**, DailySessionCard, ComplianceTracker | 要 | **v6.1 新規** |
 
 ### 3.2 指導者・MDT向け "The Bio-War Room" (Tablet/Desktop)
 
@@ -138,6 +167,11 @@ fontFamily: {
 | S9 | リハビリ管理 | /(staff)/rehab/[id] | ProgramDetail, PhaseStepper, RecoveryCurveChart | 要 | 既存 |
 | S10 | SOAP記録 | /(staff)/soap/new | SoapForm, AiGenerateButton | 要 | 既存 |
 | S11 | レポート | /(staff)/reports | ReportViewer | 要 | 既存 |
+| ~~S12~~ | ~~TeleHealthビデオ通話~~ | -- | -- | -- | **v3.2 で廃止** |
+| ~~S13~~ | ~~TeleHealth通話ロビー~~ | -- | -- | -- | **v3.2 で廃止** |
+| S14 | AI週次計画レビュー | /(staff)/training/weekly-plan/[planId] | **WeeklyPlanReview**, **ApprovalFlow**, **PlanDiffViewer**, PlanCalendar | 要 | **v6.1 新規** |
+| S15 | AI週次計画一覧 | /(staff)/training/weekly-plans | **WeeklyPlanList**, PlanStatusBadge, FilterBar | 要 | **v6.1 新規** |
+| S16 | 4週間リハビリロードマップ | /(staff)/rehab/[programId]/roadmap | **RehabRoadmapTimeline**, **PhaseCard**, **MilestoneMarker**, ProgressTracker | 要 | **v6.1 新規** |
 
 ### 3.3 共通画面
 
@@ -147,7 +181,7 @@ fontFamily: {
 | C2 | ログイン | /login | LoginForm, SocialLoginButton | 不要 |
 | C3 | セットアップ | /(onboarding)/setup | SetupWizard | 要 |
 | C4 | 設定 | /(staff)/settings | ProfileForm, NotificationSettings, SecuritySettings | 要 |
-| C5 | 管理者 | /(staff)/admin | StaffTable, TeamsManagement, BillingPage | 要(admin) |
+| C5 | 管理者 | /(staff)/admin | StaffTable, TeamsManagement, SubscriptionPage | 要(admin) |
 
 ---
 
@@ -235,7 +269,13 @@ Props:
 ```
 コンポーネント名: AdaptiveCheckinForm
 パス: app/(athlete)/checkin/_components/adaptive-checkin-form.tsx
-役割: 前日の負荷に応じて質問を動的に変更
+役割: 前日の負荷に応じて質問を動的に変更（マスタープラン Phase 2 準拠）
+
+入力メカニクス: Bio-Swipe → スライダーフォーム
+  - 質問順序ランダム化: 毎回質問の表示順をシャッフル
+    → 「慣れによる嘘（自動操縦）」を防止（マスタープラン Phase 2 明記）
+    → Fisher-Yates アルゴリズムで実装
+    → ただし Pain NRS は常に最後（痛みの文脈を最後に聞く臨床的根拠）
 
 ロジック:
   昨日の負荷が高い場合 (fatigue_ewma > threshold):
@@ -248,11 +288,21 @@ Props:
     → UIヒント: 「調子が良さそうです！」
     → カラー: brand 系
 
+完了後スコア即時表示（エンゲージメントループ）:
+  チェックイン送信 → 推論パイプライン実行（Go 8ms / TS ~200ms）
+  → ConditionCircleRing でスコア即時表示（< 1秒）
+  → 昨日比（+/- pt）を常に表示 → 変化の実感 = 継続動機
+  → InsightCard（Pro以上）or UpgradeCTA（Standard）を下部に表示
+
 UI構造:
   - ステップインジケーター（既存 6ステップを維持 / Fatigue Focusは3ステップ）
-  - 各質問は fullscreen スライドで表示
+  - 各質問は fullscreen スライドで表示（Bio-Swipe）
   - スワイプまたはボタンで次へ
   - 最小タッチターゲット: 44px x 44px
+
+アクセシビリティ:
+  - ランダム化後も aria-label で質問番号を維持（「質問 1/6」）
+  - スクリーンリーダー: 質問内容を aria-live="polite" で読み上げ
 ```
 
 ### 4.4 BioScanOverlay（カメラスキャンUI）
@@ -620,15 +670,250 @@ export function useThemeMode(): 'light' | 'dark' | 'deep-space' {
 
 ---
 
-## 9. 自律連鎖トリガー
+## 9. プラン別UI差分設計（ビジネスモデル最適化）
 
-UI/UXデザイン仕様書が完成しました。
+> **準拠:** plan-gates.ts のプラン定義 + PHASE6-SPRINT1-PLAN.md §0-5 ゲーティング方針
+
+### 9.1 プラン別画面体験マトリクス
+
+| コンポーネント / 画面 | Standard (¥100K) | Pro (¥300K) | Pro+CV (¥500K) | Enterprise (¥600K) |
+|---|---|---|---|---|
+| **ConditionCircleRing** | ○ 全機能 | ○ 全機能 | ○ 全機能 | ○ 全機能 |
+| **KpiBreakdownRow** | ○ 全3カード | ○ 全3カード | ○ 全3カード | ○ 全3カード |
+| **InsightCard（Gemini）** | × → UpgradeCTA | ○ 全機能 | ○ 全機能 | ○ 全機能 |
+| **KpiRow4（4大KPI）** | 2項目のみ（Critical + Availability） | ○ 全4項目 | ○ 全4項目 | ○ 全4項目 |
+| **CalendarSyncChart** | × → UpgradeCTA | ○ 全機能 | ○ 全機能 | ○ 全機能 |
+| **AcwrTrendChart** | × → UpgradeCTA | ○ 全機能 | ○ 全機能 | ○ 全機能 |
+| **AlertActionHub** | 基本表示 | ○ + リスク回避レポート | ○ + リスク回避レポート | ○ + リスク回避レポート |
+| **AI週次計画レビュー** | × → UpgradeCTA | ○ 全機能 | ○ 全機能 | ○ 全機能 |
+| **リハビリロードマップ** | 基本閲覧のみ | ○ インタラクティブ | ○ インタラクティブ | ○ インタラクティブ |
+| **Bio-Scan (CV)** | × → UpgradeCTA | × → CVAddonCTA | ○ 全機能 | ○ 全機能 |
+| **複数チーム管理** | × | × | × | ○ 全機能 |
+
+### 9.2 UpgradeCTA コンポーネント仕様
+
+```
+コンポーネント名: UpgradeCTA
+パス: app/_components/upgrade-cta.tsx
+役割: プラン制限機能にアクセスした際のアップグレード導線
+
+Props:
+  feature: Feature           // plan-gates.ts の Feature 型
+  currentPlan: PlanId        // 現在のプラン
+  variant: 'inline' | 'overlay' | 'banner'
+  context?: string           // 例: "Gemini AI がパーソナライズされた行動アドバイスを生成"
+
+振る舞い:
+  variant = 'inline':
+    - 制限されたカード位置にインライン表示
+    - ぼかし背景 (backdrop-blur-sm) + ロックアイコン
+    - 「Proで利用可能」テキスト + CTAボタン
+    - 使用箇所: InsightCard, CalendarSyncChart, AcwrTrendChart
+
+  variant = 'overlay':
+    - モーダルオーバーレイ（機能クリック時）
+    - 機能の説明 + スクリーンショット/デモGIF
+    - 「14日間無料でお試し」ボタン（trialing状態へ）
+    - 使用箇所: AI週次計画, Bio-Scan
+
+  variant = 'banner':
+    - ページ上部の固定バナー
+    - 簡潔なアップグレードメッセージ
+    - 使用箇所: KpiRow4（Standard で制限されたKPI表示時）
+
+カラー:
+  背景: brand-50 (Light) / brand-900/20 (Dark)
+  ボーダー: brand-200
+  CTAボタン: bg-brand-500 hover:bg-brand-600 text-white
+  ロックアイコン: text-muted-foreground
+
+CTAボタンのリンク先:
+  /settings/billing?upgrade={targetPlan}&feature={feature}
+
+アクセシビリティ:
+  role="complementary"
+  aria-label="プランアップグレードのご案内"
+```
+
+### 9.3 KpiRow4 プラン別表示ルール
+
+```
+Standard プラン表示:
+  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────────────┐
+  │ Critical     │ │ Availability │ │  🔒 Proプランで                  │
+  │ アラート 2名 │ │ 16/18名 89%  │ │  Team Peaking + Watchlist を表示 │
+  │ (--red)      │ │              │ │  [アップグレード →]               │
+  └──────────────┘ └──────────────┘ └──────────────────────────────────┘
+
+Pro 以上プラン表示:
+  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+  │ Critical │ │ Avail.   │ │ Team     │ │ Watch    │
+  │ 2名      │ │ 89%      │ │ Peaking  │ │ list     │
+  │ (--red)  │ │          │ │ 78.2     │ │ 3名      │
+  └──────────┘ └──────────┘ └──────────┘ └──────────┘
+
+実装:
+  const { plan } = useSubscription()
+  const isStandardOnly = plan === 'standard'
+
+  {isStandardOnly ? (
+    <UpgradeCTA feature="feature_gemini_ai" variant="banner"
+      context="チーム全体の仕上がりと隠れリスクを可視化" />
+  ) : (
+    <>
+      <KpiCard metric="teamPeaking" value={teamAvg} />
+      <KpiCard metric="watchlist" value={watchCount} color="--amber" />
+    </>
+  )}
+```
+
+### 9.4 ファクトベースROIレポート（マスタープラン Phase 5 準拠）
+
+```
+コンポーネント名: FactBasedRoiReport（旧 RiskAvoidanceReport）
+パス: app/(staff)/dashboard/_components/fact-based-roi-report.tsx
+役割: 「PACEを使い続ける理由」を確定的ファクトで証明するROIレポート
+対象プラン: Pro 以上
+
+マスタープラン根拠:
+  Phase 5「inference_trace_logs のビジネス活用」に準拠。
+  Node 0-5 の確定的推論軌跡は全て監査証跡として DB に保存されている。
+  このログから「今月、100%確定的アルゴリズムが記録したファクト」として
+  ROIを提示する。推測ではない。
+
+Props:
+  period: 'weekly' | 'monthly'
+  orgId: string
+
+表示内容:
+  カード(.alert-card.alert-blue):
+  ┌─────────────────────────────────────────────────┐
+  │  確定的ファクトに基づく今月のリスク回避実績        │
+  │                                                   │
+  │  ■ P2(ACWR>1.5) 危険域検知: 8件                  │
+  │    → 負荷調整をアシスト（inference_trace_logs）   │
+  │                                                   │
+  │  ■ P1(Safety) 早期検知: 3件                       │
+  │    → Pain≥8 / HR Z>2.0 の即時アラート             │
+  │                                                   │
+  │  ■ 専門家委譲（品質ゲート発動）: 5件               │
+  │    → qualityScore<0.6 で安全側に YELLOW化          │
+  │                                                   │
+  │  ■ 推定回避離脱日数: 15日                          │
+  │    → チームの稼働日換算で約 ¥XXX万相当             │
+  │                                                   │
+  │  📊 推論トレース詳細を見る →                      │
+  └─────────────────────────────────────────────────┘
+
+データソース（全て inference_trace_logs から抽出）:
+  - WHERE decision IN ('RED','ORANGE') AND priority IN ('P1','P2')
+    → P1/P2 検知件数（確定的ファクト）
+  - WHERE expert_review_required = true
+    → 専門家委譲件数（品質ゲート発動回数）
+  - 離脱日数推定: P1/P2判定数 × 平均離脱日数（3日）
+  ※ 全数値は確定的アルゴリズムの記録であり、LLM推測は含まない
+
+カラー:
+  背景: blue-50 (Light) / deep-space-500 + border-blue-400 (Dark)
+  アイコン: brand-500
+  数値ハイライト: font-label tabular-nums text-brand-600
+
+アクセシビリティ:
+  role="region"
+  aria-label="今月のリスク回避実績レポート"
+```
+
+### 9.5 トライアル→有料転換タッチポイント
+
+```
+ユーザージャーニー上の転換ポイント:
+
+[Day 1] アカウント作成
+  → SetupWizard にチーム情報・選手登録
+  → 無料トライアル開始（14日間 Pro 全機能開放）
+
+[Day 1-3] 初回チェックイン
+  → チェックイン完了後に ConditionCircleRing のスコア即時表示
+  → 「明日もチェックインしてスコアの変化を見てみましょう」ナッジ通知
+
+[Day 7] データ蓄積マイルストーン
+  → 7日連続チェックイン達成バッジ
+  → InsightCard に「1週間のデータから傾向が見え始めました」表示
+  → Pro機能プレビュー: CalendarSyncChart の1週間分プレビュー表示
+
+[Day 10] ROI プレビュー
+  → RiskAvoidanceReport の10日間版を表示
+  → 「PACEがこれまでに検知したリスク: X件」
+
+[Day 12] 転換リマインダー
+  → アプリ内バナー: 「無料トライアルはあと2日です」
+  → Eメール: Pro機能の価値まとめ + アップグレードCTA
+
+[Day 14] トライアル終了
+  → Standard プランに自動降格（データ保持）
+  → InsightCard / CalendarSyncChart / AI週次計画 が UpgradeCTA に切替
+  → 「Proプランで全機能を引き続きご利用ください」モーダル表示
+
+コンポーネント:
+  TrialBadge: トライアル残日数バッジ（ヘッダー右上に常時表示）
+  TrialMilestoneCard: Day 7 / Day 10 のマイルストーン表示
+  TrialExpiryModal: Day 14 の降格通知モーダル
+```
+
+### 9.6 チェックイン完了→スコア即時表示フロー
+
+```
+チェックイン→スコア表示フロー（エンゲージメントループ）:
+
+  選手がチェックイン送信
+    ↓
+  推論パイプライン実行（Go: 8ms / TS: ~200ms）
+    ↓
+  結果画面:
+  ┌───────────────────────────┐
+  │                           │
+  │    [ConditionCircleRing]  │
+  │      本日のスコア: 82     │
+  │      ステータス: 好調 🟢   │
+  │                           │
+  │  昨日より +3pt ↑          │
+  │                           │
+  │  [InsightCard]            │ ← Pro以上のみ
+  │  「今日はスプリント練習    │
+  │    に最適な日です」       │
+  │                           │
+  │  [完了] ボタン            │
+  └───────────────────────────┘
+
+UX原則:
+  - チェックイン完了から結果表示まで < 1秒
+  - スコアの「昨日比」を常に表示（変化の実感 = 継続動機）
+  - InsightCard が Standard ユーザーには UpgradeCTA（inline）として表示
+```
+
+---
+
+## 10. 自律連鎖トリガー
+
+UI/UXデザイン仕様書 v6.2 が完成しました。
 @03-frontend を呼び出します。
 以下の仕様書一式を渡し、フロントエンドの実装を開始させます：
 - デザイントークン定義（tailwind.config.ts 向け — 実装済み）
-- 画面一覧とレイアウト指示（全27画面）
+- 画面一覧とレイアウト指示
 - v6.0 新規コンポーネント仕様（9コンポーネント）
 - 既存コンポーネント改修仕様（2コンポーネント）
+- **v6.2 追加: プラン別UI差分設計（§9）— UpgradeCTA / KpiRow4制限 / RiskAvoidanceReport / トライアル転換**
 - アクセシビリティチェックリスト（WCAG 2.1 AA）
 - レスポンシブ要件（モバイルファースト）
 - テーマ切替実装ガイド（Light / Dark / Deep Space）
+
+---
+
+## 11. 変更履歴
+
+| 日付 | バージョン | 変更内容 |
+|------|-----------|---------|
+| 2026-03-25 | 6.0 | 初版作成（v6.0 新規コンポーネント9件） |
+| 2026-04-01 | 6.1 | TeleHealth 3画面 + AI Agent / Rehab Roadmap 5画面追加 |
+| 2026-04-01 | 6.2 | **v3.2整合 + ビジネスモデル:** TeleHealth廃止、§9 プラン別UI差分（UpgradeCTA, KpiRow4制限, トライアル転換） |
+| 2026-04-01 | 6.3 | **マスタープラン Phase 1-5 完全整合:** §1.0 UI Firewall原則+MetricLabel二層表現追加、§4.3 Bio-Swipeランダム化（自動操縦防止）追加、§9.4 RiskAvoidanceReport→FactBasedRoiReport（inference_trace_logsベースの確定的ファクトROI）に強化 |
