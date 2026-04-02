@@ -25,6 +25,16 @@ export type TissueCategory =
   | 'structural_hard'
   | 'neuromotor';
 
+/** Z-Score 段階的重み付けの設定エントリ */
+export interface ZScoreStage {
+  /** 最小データ蓄積日数（inclusive） */
+  minDays: number;
+  /** 最大データ蓄積日数（inclusive） */
+  maxDays: number;
+  /** この区間で適用する重み（0.0-1.0） */
+  weight: number;
+}
+
 /** パイプラインのノードID */
 export type NodeId =
   | 'node0_ingestion'
@@ -254,6 +264,8 @@ export interface FeatureVector {
   tissueDamage: Record<TissueCategory, number>;
   /** 各主観指標のZ-Score */
   zScores: Record<string, number>;
+  /** 段階的 Z-Score 重み（0.0-1.0、Go GraduatedZScoreWeight 準拠） */
+  zScoreStageWeight?: number;
   /** EKF デカップリング指標 */
   decouplingScore?: number;
   /** 構造的脆弱性 Φ_structural */
@@ -313,6 +325,29 @@ export interface DecisionOutput {
 }
 
 // ---------------------------------------------------------------------------
+// トレンド通知（情報提供のみ — 判定色は変更しない）
+// ---------------------------------------------------------------------------
+
+/** トレンド方向 */
+export type TrendDirection = 'rising' | 'falling';
+
+/** トレンド通知（Go DetectTrends 準拠） */
+export interface TrendNotice {
+  /** 対象メトリクス名 */
+  metric: string;
+  /** 変化方向 */
+  direction: TrendDirection;
+  /** 現在値 */
+  currentValue: number;
+  /** 閾値 */
+  threshold: number;
+  /** 通知メッセージ（日本語） */
+  message: string;
+  /** 通知メッセージ（英語） */
+  messageEn: string;
+}
+
+// ---------------------------------------------------------------------------
 // Node 5: パイプライン最終出力
 // ---------------------------------------------------------------------------
 
@@ -332,6 +367,8 @@ export interface PipelineOutput {
   inference: InferenceOutput;
   /** データ品質レポート */
   dataQuality: DataQualityReport;
+  /** トレンド通知（情報提供のみ） */
+  trendNotices?: TrendNotice[];
   /** パイプラインバージョン */
   pipelineVersion: string;
 }

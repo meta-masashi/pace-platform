@@ -19,6 +19,7 @@ import { PerformanceCompass } from "./performance-compass";
 import type { PerformanceCompassProps } from "./performance-compass";
 import { InsightCard } from "./insight-card";
 import { BreakdownCard } from "./breakdown-card";
+import { KpiBreakdownRow } from "./kpi-breakdown-row";
 import { DailyCoachCard } from "./daily-coach-card";
 
 // ---------------------------------------------------------------------------
@@ -104,9 +105,10 @@ function ColdStartProgress({ validDataDays }: { validDataDays: number }) {
 function scoreToStatus(
   score: number
 ): GlowingCoreProps["status"] {
+  if (score >= 85) return "TEAL";
   if (score >= 70) return "GREEN";
-  if (score >= 50) return "YELLOW";
-  if (score >= 30) return "ORANGE";
+  if (score >= 60) return "YELLOW";
+  if (score >= 40) return "ORANGE";
   return "RED";
 }
 
@@ -275,6 +277,15 @@ export function AthleteHomeContent({
         />
       </div>
 
+      {/* KPI サブ指標（3カード横並び） */}
+      {data && (
+        <KpiBreakdownRow
+          fitnessEwma={data.fitnessEwma}
+          fatigueEwma={data.fatigueEwma}
+          acwr={data.acwr}
+        />
+      )}
+
       {/* ═══ Layer 2: ナラティブ ═══ */}
       <div className="info-layer-narrative flex flex-col gap-4">
         {/* M5: AI デイリーコーチ */}
@@ -289,8 +300,8 @@ export function AthleteHomeContent({
           <PerformanceCompass {...compassProps} />
         </div>
 
-        {/* AI インサイト */}
-        {insight && <InsightCard insight={insight} />}
+        {/* AI インサイト（insight がなくてもフォールバックテンプレートを表示） */}
+        <InsightCard insight={insight || undefined} score={score} />
       </div>
 
       {/* ═══ Layer 3: わかりやすい指標（二層表現） ═══ */}
@@ -309,7 +320,7 @@ export function AthleteHomeContent({
 
           {/* 詳細チャート */}
           <BreakdownCard
-            label="体力の蓄積"
+            label="残り体力 / HP"
             value={data.fitnessEwma}
             unit="42日 EWMA"
             trend={data.fitnessTrend}

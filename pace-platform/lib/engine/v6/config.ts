@@ -5,7 +5,7 @@
  * 組織ごとのカスタマイズは PipelineConfig を部分的にオーバーライドする。
  */
 
-import type { PipelineConfig } from './types';
+import type { PipelineConfig, ZScoreStage } from './types';
 
 // ---------------------------------------------------------------------------
 // パイプラインバージョン
@@ -79,6 +79,26 @@ export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
     },
   },
 };
+
+// ---------------------------------------------------------------------------
+// 段階的 Z-Score 重み付け（Go GraduatedZScoreWeight 準拠）
+// ---------------------------------------------------------------------------
+
+/**
+ * データ蓄積日数に応じた Z-Score 段階的重み付け設定。
+ *
+ * Go エンジン `GraduatedZScoreWeight()` と完全一致:
+ *   Day  0-13: 0%   (Z-Score 未使用)
+ *   Day 14-21: 50%  (学習初期)
+ *   Day 22-27: 75%  (学習後期)
+ *   Day 28+  : 100% (完全モード)
+ */
+export const Z_SCORE_STAGES: ZScoreStage[] = [
+  { minDays: 0, maxDays: 13, weight: 0.0 },
+  { minDays: 14, maxDays: 21, weight: 0.5 },
+  { minDays: 22, maxDays: 27, weight: 0.75 },
+  { minDays: 28, maxDays: Infinity, weight: 1.0 },
+];
 
 // ---------------------------------------------------------------------------
 // 設定マージユーティリティ

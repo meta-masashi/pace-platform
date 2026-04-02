@@ -23,9 +23,11 @@ import type {
   NodeResult,
   PipelineConfig,
   TissueCategory,
+  ZScoreStage,
 } from '../types';
 import type { CleaningOutput } from './node1-cleaning';
 import { adaptACWR } from '../adapters/conditioning-adapter';
+import { Z_SCORE_STAGES } from '../config';
 // ODE・EKF は Level 5 エビデンスのため排除（REMEDIATION-PLAN-v2）
 // import { callODEEngine, callEKFEngine } from '../gateway';
 
@@ -128,14 +130,48 @@ function calculatePreparedness(
 }
 
 // ---------------------------------------------------------------------------
+// 段階的 Z-Score 重み付け（Go GraduatedZScoreWeight 準拠）
+// ---------------------------------------------------------------------------
+
+/**
+ * データ蓄積日数に応じた段階的 Z-Score 重みを返す。
+ *
+ * Go エンジン `GraduatedZScoreWeight()` と同一ロジック:
+ *   Day  0-13: 0.0  (Z-Score 未使用)
+ *   Day 14-21: 0.5  (学習初期)
+ *   Day 22-27: 0.75 (学習後期)
+ *   Day 28+  : 1.0  (完全モード)
+ *
+ * @param validDataDays - データ蓄積日数
+ * @param stages - 段階設定（デフォルト: Z_SCORE_STAGES）
+ * @returns 0.0〜1.0 の重み
+ */
+export function getZScoreStageWeight(
+  validDataDays: number,
+  stages: ZScoreStage[] = Z_SCORE_STAGES,
+): number {
+  for (const stage of stages) {
+    if (validDataDays >= stage.minDays && validDataDays <= stage.maxDays) {
+      return stage.weight;
+    }
+  }
+  // フォールバック: 最後のステージの重み（通常到達しない）
+  return stages.length > 0 ? stages[stages.length - 1]!.weight : 0;
+}
+
+// ---------------------------------------------------------------------------
 // Z-Score 計算
 // ---------------------------------------------------------------------------
 
 /**
  * 主観スコアの Z-Score を 28 日履歴から計算する。
  *
- * Z = (today - μ_28d) / σ_28d
- * データ蓄積日数が 14 日未満の場合は null Z-Score を返す。
+ * Z = (today - μ_28d) / σ_28d × stageWeight
+ *
+ * Go エンジンと同様に段階的重み付けを適用:
+ *   Day 14-21: rawZ × 0.5
+ *   Day 22-27: rawZ × 0.75
+ *   Day 28+  : rawZ × 1.0
  *
  * @param today - 当日の主観スコア
  * @param history - 日次入力データの履歴（古い順）
@@ -149,8 +185,9 @@ function calculateZScores(
 ): Record<string, number> {
   const zScores: Record<string, number> = {};
 
-  // データ蓄積が不十分な場合は空マップを返す
-  if (validDataDays < Z_SCORE_MIN_DAYS) {
+  // 段階的重み付け: weight=0 ならスキップ
+  const stageWeight = getZScoreStageWeight(validDataDays);
+  if (stageWeight === 0) {
     return zScores;
   }
 
@@ -173,12 +210,13 @@ function calculateZScores(
     const sigma = Math.sqrt(variance);
 
     if (sigma < MONOTONY_SIGMA_EPSILON) {
-      // 分散がほぼ 0 の場合、Z-Score は 0（変化なし）
       zScores[key] = 0;
       continue;
     }
 
-    zScores[key] = (today[key] - mean) / sigma;
+    // rawZ に段階的重みを適用（Go 準拠）
+    const rawZ = (today[key] - mean) / sigma;
+    zScores[key] = rawZ * stageWeight;
   }
 
   return zScores;
@@ -256,16 +294,27 @@ export const node2FeatureEngineering: NodeExecutor<
     // ----- Step 2: 単調性指標 -----
     const monotonyIndex = calculateMonotonyIndex(fullHistory);
 
-    // ----- Step 3: Z-Score 計算 -----
+    // ----- Step 3: Z-Score 計算（段階的重み付け適用） -----
+    const zScoreStageWeight = getZScoreStageWeight(context.validDataDays);
     const zScores = calculateZScores(
       cleanedInput.subjectiveScores,
       history,
       context.validDataDays,
     );
 
-    if (Object.keys(zScores).length === 0 && context.validDataDays < Z_SCORE_MIN_DAYS) {
+    if (Object.keys(zScores).length === 0) {
+      if (zScoreStageWeight === 0) {
+        warnings.push(
+          `データ蓄積日数（${context.validDataDays}日）が ${Z_SCORE_MIN_DAYS} 日未満のため Z-Score は未計算`,
+        );
+      } else {
+        warnings.push(
+          `Z-Score 参照履歴が ${Z_SCORE_MIN_DAYS} 日分に達していないため Z-Score は未計算`,
+        );
+      }
+    } else if (zScoreStageWeight < 1.0) {
       warnings.push(
-        `データ蓄積日数（${context.validDataDays}日）が ${Z_SCORE_MIN_DAYS} 日未満のため Z-Score は未計算`,
+        `Z-Score 段階的重み付け: ${zScoreStageWeight * 100}%（データ蓄積${context.validDataDays}日）`,
       );
     }
 
@@ -299,6 +348,7 @@ export const node2FeatureEngineering: NodeExecutor<
       preparedness,
       tissueDamage,
       zScores,
+      zScoreStageWeight,
     };
 
     return {

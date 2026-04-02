@@ -49,7 +49,7 @@ const METRIC_CONFIGS: Record<MetricId, MetricConfig> = {
     staffFormat: (v) => v.toFixed(1),
   },
   fitness: {
-    athleteLabel: '体力の蓄積',
+    athleteLabel: '残り体力 / HP',
     staffLabel: 'フィットネス（42日平均）',
     thresholds: [
       { max: 30, color: 'red', label: '不足' },

@@ -13,6 +13,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { requireAccess } from '@/lib/billing/plan-gates';
 import {
   generateTeamMenu,
   type AthleteConditionSummary,
@@ -46,6 +47,16 @@ export async function POST(request: Request) {
     if (staffError || !staff) {
       return NextResponse.json(
         { error: 'スタッフプロファイルが見つかりません。' },
+        { status: 403 },
+      );
+    }
+
+    // ----- プラン別機能ゲート（Pro+ 必須）-----
+    try {
+      await requireAccess(supabase, staff.org_id, 'feature_ai_weekly_plan');
+    } catch (gateErr) {
+      return NextResponse.json(
+        { error: gateErr instanceof Error ? gateErr.message : 'この機能はご利用いただけません。' },
         { status: 403 },
       );
     }

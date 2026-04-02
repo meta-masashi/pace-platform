@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 interface AthleteHomeData {
   v6?: {
-    status: 'GREEN' | 'YELLOW' | 'ORANGE' | 'RED';
+    status: 'TEAL' | 'GREEN' | 'YELLOW' | 'ORANGE' | 'RED';
     score: number;
     actionOfDay: string;
     primaryTrigger?: string;
