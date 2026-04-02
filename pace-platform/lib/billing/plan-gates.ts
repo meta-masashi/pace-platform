@@ -19,26 +19,42 @@ import type { PlanId } from './stripe-client'
 // ============================================================
 
 export type Feature =
-  | 'feature_basic_assessment'   // 基本アセスメント
-  | 'feature_daily_checkin'      // 日次チェックイン
-  | 'feature_cv_analysis'        // CV（コンピュータビジョン）解析 ※pro_cv以上
-  | 'feature_rag_pipeline'       // RAG パイプライン
-  | 'feature_gemini_ai'          // Gemini AI機能
-  | 'feature_custom_bayes'       // カスタムベイズノード
-  | 'feature_enterprise'         // エンタープライズ専用機能
-  | 'feature_multi_team'         // 複数チーム管理
+  | 'feature_basic_assessment'       // 基本アセスメント
+  | 'feature_daily_checkin'          // 日次チェックイン
+  | 'feature_cv_analysis'            // CV（コンピュータビジョン）解析 ※pro_cv以上
+  | 'feature_rag_pipeline'           // RAG パイプライン
+  | 'feature_gemini_ai'              // Gemini AI機能
+  | 'feature_custom_bayes'           // カスタムベイズノード
+  | 'feature_enterprise'             // エンタープライズ専用機能
+  | 'feature_multi_team'             // 複数チーム管理
+  // Phase 6 新機能フラグ（PB-001-4 / Sprint 1）
+  | 'feature_condition_score'        // P1-P5 + Readiness スコア（全プラン）
+  | 'feature_condition_score_hrv'    // HRV ペナルティ付き Readiness（Pro以上）
+  | 'feature_insight_card'           // Gemini InsightCard（Pro以上）
+  | 'feature_calendar_sync'          // Google Calendar Function Calling（Pro以上）
+  | 'feature_ai_weekly_plan'         // AI 週次計画 + トークン上限管理（Pro以上）
+  | 'feature_risk_avoidance_report'  // ファクトベースROIレポート（Pro以上）
+  | 'feature_acwr_trend_chart'       // ACWR トレンドチャート（Pro以上）
 
 // プラン別に許可される機能 (MASTER-SPEC v1.1)
 export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
   standard: [
     'feature_basic_assessment',
     'feature_daily_checkin',
+    'feature_condition_score',
   ],
   pro: [
     'feature_basic_assessment',
     'feature_daily_checkin',
     'feature_rag_pipeline',
     'feature_gemini_ai',
+    'feature_condition_score',
+    'feature_condition_score_hrv',
+    'feature_insight_card',
+    'feature_calendar_sync',
+    'feature_ai_weekly_plan',
+    'feature_risk_avoidance_report',
+    'feature_acwr_trend_chart',
   ],
   pro_cv: [
     'feature_basic_assessment',
@@ -46,6 +62,13 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_cv_analysis',
     'feature_rag_pipeline',
     'feature_gemini_ai',
+    'feature_condition_score',
+    'feature_condition_score_hrv',
+    'feature_insight_card',
+    'feature_calendar_sync',
+    'feature_ai_weekly_plan',
+    'feature_risk_avoidance_report',
+    'feature_acwr_trend_chart',
   ],
   enterprise: [
     'feature_basic_assessment',
@@ -56,6 +79,13 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_custom_bayes',
     'feature_enterprise',
     'feature_multi_team',
+    'feature_condition_score',
+    'feature_condition_score_hrv',
+    'feature_insight_card',
+    'feature_calendar_sync',
+    'feature_ai_weekly_plan',
+    'feature_risk_avoidance_report',
+    'feature_acwr_trend_chart',
   ],
 }
 
@@ -289,9 +319,16 @@ function getUpgradeHint(currentPlan: PlanId, feature: Feature): string {
   const featureToMinPlan: Record<Feature, PlanId | null> = {
     feature_basic_assessment: null,       // 全プランで利用可能
     feature_daily_checkin: null,
+    feature_condition_score: null,        // 全プラン（DAU定着最優先）
     feature_cv_analysis: 'pro_cv',        // Pro + CV Addon 以上
     feature_rag_pipeline: 'pro',
     feature_gemini_ai: 'pro',
+    feature_condition_score_hrv: 'pro',   // HRV ペナルティ
+    feature_insight_card: 'pro',          // Gemini InsightCard
+    feature_calendar_sync: 'pro',         // Google Calendar
+    feature_ai_weekly_plan: 'pro',        // AI 週次計画
+    feature_risk_avoidance_report: 'pro', // ファクトベースROI
+    feature_acwr_trend_chart: 'pro',      // ACWR トレンド
     feature_custom_bayes: 'enterprise',
     feature_enterprise: 'enterprise',
     feature_multi_team: 'enterprise',
