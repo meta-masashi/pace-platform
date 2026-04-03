@@ -19,6 +19,7 @@ export default defineConfig({
     include: [
       'tests/unit/**/*.test.ts',
       'tests/security/**/*.test.ts',
+      '__tests__/e2e/**/*.test.ts',
     ],
 
     // グローバルセットアップ

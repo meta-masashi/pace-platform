@@ -2,8 +2,11 @@
 
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { LockManager } from './lock-manager';
 import { MetricLabel } from '@/app/_components/metric-label';
+import { AssessmentTabs } from './assessment-tabs';
+import { RehabAssessmentTab } from './tab-rehab-assessment';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,7 +46,7 @@ interface AthleteDetailContentProps {
   paramsPromise: Promise<{ athleteId: string }>;
 }
 
-// タブ構造を廃止 → ラプソード型1画面ダッシュボード
+// 通常は1画面ダッシュボード。?tab=assessment でアセスメントタブを表示
 
 // ---------------------------------------------------------------------------
 // Component
@@ -53,6 +56,10 @@ export function AthleteDetailContent({
   paramsPromise,
 }: AthleteDetailContentProps) {
   const { athleteId } = use(paramsPromise);
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab');
+  const showAssessment = currentTab === 'assessment';
+  const showRehab = currentTab === 'rehab';
 
   const [data, setData] = useState<ConditioningData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,31 +135,39 @@ export function AthleteDetailContent({
         </div>
       </div>
 
-      {/* ── セクション1: ロック + コンディション ── */}
-      <StatusTab athleteId={athleteId} data={data} loading={loading} error={error} />
+      {showAssessment ? (
+        <AssessmentTabs athleteId={athleteId} />
+      ) : showRehab ? (
+        <RehabAssessmentTab athleteId={athleteId} />
+      ) : (
+        <>
+          {/* ── セクション1: ロック + コンディション ── */}
+          <StatusTab athleteId={athleteId} data={data} loading={loading} error={error} />
 
-      {/* ── セクション2: MetricLabel グリッド（スタッフ用技術表示） ── */}
-      {data && (
-        <div>
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            パフォーマンス指標
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricLabel metricId="readiness" value={data.conditioningScore} mode="staff" />
-            <MetricLabel metricId="acwr" value={data.acwr} mode="staff" />
-            <MetricLabel metricId="fitness" value={data.fitnessEwma} mode="staff" />
-            <MetricLabel metricId="fatigue" value={data.fatigueEwma} mode="staff" />
+          {/* ── セクション2: MetricLabel グリッド（スタッフ用技術表示） ── */}
+          {data && (
+            <div>
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                パフォーマンス指標
+              </h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricLabel metricId="readiness" value={data.conditioningScore} mode="staff" />
+                <MetricLabel metricId="acwr" value={data.acwr} mode="staff" />
+                <MetricLabel metricId="fitness" value={data.fitnessEwma} mode="staff" />
+                <MetricLabel metricId="fatigue" value={data.fatigueEwma} mode="staff" />
+              </div>
+            </div>
+          )}
+
+          {/* ── セクション3: SOAPノート ── */}
+          <div>
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              SOAPノート
+            </h3>
+            <SoapTab athleteId={athleteId} />
           </div>
-        </div>
+        </>
       )}
-
-      {/* ── セクション3: SOAPノート ── */}
-      <div>
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          SOAPノート
-        </h3>
-        <SoapTab athleteId={athleteId} />
-      </div>
     </div>
   );
 }

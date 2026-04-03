@@ -46,11 +46,23 @@ export const GET = withApiHandler(async (req, _ctx) => {
     throw new ApiError(401, '認証が必要です。ログインしてください。');
   }
 
-  // ----- チーム情報取得 -----
+  // ----- スタッフ権限チェック -----
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, '権限がありません');
+  }
+
+  // ----- チーム情報取得 (org_id スコープ) -----
   const { data: team, error: teamError } = await supabase
     .from('teams')
-    .select('id, name')
+    .select('id, name, org_id')
     .eq('id', teamId)
+    .eq('org_id', staff.org_id)
     .single();
 
   if (teamError || !team) {

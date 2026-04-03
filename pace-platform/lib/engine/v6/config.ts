@@ -130,10 +130,10 @@ export const Z_SCORE_STAGES: ZScoreStage[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * 部分的なオーバーライドをベース設定にマージする。
+ * 部分的なオーバーライドをデフォルト設定にマージする。
  *
  * @param overrides - 上書きしたい設定値（部分的）
- * @param base - ベース設定（省略時は DEFAULT_PIPELINE_CONFIG）
+ * @param base - ベースとなる設定（省略時は DEFAULT_PIPELINE_CONFIG）
  * @returns マージ済みの完全な PipelineConfig
  */
 export function mergePipelineConfig(

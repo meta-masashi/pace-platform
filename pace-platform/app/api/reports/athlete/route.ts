@@ -52,11 +52,23 @@ export const GET = withApiHandler(async (req, _ctx) => {
     throw new ApiError(401, '認証が必要です。ログインしてください。');
   }
 
-  // ----- 選手情報取得 -----
+  // ----- スタッフ権限チェック -----
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, '権限がありません');
+  }
+
+  // ----- 選手情報取得 (org_id スコープ) -----
   const { data: athlete, error: athleteError } = await supabase
     .from('athletes')
     .select('id, name, position, number, sport')
     .eq('id', athleteId)
+    .eq('org_id', staff.org_id)
     .single();
 
   if (athleteError || !athlete) {

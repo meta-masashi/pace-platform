@@ -73,11 +73,23 @@ export const POST = withApiHandler(async (request, ctx) => {
     throw new ApiError(401, "認証が必要です。ログインしてください。");
   }
 
-  // ----- アスリートアクセス確認（RLS 経由） -----
+  // ----- スタッフ権限チェック -----
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, '権限がありません');
+  }
+
+  // ----- アスリートアクセス確認（RLS 経由 + org_id スコープ） -----
   const { data: athlete, error: athleteError } = await supabase
     .from("athletes")
     .select("id, org_id")
     .eq("id", athleteId)
+    .eq("org_id", staff.org_id)
     .single();
 
   if (athleteError || !athlete) {

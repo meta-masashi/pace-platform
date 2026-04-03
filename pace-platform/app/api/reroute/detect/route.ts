@@ -48,11 +48,23 @@ export const POST = withApiHandler(async (request, ctx) => {
     throw new ApiError(401, '認証が必要です。ログインしてください。');
   }
 
-  // ----- プログラム取得 -----
+  // ----- スタッフ権限チェック -----
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, '権限がありません');
+  }
+
+  // ----- プログラム取得 (org_id スコープ) -----
   const { data: program, error: programError } = await supabase
     .from('rehab_programs')
-    .select('id, athlete_id, current_phase, start_date, estimated_rtp_date, status')
+    .select('id, athlete_id, current_phase, start_date, estimated_rtp_date, status, athletes!inner(org_id)')
     .eq('id', body.programId)
+    .eq('athletes.org_id', staff.org_id)
     .single();
 
   if (programError || !program) {

@@ -267,15 +267,21 @@ export const DELETE = withApiHandler(async (req, ctx) => {
     throw new ApiError(400, "有効な lockId を指定してください。");
   }
 
-  // ----- ロック取得 -----
+  // ----- ロック取得 (org_id 所有権チェック付き) -----
   const { data: lock, error: lockFetchError } = await supabase
     .from("athlete_locks")
-    .select("id, lock_type, athlete_id")
+    .select("id, lock_type, athlete_id, athletes!inner(org_id)")
     .eq("id", body.lockId)
     .single();
 
   if (lockFetchError || !lock) {
     throw new ApiError(404, "指定されたロックが見つかりません。");
+  }
+
+  // ----- org_id 所有権チェック -----
+  const lockOrgId = (lock.athletes as unknown as { org_id: string })?.org_id;
+  if (lockOrgId !== staff.org_id) {
+    throw new ApiError(403, "このロックを削除する権限がありません。");
   }
 
   // Hard Lock 削除は master のみ
