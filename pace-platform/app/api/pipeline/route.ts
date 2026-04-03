@@ -12,6 +12,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateUUID } from '@/lib/security/input-validator';
 import { InferencePipeline } from '@/lib/engine/v6/pipeline';
+import { configForSport } from '@/lib/engine/v6/config';
+import { getSportProfile } from '@/lib/engine/v6/config/sport-profiles';
 import type {
   AthleteContext,
   DailyInput,
@@ -95,6 +97,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // ----- 組織の競技種目を取得 -----
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('sport')
+      .eq('id', staff.org_id)
+      .single();
+
+    const orgSport = (orgData?.sport as string) ?? (athlete.sport as string) ?? 'other';
+    const sportProfile = getSportProfile(orgSport);
+
     // baseline_reset_at を取得（ベースラインリセット対応）
     const { data: conditionCache } = await supabase
       .from('athlete_condition_cache')
@@ -156,8 +168,8 @@ export async function POST(request: Request) {
       orgId: athlete.org_id as string,
       teamId: (athlete.team_id as string) ?? '',
       age: (athlete.age as number) ?? 25,
-      sport: (athlete.sport as string) ?? 'unknown',
-      isContactSport: (athlete.is_contact_sport as boolean) ?? false,
+      sport: orgSport,
+      isContactSport: sportProfile.isContactSport,
       validDataDays: validDataDays ?? 0,
       bayesianPriors: {},
       riskMultipliers: {},
@@ -169,18 +181,18 @@ export async function POST(request: Request) {
         riskMultiplier: (entry.risk_multiplier as number) ?? 1.0,
       })),
       tissueHalfLifes: {
-        metabolic: 2,
-        structural_soft: 7,
-        structural_hard: 21,
-        neuromotor: 3,
+        metabolic: sportProfile.tissueDefaults.metabolic.halfLifeDays,
+        structural_soft: sportProfile.tissueDefaults.structural_soft.halfLifeDays,
+        structural_hard: sportProfile.tissueDefaults.structural_hard.halfLifeDays,
+        neuromotor: sportProfile.tissueDefaults.neuromotor.halfLifeDays,
       } satisfies Record<TissueCategory, number>,
       ...(lastKnownRecord ? { lastKnownRecord } : {}),
     };
 
     // ----- パイプライン実行 -----
-    const pipeline = new InferencePipeline();
-    // Node 0-3 は pipeline.execute 内でフォールバック処理されるため、
-    // 登録されていないノードはスキップされる
+    // 競技別 SportProfile から PipelineConfig を生成
+    const pipelineConfig = configForSport(orgSport);
+    const pipeline = new InferencePipeline(pipelineConfig);
     const output: PipelineOutput = await pipeline.execute(body.dailyInput, context);
 
     // ----- トレースログを DB に保存 -----
