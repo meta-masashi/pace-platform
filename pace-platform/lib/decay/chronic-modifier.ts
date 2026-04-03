@@ -20,6 +20,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('decay');
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -103,10 +105,7 @@ export async function calculateChronicModifier(
     );
 
   if (error) {
-    console.error(
-      `[chronic:modifier] 再発回数カウントエラー athlete=${athleteId} node=${nodeId}:`,
-      error
-    );
+    log.error(`再発回数カウントエラー athlete=${athleteId} node=${nodeId}`, { data: { error: error.message } });
     return MODIFIER_BASE;
   }
 
@@ -152,10 +151,7 @@ export async function updateChronicModifiers(
     .in("assessment_id", sessionIds);
 
   if (error || !responses) {
-    console.error(
-      `[chronic:modifier] 回答取得エラー athlete=${athleteId}:`,
-      error
-    );
+    log.error(`回答取得エラー athlete=${athleteId}`, { data: { error: error.message } });
     return;
   }
 
@@ -198,16 +194,11 @@ export async function updateChronicModifiers(
       );
 
     if (upsertError) {
-      console.error(
-        `[chronic:modifier] upsert エラー athlete=${athleteId} node=${nodeId}:`,
-        upsertError
-      );
+      log.error(`upsert エラー athlete=${athleteId} node=${nodeId}`, { data: { error: upsertError.message } });
     }
   }
 
-  console.log(
-    `[chronic:modifier] athlete=${athleteId} — ${nodeCounts.size} ノードの修正係数を更新`
-  );
+  log.info(`athlete=${athleteId} — ${nodeCounts.size} ノードの修正係数を更新`);
 }
 
 // ---------------------------------------------------------------------------

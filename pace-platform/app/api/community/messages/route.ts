@@ -7,6 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { withApiHandler, ApiError } from "@/lib/api/handler";
 
 // ---------------------------------------------------------------------------
 // 共通: スタッフ認証チェック
@@ -41,144 +42,110 @@ async function requireStaff(supabase: Awaited<ReturnType<typeof createClient>>) 
 // ---------------------------------------------------------------------------
 // GET /api/community/messages
 // ---------------------------------------------------------------------------
-export async function GET(request: Request) {
-  try {
-    const supabase = await createClient();
-    const result = await requireStaff(supabase);
-    if ("error" in result) {
-      return NextResponse.json({ success: false, error: result.error }, { status: result.status as number });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const channelId = searchParams.get("channelId");
-    const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 100);
-    const before = searchParams.get("before"); // ISO timestamp for pagination
-
-    if (!channelId) {
-      return NextResponse.json(
-        { success: false, error: "channelId は必須です。" },
-        { status: 400 }
-      );
-    }
-
-    let query = supabase
-      .from("messages")
-      .select(`
-        id,
-        content,
-        attachments_json,
-        created_at,
-        updated_at,
-        staff_id,
-        staff:staff_id ( id, name, role )
-      `)
-      .eq("channel_id", channelId)
-      .order("created_at", { ascending: true })
-      .limit(limit);
-
-    if (before) {
-      query = query.lt("created_at", before);
-    }
-
-    const { data: messages, error } = await query;
-
-    if (error) {
-      console.error("[community/messages:GET] クエリエラー:", error);
-      return NextResponse.json(
-        { success: false, error: "メッセージの取得に失敗しました。" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data: messages ?? [] });
-  } catch (err) {
-    console.error("[community/messages:GET] 予期しないエラー:", err);
-    return NextResponse.json(
-      { success: false, error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
+export const GET = withApiHandler(async (req, ctx) => {
+  const supabase = await createClient();
+  const result = await requireStaff(supabase);
+  if ("error" in result) {
+    throw new ApiError(result.status as number, result.error);
   }
-}
+
+  const { searchParams } = new URL(req.url);
+  const channelId = searchParams.get("channelId");
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 100);
+  const before = searchParams.get("before"); // ISO timestamp for pagination
+
+  if (!channelId) {
+    throw new ApiError(400, "channelId は必須です。");
+  }
+
+  let query = supabase
+    .from("messages")
+    .select(`
+      id,
+      content,
+      attachments_json,
+      created_at,
+      updated_at,
+      staff_id,
+      staff:staff_id ( id, name, role )
+    `)
+    .eq("channel_id", channelId)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (before) {
+    query = query.lt("created_at", before);
+  }
+
+  const { data: messages, error } = await query;
+
+  if (error) {
+    ctx.log.error("クエリエラー", { detail: error });
+    throw new ApiError(500, "メッセージの取得に失敗しました。");
+  }
+
+  return NextResponse.json({ success: true, data: messages ?? [] });
+}, { service: 'community' });
 
 // ---------------------------------------------------------------------------
 // POST /api/community/messages — メッセージ送信
 // ---------------------------------------------------------------------------
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
-    const result = await requireStaff(supabase);
-    if ("error" in result) {
-      return NextResponse.json({ success: false, error: result.error }, { status: result.status as number });
-    }
-    const { staff } = result;
-
-    let body: { channelId: string; content: string; attachments?: unknown[] };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, error: "リクエストボディのJSONパースに失敗しました。" },
-        { status: 400 }
-      );
-    }
-
-    if (!body.channelId || !body.content?.trim()) {
-      return NextResponse.json(
-        { success: false, error: "channelId と content は必須です。" },
-        { status: 400 }
-      );
-    }
-
-    // チャンネル存在確認（同一 org チェックは RLS で実施）
-    const { data: channel, error: channelError } = await supabase
-      .from("channels")
-      .select("id, org_id")
-      .eq("id", body.channelId)
-      .single();
-
-    if (channelError || !channel) {
-      return NextResponse.json(
-        { success: false, error: "指定されたチャンネルが見つかりません。" },
-        { status: 404 }
-      );
-    }
-
-    const { data: message, error: insertError } = await supabase
-      .from("messages")
-      .insert({
-        channel_id: body.channelId,
-        org_id: staff.org_id,
-        staff_id: staff.id,
-        content: body.content.trim(),
-        attachments_json: body.attachments ?? [],
-      })
-      .select(`
-        id,
-        content,
-        attachments_json,
-        created_at,
-        staff_id,
-        staff:staff_id ( id, name, role )
-      `)
-      .single();
-
-    if (insertError) {
-      console.error("[community/messages:POST] 作成エラー:", insertError);
-      return NextResponse.json(
-        { success: false, error: "メッセージの送信に失敗しました。" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: true, data: message },
-      { status: 201 }
-    );
-  } catch (err) {
-    console.error("[community/messages:POST] 予期しないエラー:", err);
-    return NextResponse.json(
-      { success: false, error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
+export const POST = withApiHandler(async (req, ctx) => {
+  const supabase = await createClient();
+  const result = await requireStaff(supabase);
+  if ("error" in result) {
+    throw new ApiError(result.status as number, result.error);
   }
-}
+  const { staff } = result;
+
+  let body: { channelId: string; content: string; attachments?: unknown[] };
+  try {
+    body = await req.json();
+  } catch {
+    throw new ApiError(400, "リクエストボディのJSONパースに失敗しました。");
+  }
+
+  if (!body.channelId || !body.content?.trim()) {
+    throw new ApiError(400, "channelId と content は必須です。");
+  }
+
+  // チャンネル存在確認（同一 org チェックは RLS で実施）
+  const { data: channel, error: channelError } = await supabase
+    .from("channels")
+    .select("id, org_id")
+    .eq("id", body.channelId)
+    .single();
+
+  if (channelError || !channel) {
+    throw new ApiError(404, "指定されたチャンネルが見つかりません。");
+  }
+
+  const { data: message, error: insertError } = await supabase
+    .from("messages")
+    .insert({
+      channel_id: body.channelId,
+      org_id: staff.org_id,
+      staff_id: staff.id,
+      content: body.content.trim(),
+      attachments_json: body.attachments ?? [],
+    })
+    .select(`
+      id,
+      content,
+      attachments_json,
+      created_at,
+      staff_id,
+      staff:staff_id ( id, name, role )
+    `)
+    .single();
+
+  if (insertError) {
+    ctx.log.error("作成エラー", { detail: insertError });
+    throw new ApiError(500, "メッセージの送信に失敗しました。");
+  }
+
+  return NextResponse.json(
+    { success: true, data: message },
+    { status: 201 }
+  );
+}, { service: 'community' });

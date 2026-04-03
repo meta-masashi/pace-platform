@@ -14,6 +14,8 @@
  */
 
 import { NextResponse } from 'next/server'
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('security');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -105,7 +107,7 @@ export async function rateLimit(
       .gte('ts', windowStart)
 
     if (countError) {
-      console.warn('[rate-limit] カウントクエリ失敗（フェイルオープン）:', countError.message)
+      log.warn('カウントクエリ失敗（フェイルオープン）', { data: { error: countError.message } })
       return { allowed: true, remaining: maxRequests, retryAfterMs: 0 }
     }
 
@@ -129,7 +131,7 @@ export async function rateLimit(
       retryAfterMs: 0,
     }
   } catch (err) {
-    console.warn('[rate-limit] レートリミットチェック失敗（フェイルオープン）:', err)
+    log.warn('レートリミットチェック失敗（フェイルオープン）', { data: { error: err instanceof Error ? err.message : String(err) } })
     return { allowed: true, remaining: maxRequests, retryAfterMs: 0 }
   }
 }

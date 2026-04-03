@@ -14,6 +14,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createLogger } from '@/lib/observability/logger'
+
+const log = createLogger('auth')
 
 // ---------------------------------------------------------------------------
 // 設定
@@ -93,9 +96,9 @@ async function recordAuthEvent(
       event_type: params.eventType,
       metadata: params.metadata ?? {},
     })
-    if (error) console.warn('[auth/login] イベント記録失敗:', error.message)
+    if (error) log.warn('イベント記録失敗', { data: { message: error.message } })
   } catch (err) {
-    console.warn('[auth/login] イベント記録例外:', err)
+    log.errorFromException('イベント記録例外', err)
   }
 }
 

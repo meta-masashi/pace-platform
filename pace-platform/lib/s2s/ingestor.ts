@@ -19,6 +19,8 @@ import type {
   DeviceProvider,
 } from "./types";
 import { mapAthletes } from "./athlete-mapper";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('s2s');
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -177,7 +179,7 @@ export async function ingestS2SData(
       });
 
     if (upsertError) {
-      console.error("[s2s:ingest] daily_metrics upsert エラー:", upsertError);
+      log.error('daily_metrics upsert エラー', { data: { error: upsertError.message } });
       result.errors.push(
         `データ保存エラー: ${upsertError.message}`
       );
@@ -188,7 +190,7 @@ export async function ingestS2SData(
   if (needsConditioningRecalc) {
     // 非同期で再計算をトリガー（失敗しても取り込み結果には影響しない）
     triggerConditioningRecalc(supabase, mapped, metricsDate!).catch((err) => {
-      console.warn("[s2s:ingest] コンディショニング再計算エラー:", err);
+      log.errorFromException('コンディショニング再計算エラー', err);
     });
   }
 
@@ -294,10 +296,7 @@ async function triggerConditioningRecalc(
       .single();
 
     if (error) {
-      console.warn(
-        `[s2s:ingest] アスリート ${athleteId} のメトリクス確認エラー:`,
-        error.message
-      );
+      log.warn(`アスリート ${athleteId} のメトリクス確認エラー`, { data: { error: error.message } });
     }
     // 実際の再計算は次回のコンディショニング API 呼び出し時に実行される
   }

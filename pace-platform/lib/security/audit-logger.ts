@@ -7,6 +7,8 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('security');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -51,7 +53,7 @@ export async function logAuditEvent(
     } = await supabase.auth.getUser();
 
     if (!user) {
-      console.warn('[audit] 監査ログ記録スキップ: 認証ユーザーが取得できません');
+      log.warn('監査ログ記録スキップ: 認証ユーザーが取得できません');
       return;
     }
 
@@ -72,9 +74,9 @@ export async function logAuditEvent(
     });
 
     if (error) {
-      console.warn('[audit] 監査ログ記録失敗:', error.message);
+      log.warn('監査ログ記録失敗', { data: { error: error.message } });
     }
   } catch (err) {
-    console.warn('[audit] 監査ログ記録中に予期しないエラー:', err);
+    log.warn('監査ログ記録中に予期しないエラー', { data: { error: err instanceof Error ? err.message : String(err) } });
   }
 }

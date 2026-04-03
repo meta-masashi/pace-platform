@@ -20,6 +20,8 @@ import type {
   SingleCondition,
   ComparisonOperator,
 } from './types';
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('routing');
 
 // ---------------------------------------------------------------------------
 // 正規表現パターン
@@ -103,7 +105,7 @@ export function parseRoutingRule(rawText: string | null | undefined): RoutingCon
   }
 
   // パース不能 → always にフォールバック
-  console.warn(`[routing:parser] パース不能なルーティング文字列: "${rawText}"`);
+  log.warn(`パース不能なルーティング文字列: "${rawText}"`);
   return { type: 'always' };
 }
 
@@ -138,7 +140,7 @@ function parseIfCondition(text: string): RoutingCondition {
     }
 
     if (conditions.length === 0) {
-      console.warn(`[routing:parser] 複合条件のパースに失敗: "${text}"`);
+      log.warn(`複合条件のパースに失敗: "${text}"`);
       return { type: 'always' };
     }
 
@@ -159,7 +161,7 @@ function parseIfCondition(text: string): RoutingCondition {
   // 単一条件
   const condition = parseSingleCondition(body);
   if (!condition) {
-    console.warn(`[routing:parser] 単一条件のパースに失敗: "${text}"`);
+    log.warn(`単一条件のパースに失敗: "${text}"`);
     return { type: 'always' };
   }
 

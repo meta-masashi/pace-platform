@@ -12,6 +12,8 @@
 import { retrieveWithAdaptiveStrategy, type RetrievedDocument } from "./retriever";
 import { callGeminiWithRetry, buildCdsSystemPrefix, MEDICAL_DISCLAIMER, type GeminiCallContext } from "../gemini/client";
 import { sanitizeUserInput, detectInjectionAttempt } from "../shared/security-helpers";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('rag');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -58,7 +60,7 @@ export async function runRagPipeline(
   // プロンプトインジェクション検出（防壁2）
   const injectionDetected = detectInjectionAttempt(query);
   if (injectionDetected) {
-    console.warn(`[rag:pipeline] プロンプトインジェクション検出: userId=${staffContext.userId}`);
+    log.warn('プロンプトインジェクション検出', { userId: staffContext.userId });
     return {
       answer: "不適切な入力を検出しました。質問の内容を変更してお試しください。",
       sourceDocuments: [],
@@ -81,7 +83,7 @@ export async function runRagPipeline(
       category
     );
   } catch (err) {
-    console.error("[rag:pipeline] ベクトル検索失敗:", err);
+    log.errorFromException('ベクトル検索失敗', err);
     throw new Error(`RAG 検索エラー: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 

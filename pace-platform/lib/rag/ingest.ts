@@ -13,6 +13,8 @@
 
 import { splitTextIntoChunks, embedText } from "./embedding";
 import { sanitizeUserInput } from "../shared/security-helpers";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('rag');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -89,7 +91,7 @@ export async function ingestDocument(
 
   // ステップ1: チャンク分割
   const chunks = splitTextIntoChunks(sanitizedText, { chunkSize, overlap });
-  console.info(`[ingest] ドキュメント ${documentId}: ${chunks.length} チャンクに分割`);
+  log.info(`ドキュメント ${documentId}: ${chunks.length} チャンクに分割`);
 
   let upsertedChunks = 0;
   let failedChunks = 0;
@@ -123,7 +125,7 @@ export async function ingestDocument(
 
     for (const settled of embeddingResults) {
       if (settled.status === "rejected") {
-        console.error(`[ingest] Embedding 失敗:`, settled.reason);
+        log.errorFromException('Embedding 失敗', settled.reason);
         failedChunks++;
         continue;
       }
@@ -148,16 +150,11 @@ export async function ingestDocument(
         .upsert(records, { onConflict: "document_id,chunk_index" });
 
       if (error) {
-        console.error(
-          `[ingest] バッチ upsert 失敗 (chunks ${batchStart}-${batchEnd - 1}):`,
-          error.message
-        );
+        log.error(`バッチ upsert 失敗 (chunks ${batchStart}-${batchEnd - 1})`, { data: { error: error.message } });
         failedChunks += records.length;
       } else {
         upsertedChunks += records.length;
-        console.info(
-          `[ingest] バッチ upsert 完了: ${records.length} 件 (${batchStart + 1}-${batchEnd}/${chunks.length})`
-        );
+        log.info(`バッチ upsert 完了: ${records.length} 件 (${batchStart + 1}-${batchEnd}/${chunks.length})`);
       }
     }
 
@@ -168,9 +165,7 @@ export async function ingestDocument(
   }
 
   const processingTimeMs = Date.now() - startTime;
-  console.info(
-    `[ingest] 完了: documentId=${documentId} upserted=${upsertedChunks} failed=${failedChunks} time=${processingTimeMs}ms`
-  );
+  log.info(`完了: documentId=${documentId} upserted=${upsertedChunks} failed=${failedChunks}`, { duration: processingTimeMs });
 
   return {
     documentId,
@@ -214,7 +209,7 @@ export async function ingestDocuments(
       succeeded.push(result);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error(`[ingest] ドキュメント ${source.documentId} 取り込み失敗:`, errorMessage);
+      log.error(`ドキュメント ${source.documentId} 取り込み失敗`, { data: { error: errorMessage } });
       failed.push({ documentId: source.documentId, error: errorMessage });
     }
   }

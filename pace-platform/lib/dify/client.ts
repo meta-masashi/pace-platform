@@ -15,6 +15,8 @@
  */
 
 import { buildCdsSystemPrefix, callGeminiWithRetry, type GeminiCallContext } from "../gemini/client";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('dify');
 import { sanitizeUserInput, detectInjectionAttempt } from "../shared/security-helpers";
 import { withRetry } from "../shared/retry-handler";
 
@@ -260,9 +262,7 @@ export async function runPaceWorkflow(
   // プロンプトインジェクション検出（防壁2）
   for (const [key, value] of Object.entries(inputs)) {
     if (detectInjectionAttempt(value)) {
-      console.warn(
-        `[dify:client] プロンプトインジェクション検出: workflow=${workflowId} field=${key} userId=${userId}`
-      );
+      log.warn(`プロンプトインジェクション検出: workflow=${workflowId} field=${key}`, { userId });
       throw new Error("不適切な入力を検出しました。入力内容を変更してお試しください。");
     }
   }
@@ -282,10 +282,7 @@ export async function runPaceWorkflow(
           maxRetries: 3,
           baseDelayMs: 1_000,
           onRetry: (attempt, err) => {
-            console.warn(
-              `[dify:client] ストリーミング リトライ ${attempt}/3 (workflow=${workflowId}):`,
-              err
-            );
+            log.errorFromException(`ストリーミング リトライ ${attempt}/3 (workflow=${workflowId})`, err);
           },
           // 4xx エラーはリトライしない（クライアントサイドの問題）
           shouldNotRetry: (err) =>
@@ -301,10 +298,7 @@ export async function runPaceWorkflow(
           maxRetries: 3,
           baseDelayMs: 1_000,
           onRetry: (attempt, err) => {
-            console.warn(
-              `[dify:client] ブロッキング リトライ ${attempt}/3 (workflow=${workflowId}):`,
-              err
-            );
+            log.errorFromException(`ブロッキング リトライ ${attempt}/3 (workflow=${workflowId})`, err);
           },
           shouldNotRetry: (err) =>
             err instanceof Error && /HTTP 4\d\d/.test(err.message),
@@ -315,10 +309,7 @@ export async function runPaceWorkflow(
     }
   } catch (difyError) {
     // Dify 失敗 → Gemini フォールバック
-    console.warn(
-      `[dify:client] Dify API 失敗、Gemini フォールバックに切替 (workflow=${workflowId}):`,
-      difyError
-    );
+    log.errorFromException(`Dify API 失敗、Gemini フォールバックに切替 (workflow=${workflowId})`, difyError);
 
     const fallbackText = await runGeminiFallback(workflowId, sanitizedInputs, staffContext);
 

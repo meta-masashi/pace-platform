@@ -9,6 +9,9 @@
  * 防壁4: JSONパース失敗時の指数バックオフ付きリトライ
  */
 
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('rag');
+
 // ---------------------------------------------------------------------------
 // チャンク分割
 // ---------------------------------------------------------------------------
@@ -118,7 +121,7 @@ export async function embedText(
       return { vector: values, dimensions: EMBEDDING_DIMENSIONS };
     } catch (err) {
       lastError = err;
-      console.warn(`[embedding] attempt ${attempt + 1}/${MAX_EMBED_RETRIES} 失敗:`, err);
+      log.errorFromException(`attempt ${attempt + 1}/${MAX_EMBED_RETRIES} 失敗`, err);
     }
   }
 
@@ -157,7 +160,7 @@ export async function embedAndStoreDocument(
   options: ChunkOptions = {}
 ): Promise<number> {
   const chunks = splitTextIntoChunks(text, options);
-  console.info(`[embedding] ドキュメント ${documentId}: ${chunks.length} チャンクに分割`);
+  log.info(`ドキュメント ${documentId}: ${chunks.length} チャンクに分割`);
 
   let savedCount = 0;
 
@@ -177,7 +180,7 @@ export async function embedAndStoreDocument(
     });
 
     if (error) {
-      console.error(`[embedding] チャンク ${i} 保存失敗:`, error.message);
+      log.error(`チャンク ${i} 保存失敗`, { data: { error: error.message } });
       // 非致命的エラー — 残りのチャンクは継続して保存
       continue;
     }
@@ -185,6 +188,6 @@ export async function embedAndStoreDocument(
     savedCount++;
   }
 
-  console.info(`[embedding] ${savedCount}/${chunks.length} チャンク保存完了`);
+  log.info(`${savedCount}/${chunks.length} チャンク保存完了`);
   return savedCount;
 }

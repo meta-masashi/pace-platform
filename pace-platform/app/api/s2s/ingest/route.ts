@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { validateApiKey, ingestS2SData, validatePayload } from "@/lib/s2s/ingestor";
+import { withApiHandler } from "@/lib/api/handler";
 import type { S2SResult } from "@/lib/s2s/types";
 
 // ---------------------------------------------------------------------------
@@ -66,139 +67,129 @@ function checkRateLimit(key: string): boolean {
 // POST /api/s2s/ingest
 // ---------------------------------------------------------------------------
 
-export async function POST(
-  request: Request
-): Promise<NextResponse<SuccessResponse | ErrorResponse>> {
-  try {
-    // ----- API キー取得 -----
-    const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Authorization ヘッダーに Bearer トークンが必要です。",
-        },
-        { status: 401 }
-      );
-    }
-
-    const apiKey = authHeader.slice(7);
-    if (!apiKey || apiKey.length < 32) {
-      return NextResponse.json(
-        { success: false, error: "API キーが不正です。" },
-        { status: 401 }
-      );
-    }
-
-    // ----- リクエストボディのパース -----
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, error: "リクエストボディの JSON パースに失敗しました。" },
-        { status: 400 }
-      );
-    }
-
-    // ----- ペイロードバリデーション -----
-    const validation = validatePayload(body);
-    if (!validation.valid) {
-      return NextResponse.json(
-        { success: false, error: validation.error },
-        { status: 400 }
-      );
-    }
-
-    // ----- サービスロールクライアント（S2S は JWT 認証ではないため） -----
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+export const POST = withApiHandler(async (req, ctx) => {
+  // ----- API キー取得 -----
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json(
       {
-        cookies: {
-          getAll() {
-            return [];
-          },
-          setAll() {
-            // S2S ではCookie不要
-          },
+        success: false,
+        error: "Authorization ヘッダーに Bearer トークンが必要です。",
+      },
+      { status: 401 }
+    );
+  }
+
+  const apiKey = authHeader.slice(7);
+  if (!apiKey || apiKey.length < 32) {
+    return NextResponse.json(
+      { success: false, error: "API キーが不正です。" },
+      { status: 401 }
+    );
+  }
+
+  // ----- リクエストボディのパース -----
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "リクエストボディの JSON パースに失敗しました。" },
+      { status: 400 }
+    );
+  }
+
+  // ----- ペイロードバリデーション -----
+  const validation = validatePayload(body);
+  if (!validation.valid) {
+    return NextResponse.json(
+      { success: false, error: validation.error },
+      { status: 400 }
+    );
+  }
+
+  // ----- サービスロールクライアント（S2S は JWT 認証ではないため） -----
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return [];
+        },
+        setAll() {
+          // S2S ではCookie不要
+        },
+      },
+    }
+  );
+
+  // ----- API キー検証 -----
+  const orgId = await validateApiKey(
+    supabase,
+    apiKey,
+    validation.payload.provider
+  );
+
+  if (!orgId) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "無効な API キーです。資格情報を確認してください。",
+      },
+      { status: 401 }
+    );
+  }
+
+  // ----- レートリミットチェック -----
+  if (!checkRateLimit(orgId + ":" + validation.payload.provider)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "レートリミット超過です。1時間あたり最大100リクエストまでです。",
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": "3600",
         },
       }
     );
-
-    // ----- API キー検証 -----
-    const orgId = await validateApiKey(
-      supabase,
-      apiKey,
-      validation.payload.provider
-    );
-
-    if (!orgId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "無効な API キーです。資格情報を確認してください。",
-        },
-        { status: 401 }
-      );
-    }
-
-    // ----- レートリミットチェック -----
-    if (!checkRateLimit(orgId + ":" + validation.payload.provider)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "レートリミット超過です。1時間あたり最大100リクエストまでです。",
-        },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": "3600",
-          },
-        }
-      );
-    }
-
-    // ----- データ取り込み実行 -----
-    const result = await ingestS2SData(
-      supabase,
-      {
-        ...validation.payload,
-        apiKey, // 取り込み処理では使用しないが型の整合性のため
-      },
-      orgId
-    );
-
-    // ----- 監査ログ -----
-    await supabase
-      .from("audit_logs")
-      .insert({
-        user_id: null, // S2S はユーザーなし
-        action: "s2s_ingest",
-        resource_type: "daily_metrics",
-        resource_id: orgId,
-        details: {
-          provider: validation.payload.provider,
-          team_id: validation.payload.teamId,
-          received: result.received,
-          matched: result.matched,
-          unmatched_count: result.unmatched.length,
-          error_count: result.errors.length,
-        },
-      })
-      .then(({ error }) => {
-        if (error) console.warn("[s2s:ingest] 監査ログ記録失敗:", error);
-      });
-
-    return NextResponse.json({
-      success: true,
-      data: result,
-    });
-  } catch (err) {
-    console.error("[s2s:ingest] 予期しないエラー:", err);
-    return NextResponse.json(
-      { success: false, error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
   }
-}
+
+  // ----- データ取り込み実行 -----
+  const result = await ingestS2SData(
+    supabase,
+    {
+      ...validation.payload,
+      apiKey, // 取り込み処理では使用しないが型の整合性のため
+    },
+    orgId
+  );
+
+  // ----- 監査ログ -----
+  await supabase
+    .from("audit_logs")
+    .insert({
+      user_id: null, // S2S はユーザーなし
+      action: "s2s_ingest",
+      resource_type: "daily_metrics",
+      resource_id: orgId,
+      details: {
+        provider: validation.payload.provider,
+        team_id: validation.payload.teamId,
+        received: result.received,
+        matched: result.matched,
+        unmatched_count: result.unmatched.length,
+        error_count: result.errors.length,
+      },
+    })
+    .then(({ error }) => {
+      if (error) ctx.log.warn("監査ログ記録失敗", { detail: error });
+    });
+
+  return NextResponse.json({
+    success: true,
+    data: result,
+  });
+}, { service: 's2s' });

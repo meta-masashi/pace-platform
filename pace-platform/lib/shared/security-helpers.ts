@@ -12,6 +12,9 @@
 // 定数
 // ---------------------------------------------------------------------------
 
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('security');
+
 /** sanitizeUserInput で適用する最大文字数（~2000 トークン相当）*/
 const MAX_PROMPT_CHARS = 8_000;
 
@@ -117,7 +120,7 @@ export function sanitizeUserInput(input: string): string {
   // インジェクションパターンを無効化
   for (const pattern of INJECTION_PATTERNS) {
     if (pattern.test(sanitized)) {
-      console.warn("[security] プロンプトインジェクション検出:", pattern.source);
+      log.warn('プロンプトインジェクション検出', { data: { pattern: pattern.source } });
       sanitized = sanitized.replace(pattern, "[FILTERED]");
     }
   }
@@ -284,7 +287,7 @@ export function validateAIOutput(output: string): AIOutputValidation {
   const safe = !hasPii && !hasHarmful;
 
   if (warnings.length > 0) {
-    console.warn("[security:validateAIOutput] 警告:", warnings);
+    log.warn('validateAIOutput 警告', { data: { warnings } });
   }
 
   return { safe, sanitized, warnings };

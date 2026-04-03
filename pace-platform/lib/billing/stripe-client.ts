@@ -17,6 +17,8 @@ if (typeof (globalThis as any).window !== 'undefined') {
 }
 
 import Stripe from 'stripe'
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('billing');
 
 // ============================================================
 // Stripe クライアント初期化
@@ -25,8 +27,8 @@ import Stripe from 'stripe'
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 
 if (!stripeSecretKey) {
-  console.warn(
-    '[stripe-client] STRIPE_SECRET_KEY が未設定です。決済機能は無効化されています。テスト環境では sk_test_... を設定してください。'
+  log.warn(
+    'STRIPE_SECRET_KEY が未設定です。決済機能は無効化されています。テスト環境では sk_test_... を設定してください。'
   )
 }
 

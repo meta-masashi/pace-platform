@@ -18,6 +18,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withApiHandler, ApiError } from '@/lib/api/handler';
 import { canAccess } from '@/lib/billing/plan-gates';
 import {
   callGeminiWithRetry,
@@ -53,174 +54,155 @@ interface ChatRequest {
 // POST /api/training/chat
 // ---------------------------------------------------------------------------
 
-export async function POST(request: Request) {
+export const POST = withApiHandler(async (req, ctx) => {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new ApiError(401, '認証が必要です。');
+  }
+
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role, team_id')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, 'スタッフプロファイルが見つかりません。');
+  }
+
+  // プランチェック（Standard でもチーム全体メニューは利用可能）
+  const access = await canAccess(supabase, staff.org_id, 'feature_ai_weekly_plan');
+  const isPro = access.allowed;
+
+  // トークン予算チェック
+  const budgetResult = await checkMonthlyBudget(staff.org_id);
+  if (!budgetResult.allowed) {
+    return NextResponse.json({
+      error: 'TOKEN_BUDGET_EXCEEDED',
+      message: '今月の AI 利用上限に達しました。',
+      usage: budgetResult.usage,
+      limit: budgetResult.limit,
+      ctaOptions: [
+        { label: '追加トークンを購入', href: '/admin/billing?action=addon' },
+        { label: 'プランをアップグレード', href: '/admin/billing?action=upgrade' },
+      ],
+    }, { status: 429 });
+  }
+
+  // 毎分レートリミットチェック
+  const rateLimit = await checkRateLimit(staff.id, 'training-chat', staff.org_id);
+  if (!rateLimit.allowed) {
+    const { body: rlBody, retryAfterSeconds } = buildRateLimitResponse(rateLimit);
+    return NextResponse.json(rlBody, {
+      status: 429,
+      headers: { 'Retry-After': String(retryAfterSeconds) },
+    });
+  }
+
+  let body: ChatRequest;
   try {
-    const supabase = await createClient();
+    body = await req.json();
+  } catch {
+    throw new ApiError(400, 'リクエストボディのパースに失敗しました。');
+  }
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+  if (!body.teamId || !body.message) {
+    throw new ApiError(400, 'teamId と message は必須です。');
+  }
 
-    if (authError || !user) {
-      return NextResponse.json({ error: '認証が必要です。' }, { status: 401 });
-    }
+  // メッセージ長制限（5000文字）
+  if (body.message.length > 5_000) {
+    throw new ApiError(400, 'メッセージは5000文字以内で入力してください。');
+  }
 
-    const { data: staff } = await supabase
-      .from('staff')
-      .select('id, org_id, role, team_id')
-      .eq('id', user.id)
+  // サニタイズ
+  body.message = sanitizeUserInput(body.message);
+
+  // チーム情報取得（org_id + team_id で IDOR 防止）
+  let teamQuery = supabase
+    .from('teams')
+    .select('id, name, org_id')
+    .eq('id', body.teamId)
+    .eq('org_id', staff.org_id);
+
+  // master ロール以外は自チームのみアクセス可能
+  if (staff.role !== 'master' && staff.team_id) {
+    teamQuery = teamQuery.eq('id', staff.team_id);
+  }
+
+  const { data: team } = await teamQuery.single();
+
+  if (!team) {
+    throw new ApiError(404, 'チームが見つかりません。');
+  }
+
+  // 選手データ取得
+  const { data: athletes } = await supabase
+    .from('athletes')
+    .select('id, name, position, sport')
+    .eq('team_id', body.teamId)
+    .eq('org_id', staff.org_id);
+
+  if (!athletes || athletes.length === 0) {
+    throw new ApiError(400, 'チームに選手が登録されていません。');
+  }
+
+  // ロック・コンディション情報を集約
+  const athleteIds = athletes.map((a) => a.id);
+  const [locksResult, scoresResult] = await Promise.all([
+    supabase
+      .from('athlete_locks')
+      .select('athlete_id, lock_type, tag')
+      .in('athlete_id', athleteIds)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`),
+    supabase
+      .from('conditioning_scores')
+      .select('athlete_id, acwr, hrv_baseline_ratio, srpe, risk_level')
+      .in('athlete_id', athleteIds)
+      .order('recorded_at', { ascending: false }),
+  ]);
+
+  const athleteSummaries = buildAthleteSummaries(
+    athletes,
+    locksResult.data ?? [],
+    scoresResult.data ?? [],
+  );
+
+  // 会話履歴の取得（既存セッション or 新規）
+  let chatHistory: ChatMessage[] = [];
+  let workoutId = body.sessionId;
+
+  if (workoutId) {
+    const { data: existing } = await supabase
+      .from('workouts')
+      .select('chat_history')
+      .eq('id', workoutId)
       .single();
-
-    if (!staff) {
-      return NextResponse.json(
-        { error: 'スタッフプロファイルが見つかりません。' },
-        { status: 403 },
+    if (existing?.chat_history) {
+      chatHistory = (existing.chat_history as ChatMessage[]).filter(
+        (m) => m.role === 'user' || m.role === 'assistant',
       );
     }
+  }
 
-    // プランチェック（Standard でもチーム全体メニューは利用可能）
-    const access = await canAccess(supabase, staff.org_id, 'feature_ai_weekly_plan');
-    const isPro = access.allowed;
+  // ユーザーメッセージを追加
+  chatHistory.push({ role: 'user', content: body.message });
 
-    // トークン予算チェック
-    const budgetResult = await checkMonthlyBudget(staff.org_id);
-    if (!budgetResult.allowed) {
-      return NextResponse.json({
-        error: 'TOKEN_BUDGET_EXCEEDED',
-        message: '今月の AI 利用上限に達しました。',
-        usage: budgetResult.usage,
-        limit: budgetResult.limit,
-        ctaOptions: [
-          { label: '追加トークンを購入', href: '/admin/billing?action=addon' },
-          { label: 'プランをアップグレード', href: '/admin/billing?action=upgrade' },
-        ],
-      }, { status: 429 });
-    }
+  // プロンプト構築
+  const teamCondition = buildTeamConditionSummary(athleteSummaries);
+  const systemPrefix = buildCdsSystemPrefix();
 
-    // 毎分レートリミットチェック
-    const rateLimit = await checkRateLimit(staff.id, 'training-chat', staff.org_id);
-    if (!rateLimit.allowed) {
-      const { body: rlBody, retryAfterSeconds } = buildRateLimitResponse(rateLimit);
-      return NextResponse.json(rlBody, {
-        status: 429,
-        headers: { 'Retry-After': String(retryAfterSeconds) },
-      });
-    }
+  const planRestriction = isPro
+    ? '個別選手調整（individual_adjustments）も含めてください。'
+    : '個別選手調整は含めず、チーム全体のセッションのみ生成してください。';
 
-    let body: ChatRequest;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: 'リクエストボディのパースに失敗しました。' },
-        { status: 400 },
-      );
-    }
-
-    if (!body.teamId || !body.message) {
-      return NextResponse.json(
-        { error: 'teamId と message は必須です。' },
-        { status: 400 },
-      );
-    }
-
-    // メッセージ長制限（5000文字）
-    if (body.message.length > 5_000) {
-      return NextResponse.json(
-        { error: 'メッセージは5000文字以内で入力してください。' },
-        { status: 400 },
-      );
-    }
-
-    // サニタイズ
-    body.message = sanitizeUserInput(body.message);
-
-    // チーム情報取得（org_id + team_id で IDOR 防止）
-    let teamQuery = supabase
-      .from('teams')
-      .select('id, name, org_id')
-      .eq('id', body.teamId)
-      .eq('org_id', staff.org_id);
-
-    // master ロール以外は自チームのみアクセス可能
-    if (staff.role !== 'master' && staff.team_id) {
-      teamQuery = teamQuery.eq('id', staff.team_id);
-    }
-
-    const { data: team } = await teamQuery.single();
-
-    if (!team) {
-      return NextResponse.json(
-        { error: 'チームが見つかりません。' },
-        { status: 404 },
-      );
-    }
-
-    // 選手データ取得
-    const { data: athletes } = await supabase
-      .from('athletes')
-      .select('id, name, position, sport')
-      .eq('team_id', body.teamId)
-      .eq('org_id', staff.org_id);
-
-    if (!athletes || athletes.length === 0) {
-      return NextResponse.json(
-        { error: 'チームに選手が登録されていません。' },
-        { status: 400 },
-      );
-    }
-
-    // ロック・コンディション情報を集約
-    const athleteIds = athletes.map((a) => a.id);
-    const [locksResult, scoresResult] = await Promise.all([
-      supabase
-        .from('athlete_locks')
-        .select('athlete_id, lock_type, tag')
-        .in('athlete_id', athleteIds)
-        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`),
-      supabase
-        .from('conditioning_scores')
-        .select('athlete_id, acwr, hrv_baseline_ratio, srpe, risk_level')
-        .in('athlete_id', athleteIds)
-        .order('recorded_at', { ascending: false }),
-    ]);
-
-    const athleteSummaries = buildAthleteSummaries(
-      athletes,
-      locksResult.data ?? [],
-      scoresResult.data ?? [],
-    );
-
-    // 会話履歴の取得（既存セッション or 新規）
-    let chatHistory: ChatMessage[] = [];
-    let workoutId = body.sessionId;
-
-    if (workoutId) {
-      const { data: existing } = await supabase
-        .from('workouts')
-        .select('chat_history')
-        .eq('id', workoutId)
-        .single();
-      if (existing?.chat_history) {
-        chatHistory = (existing.chat_history as ChatMessage[]).filter(
-          (m) => m.role === 'user' || m.role === 'assistant',
-        );
-      }
-    }
-
-    // ユーザーメッセージを追加
-    chatHistory.push({ role: 'user', content: body.message });
-
-    // プロンプト構築
-    const teamCondition = buildTeamConditionSummary(athleteSummaries);
-    const systemPrefix = buildCdsSystemPrefix();
-
-    const planRestriction = isPro
-      ? '個別選手調整（individual_adjustments）も含めてください。'
-      : '個別選手調整は含めず、チーム全体のセッションのみ生成してください。';
-
-    const systemContext = `${systemPrefix}
+  const systemContext = `${systemPrefix}
 あなたはチームのトレーニングメニューを対話的に作成するアシスタントです。
 トレーナーの指示に従い、メニューを提案・修正してください。
 回答は自然な日本語で行い、メニュー提案時はJSONブロックも含めてください。
@@ -250,117 +232,94 @@ ${planRestriction}
 \`\`\`
 `;
 
-    // 直近10メッセージのみ渡す
-    const recentHistory = chatHistory.slice(-10);
-    const conversationText = recentHistory
-      .map((m) => `${m.role === 'user' ? 'トレーナー' : 'AI'}: ${m.content}`)
-      .join('\n\n');
+  // 直近10メッセージのみ渡す
+  const recentHistory = chatHistory.slice(-10);
+  const conversationText = recentHistory
+    .map((m) => `${m.role === 'user' ? 'トレーナー' : 'AI'}: ${m.content}`)
+    .join('\n\n');
 
-    const fullPrompt = `${systemContext}\n\n=== 会話履歴 ===\n${conversationText}\n\nAI:`;
+  const fullPrompt = `${systemContext}\n\n=== 会話履歴 ===\n${conversationText}\n\nAI:`;
 
-    // Gemini 呼び出し
-    const { result: replyText } = await callGeminiWithRetry(
-      fullPrompt,
-      (text) => text, // テキストそのまま返す
-      { userId: staff.id, endpoint: 'training-chat' },
-    );
+  // Gemini 呼び出し
+  const { result: replyText } = await callGeminiWithRetry(
+    fullPrompt,
+    (text) => text, // テキストそのまま返す
+    { userId: staff.id, endpoint: 'training-chat' },
+  );
 
-    // AI 返答を履歴に追加
-    chatHistory.push({ role: 'assistant', content: replyText });
+  // AI 返答を履歴に追加
+  chatHistory.push({ role: 'assistant', content: replyText });
 
-    // JSON メニューを抽出（あれば）
-    let menu = null;
-    const jsonMatch = replyText.match(/```json\s*([\s\S]*?)```/);
-    if (jsonMatch?.[1]) {
-      try {
-        menu = JSON.parse(cleanJsonResponse(jsonMatch[1]));
-      } catch {
-        // JSON パース失敗は無視（まだメニュー未完成の可能性）
-      }
+  // JSON メニューを抽出（あれば）
+  let menu = null;
+  const jsonMatch = replyText.match(/```json\s*([\s\S]*?)```/);
+  if (jsonMatch?.[1]) {
+    try {
+      menu = JSON.parse(cleanJsonResponse(jsonMatch[1]));
+    } catch {
+      // JSON パース失敗は無視（まだメニュー未完成の可能性）
     }
-
-    // workouts テーブルに保存/更新
-    if (workoutId) {
-      const { error: updateError } = await supabase
-        .from('workouts')
-        .update({
-          chat_history: chatHistory,
-          menu_json: menu
-            ? {
-                ...menu,
-                team_id: body.teamId,
-                week_start_date: body.weekStartDate,
-                generated_at: new Date().toISOString(),
-                training_period: body.trainingPeriod,
-                disclaimer: MEDICAL_DISCLAIMER,
-              }
-            : undefined,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', workoutId);
-
-      if (updateError) {
-        console.warn('[training-chat] ワークアウト更新失敗:', updateError.message);
-      }
-    } else {
-      const { data: newWorkout } = await supabase
-        .from('workouts')
-        .insert({
-          team_id: body.teamId,
-          org_id: staff.org_id,
-          generated_by_ai: true,
-          chat_history: chatHistory,
-          menu_json: menu
-            ? {
-                ...menu,
-                team_id: body.teamId,
-                week_start_date: body.weekStartDate,
-                generated_at: new Date().toISOString(),
-                training_period: body.trainingPeriod,
-                disclaimer: MEDICAL_DISCLAIMER,
-              }
-            : null,
-          updated_at: new Date().toISOString(),
-        })
-        .select('id')
-        .single();
-      workoutId = newWorkout?.id ?? undefined;
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        sessionId: workoutId,
-        reply: replyText,
-        menu,
-        tokenUsage: budgetResult.usage,
-        tokenLimit: budgetResult.limit,
-      },
-    });
-  } catch (err) {
-    console.error('[training/chat] 予期しないエラー:', err);
-
-    if (err instanceof Error) {
-      if (err.message === 'GEMINI_EXHAUSTED') {
-        return NextResponse.json(
-          { error: 'AI サービスが一時的に利用できません。' },
-          { status: 503 },
-        );
-      }
-      if (err.message === 'RATE_LIMIT_EXCEEDED') {
-        return NextResponse.json(
-          { error: 'API 呼び出し上限に達しました。' },
-          { status: 429 },
-        );
-      }
-    }
-
-    return NextResponse.json(
-      { error: 'チャット処理中にエラーが発生しました。' },
-      { status: 500 },
-    );
   }
-}
+
+  // workouts テーブルに保存/更新
+  if (workoutId) {
+    const { error: updateError } = await supabase
+      .from('workouts')
+      .update({
+        chat_history: chatHistory,
+        menu_json: menu
+          ? {
+              ...menu,
+              team_id: body.teamId,
+              week_start_date: body.weekStartDate,
+              generated_at: new Date().toISOString(),
+              training_period: body.trainingPeriod,
+              disclaimer: MEDICAL_DISCLAIMER,
+            }
+          : undefined,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', workoutId);
+
+    if (updateError) {
+      ctx.log.warn('ワークアウト更新失敗', { detail: updateError.message });
+    }
+  } else {
+    const { data: newWorkout } = await supabase
+      .from('workouts')
+      .insert({
+        team_id: body.teamId,
+        org_id: staff.org_id,
+        generated_by_ai: true,
+        chat_history: chatHistory,
+        menu_json: menu
+          ? {
+              ...menu,
+              team_id: body.teamId,
+              week_start_date: body.weekStartDate,
+              generated_at: new Date().toISOString(),
+              training_period: body.trainingPeriod,
+              disclaimer: MEDICAL_DISCLAIMER,
+            }
+          : null,
+        updated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    workoutId = newWorkout?.id ?? undefined;
+  }
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      sessionId: workoutId,
+      reply: replyText,
+      menu,
+      tokenUsage: budgetResult.usage,
+      tokenLimit: budgetResult.limit,
+    },
+  });
+}, { service: 'training' });
 
 // ---------------------------------------------------------------------------
 // ヘルパー

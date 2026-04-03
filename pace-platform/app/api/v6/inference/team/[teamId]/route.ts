@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateUUID } from '@/lib/security/input-validator';
 import { resolveContextFlags } from '@/lib/calendar/context-flags-resolver';
+import { withApiHandler, ApiError } from '@/lib/api/handler';
 import type {
   InferenceTraceLog,
   InferenceDecision,
@@ -264,205 +265,185 @@ function buildMinimalTraceLog(
 // GET /api/v6/inference/team/[teamId]
 // ---------------------------------------------------------------------------
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ teamId: string }> },
-): Promise<NextResponse<V6TeamResponse | ErrorResponse>> {
-  try {
-    const { teamId } = await params;
+export const GET = withApiHandler(async (_request, ctx) => {
+  const { teamId } = ctx.params;
 
-    if (!teamId || !validateUUID(teamId)) {
-      return NextResponse.json(
-        { success: false, error: 'teamId の形式が不正です。' },
-        { status: 400 },
-      );
-    }
+  if (!teamId || !validateUUID(teamId)) {
+    throw new ApiError(400, 'teamId の形式が不正です。');
+  }
 
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { success: false, error: '認証が必要です。' },
-        { status: 401 },
-      );
-    }
+  if (authError || !user) {
+    throw new ApiError(401, '認証が必要です。');
+  }
 
-    // Verify team access via RLS
-    const { data: team, error: teamError } = await supabase
-      .from('teams')
-      .select('id')
-      .eq('id', teamId)
-      .single();
+  // Verify team access via RLS
+  const { data: team, error: teamError } = await supabase
+    .from('teams')
+    .select('id')
+    .eq('id', teamId)
+    .single();
 
-    if (teamError || !team) {
-      return NextResponse.json(
-        { success: false, error: 'チームが見つかりません。' },
-        { status: 403 },
-      );
-    }
+  if (teamError || !team) {
+    throw new ApiError(403, 'チームが見つかりません。');
+  }
 
-    const today = new Date().toISOString().split('T')[0]!;
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const fromDate = sevenDaysAgo.toISOString().split('T')[0]!;
+  const today = new Date().toISOString().split('T')[0]!;
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const fromDate = sevenDaysAgo.toISOString().split('T')[0]!;
 
-    // Calendar → contextFlags 自動解決
-    const contextFlags = await resolveContextFlags(teamId, today);
+  // Calendar → contextFlags 自動解決
+  const contextFlags = await resolveContextFlags(teamId, today);
 
-    // Fetch athletes
-    const { data: athletes } = await supabase
-      .from('athletes')
-      .select('id, name, org_id')
-      .eq('team_id', teamId);
+  // Fetch athletes
+  const { data: athletes } = await supabase
+    .from('athletes')
+    .select('id, name, org_id')
+    .eq('team_id', teamId);
 
-    if (!athletes || athletes.length === 0) {
-      return NextResponse.json({
-        success: true,
-        data: { teamId, athletes: [], generatedAt: new Date().toISOString() },
-      });
-    }
-
-    const athleteIds = athletes.map((a) => a.id as string);
-
-    // Fetch latest metrics + 7-day history in one query
-    const [metricsResult, assessmentResult] = await Promise.all([
-      supabase
-        .from('daily_metrics')
-        .select('athlete_id, date, conditioning_score, acwr, nrs, fitness_ewma, fatigue_ewma, hard_lock, soft_lock')
-        .in('athlete_id', athleteIds)
-        .gte('date', fromDate)
-        .lte('date', today)
-        .order('date', { ascending: true }),
-
-      // Latest assessment responses for each athlete
-      supabase
-        .from('assessment_responses')
-        .select(`
-          athlete_id,
-          answer,
-          assessment_nodes(category, base_prevalence, lr_yes)
-        `)
-        .in('athlete_id', athleteIds)
-        .eq('answer', 'yes'),
-    ]);
-
-    const allMetrics = metricsResult.data ?? [];
-    const allAssessments = assessmentResult.data ?? [];
-
-    // Group metrics by athlete
-    const metricsByAthlete = new Map<string, typeof allMetrics>();
-    for (const row of allMetrics) {
-      const aid = row.athlete_id as string;
-      const list = metricsByAthlete.get(aid) ?? [];
-      list.push(row);
-      metricsByAthlete.set(aid, list);
-    }
-
-    // Group assessments by athlete
-    const assessmentsByAthlete = new Map<string, Array<{ category: string; posterior: number }>>();
-    for (const row of allAssessments) {
-      const aid = row.athlete_id as string;
-      const node = (typeof row.assessment_nodes === 'object' && row.assessment_nodes !== null)
-        ? (row.assessment_nodes as unknown as Record<string, unknown>)
-        : null;
-      if (!node) continue;
-      const lrYes = node.lr_yes as number ?? 2;
-      const prior = node.base_prevalence as number ?? 0.1;
-      const denom = lrYes * prior + (1 - prior);
-      const posterior = denom > 0 ? (lrYes * prior) / denom : prior;
-      const list = assessmentsByAthlete.get(aid) ?? [];
-      list.push({ category: node.category as string ?? 'unknown', posterior });
-      assessmentsByAthlete.set(aid, list);
-    }
-
-    // Build inference per athlete
-    const inferenceAthletes: V6AthleteInference[] = [];
-
-    for (const athlete of athletes) {
-      const athleteId = athlete.id as string;
-      const athleteName = athlete.name as string;
-      const orgId = athlete.org_id as string ?? '';
-      const rows = metricsByAthlete.get(athleteId) ?? [];
-      const latestRow = rows[rows.length - 1];
-
-      const conditioningScore = latestRow?.conditioning_score as number | null ?? null;
-      const acwr = latestRow?.acwr as number | null ?? null;
-      const nrs = latestRow?.nrs as number | null ?? null;
-      const fitnessEwma = latestRow?.fitness_ewma as number | null ?? null;
-      const fatigueEwma = latestRow?.fatigue_ewma as number | null ?? null;
-
-      if (!latestRow) continue;
-
-      const categories = assessmentsByAthlete.get(athleteId) ?? [];
-      const tissueStress = buildTissueStress(categories, acwr, conditioningScore);
-      const chainReactions = buildChainReactions(tissueStress);
-      const severity = determineSeverity(conditioningScore, acwr, nrs);
-
-      // Decoupling score: difference between expected (fitness) and actual (fatigue) ratio
-      const decouplingScore =
-        fitnessEwma !== null && fatigueEwma !== null && fitnessEwma > 0
-          ? Math.min(5, Math.abs(fitnessEwma - fatigueEwma) / fitnessEwma * 5)
-          : 0;
-
-      const innovationHistory = buildInnovationHistory(
-        rows.map((r) => ({
-          date: r.date as string,
-          acwr: r.acwr as number | null,
-          conditioning_score: r.conditioning_score as number | null,
-        })),
-      );
-
-      const currentLoad = acwr !== null ? acwr * 70 : 70;
-      const currentDamage: Record<string, number> = {};
-      for (const [k, v] of Object.entries(tissueStress)) {
-        if (v > 20) currentDamage[k] = v;
-      }
-
-      const traceLog = buildMinimalTraceLog(
-        athleteId,
-        orgId,
-        severity,
-        acwr,
-        conditioningScore,
-        decouplingScore,
-        contextFlags,
-      );
-
-      inferenceAthletes.push({
-        athleteId,
-        athleteName,
-        tissueStress,
-        chainReactions,
-        decouplingScore,
-        innovationHistory,
-        severity,
-        currentLoad,
-        currentDamage,
-        traceLog,
-      });
-    }
-
-    // Sort by severity
-    const severityOrder = { severe: 0, moderate: 1, mild: 2, none: 3 };
-    inferenceAthletes.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-
+  if (!athletes || athletes.length === 0) {
     return NextResponse.json({
       success: true,
-      data: {
-        teamId,
-        athletes: inferenceAthletes,
-        generatedAt: new Date().toISOString(),
-      },
+      data: { teamId, athletes: [], generatedAt: new Date().toISOString() },
     });
-  } catch (err) {
-    console.error('[v6/inference/team] エラー:', err);
-    return NextResponse.json(
-      { success: false, error: 'サーバー内部エラーが発生しました。' },
-      { status: 500 },
-    );
   }
-}
+
+  const athleteIds = athletes.map((a) => a.id as string);
+
+  // Fetch latest metrics + 7-day history in one query
+  const [metricsResult, assessmentResult] = await Promise.all([
+    supabase
+      .from('daily_metrics')
+      .select('athlete_id, date, conditioning_score, acwr, nrs, fitness_ewma, fatigue_ewma, hard_lock, soft_lock')
+      .in('athlete_id', athleteIds)
+      .gte('date', fromDate)
+      .lte('date', today)
+      .order('date', { ascending: true }),
+
+    // Latest assessment responses for each athlete
+    supabase
+      .from('assessment_responses')
+      .select(`
+        athlete_id,
+        answer,
+        assessment_nodes(category, base_prevalence, lr_yes)
+      `)
+      .in('athlete_id', athleteIds)
+      .eq('answer', 'yes'),
+  ]);
+
+  const allMetrics = metricsResult.data ?? [];
+  const allAssessments = assessmentResult.data ?? [];
+
+  // Group metrics by athlete
+  const metricsByAthlete = new Map<string, typeof allMetrics>();
+  for (const row of allMetrics) {
+    const aid = row.athlete_id as string;
+    const list = metricsByAthlete.get(aid) ?? [];
+    list.push(row);
+    metricsByAthlete.set(aid, list);
+  }
+
+  // Group assessments by athlete
+  const assessmentsByAthlete = new Map<string, Array<{ category: string; posterior: number }>>();
+  for (const row of allAssessments) {
+    const aid = row.athlete_id as string;
+    const node = (typeof row.assessment_nodes === 'object' && row.assessment_nodes !== null)
+      ? (row.assessment_nodes as unknown as Record<string, unknown>)
+      : null;
+    if (!node) continue;
+    const lrYes = node.lr_yes as number ?? 2;
+    const prior = node.base_prevalence as number ?? 0.1;
+    const denom = lrYes * prior + (1 - prior);
+    const posterior = denom > 0 ? (lrYes * prior) / denom : prior;
+    const list = assessmentsByAthlete.get(aid) ?? [];
+    list.push({ category: node.category as string ?? 'unknown', posterior });
+    assessmentsByAthlete.set(aid, list);
+  }
+
+  // Build inference per athlete
+  const inferenceAthletes: V6AthleteInference[] = [];
+
+  for (const athlete of athletes) {
+    const athleteId = athlete.id as string;
+    const athleteName = athlete.name as string;
+    const orgId = athlete.org_id as string ?? '';
+    const rows = metricsByAthlete.get(athleteId) ?? [];
+    const latestRow = rows[rows.length - 1];
+
+    const conditioningScore = latestRow?.conditioning_score as number | null ?? null;
+    const acwr = latestRow?.acwr as number | null ?? null;
+    const nrs = latestRow?.nrs as number | null ?? null;
+    const fitnessEwma = latestRow?.fitness_ewma as number | null ?? null;
+    const fatigueEwma = latestRow?.fatigue_ewma as number | null ?? null;
+
+    if (!latestRow) continue;
+
+    const categories = assessmentsByAthlete.get(athleteId) ?? [];
+    const tissueStress = buildTissueStress(categories, acwr, conditioningScore);
+    const chainReactions = buildChainReactions(tissueStress);
+    const severity = determineSeverity(conditioningScore, acwr, nrs);
+
+    // Decoupling score: difference between expected (fitness) and actual (fatigue) ratio
+    const decouplingScore =
+      fitnessEwma !== null && fatigueEwma !== null && fitnessEwma > 0
+        ? Math.min(5, Math.abs(fitnessEwma - fatigueEwma) / fitnessEwma * 5)
+        : 0;
+
+    const innovationHistory = buildInnovationHistory(
+      rows.map((r) => ({
+        date: r.date as string,
+        acwr: r.acwr as number | null,
+        conditioning_score: r.conditioning_score as number | null,
+      })),
+    );
+
+    const currentLoad = acwr !== null ? acwr * 70 : 70;
+    const currentDamage: Record<string, number> = {};
+    for (const [k, v] of Object.entries(tissueStress)) {
+      if (v > 20) currentDamage[k] = v;
+    }
+
+    const traceLog = buildMinimalTraceLog(
+      athleteId,
+      orgId,
+      severity,
+      acwr,
+      conditioningScore,
+      decouplingScore,
+      contextFlags,
+    );
+
+    inferenceAthletes.push({
+      athleteId,
+      athleteName,
+      tissueStress,
+      chainReactions,
+      decouplingScore,
+      innovationHistory,
+      severity,
+      currentLoad,
+      currentDamage,
+      traceLog,
+    });
+  }
+
+  // Sort by severity
+  const severityOrder = { severe: 0, moderate: 1, mild: 2, none: 3 };
+  inferenceAthletes.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      teamId,
+      athletes: inferenceAthletes,
+      generatedAt: new Date().toISOString(),
+    },
+  });
+}, { service: 'v6-inference' });

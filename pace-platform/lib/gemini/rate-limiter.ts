@@ -14,6 +14,9 @@
  *   DB 接続不可の場合はフェイルオープン（リクエストをブロックしない）
  */
 
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('gemini');
+
 // ---------------------------------------------------------------------------
 // 型定義
 // ---------------------------------------------------------------------------
@@ -144,9 +147,7 @@ export async function checkRateLimit(
     const currentMinuteCount = minuteCount ?? 0;
 
     if (currentMinuteCount >= RATE_LIMIT_PER_MIN) {
-      console.warn(
-        `[rate-limiter] 毎分上限超過: staffId=${staffId} endpoint=${endpoint} count=${currentMinuteCount}/${RATE_LIMIT_PER_MIN}`
-      );
+      log.warn(`毎分上限超過: staffId=${staffId} endpoint=${endpoint} count=${currentMinuteCount}/${RATE_LIMIT_PER_MIN}`);
       return {
         allowed: false,
         remaining: 0,
@@ -195,9 +196,7 @@ export async function checkRateLimit(
       const tomorrow = new Date(todayStart);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      console.warn(
-        `[rate-limiter] 日次上限超過: staffId=${staffId} count=${currentDailyCount}/${DAILY_ORG_LIMIT}`
-      );
+      log.warn(`日次上限超過: staffId=${staffId} count=${currentDailyCount}/${DAILY_ORG_LIMIT}`);
       return {
         allowed: false,
         remaining: 0,
@@ -213,7 +212,7 @@ export async function checkRateLimit(
     };
   } catch (err) {
     // DB クエリ失敗: インメモリフォールバック（保守的上限）
-    console.warn("[rate-limiter] レートリミットチェック失敗（インメモリフォールバック）:", err);
+    log.errorFromException('レートリミットチェック失敗（インメモリフォールバック）', err);
     return checkInMemoryRateLimit(staffId, endpoint);
   }
 }
@@ -243,11 +242,11 @@ export async function logTokenUsage(params: TokenUsageParams): Promise<void> {
     });
 
     if (error) {
-      console.warn("[rate-limiter] トークンログ記録失敗:", error.message);
+      log.warn('トークンログ記録失敗', { data: { error: error.message } });
     }
   } catch (err) {
     // トークンログ失敗はリクエストをブロックしない
-    console.warn("[rate-limiter] トークンログ記録例外:", err);
+    log.errorFromException('トークンログ記録例外', err);
   }
 }
 
@@ -279,7 +278,7 @@ export async function checkMonthlyBudget(orgId: string): Promise<MonthlyBudgetRe
   const supabase = await getServiceClient();
   if (!supabase) {
     // DB接続不可: 保守的にブロック（checkRateLimitと異なり予算超過は安全側に倒す）
-    console.warn('[rate-limiter] 月次予算チェック: DB接続不可（保守的拒否）');
+    log.warn('月次予算チェック: DB接続不可（保守的拒否）');
     return { allowed: false, usage: 0, limit: 0 };
   }
 
@@ -327,23 +326,19 @@ export async function checkMonthlyBudget(orgId: string): Promise<MonthlyBudgetRe
     );
 
     if (totalUsage >= limit) {
-      console.warn(
-        `[rate-limiter] 月次トークン予算超過: orgId=${orgId} usage=${totalUsage}/${limit}`,
-      );
+      log.warn(`月次トークン予算超過: orgId=${orgId} usage=${totalUsage}/${limit}`);
       return { allowed: false, usage: totalUsage, limit };
     }
 
     // 80% 到達時に警告
     if (totalUsage >= limit * 0.8) {
-      console.warn(
-        `[rate-limiter] 月次トークン予算 80% 到達: orgId=${orgId} usage=${totalUsage}/${limit}`,
-      );
+      log.warn(`月次トークン予算 80% 到達: orgId=${orgId} usage=${totalUsage}/${limit}`);
     }
 
     return { allowed: true, usage: totalUsage, limit };
   } catch (err) {
     // DB クエリ失敗: 保守的にブロック（コスト保護のため安全側に倒す）
-    console.warn('[rate-limiter] 月次予算チェック失敗（保守的拒否）:', err);
+    log.errorFromException('月次予算チェック失敗（保守的拒否）', err);
     return { allowed: false, usage: 0, limit: 0 };
   }
 }

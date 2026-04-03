@@ -12,6 +12,8 @@
 
 import { callGeminiWithRetry, type GeminiCallContext } from "../gemini/client";
 import { sanitizeUserInput } from "../shared/security-helpers";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('nlg');
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -81,9 +83,7 @@ export async function shapeWithGemini(
     const validation = validateShapedOutput(shapedText, requiredElements);
 
     if (!validation.valid) {
-      console.warn(
-        `[nlg:gemini-shaper] バリデーション失敗 — フォールバック: ${validation.reason}`
-      );
+      log.warn(`バリデーション失敗 — フォールバック: ${validation.reason}`);
       return {
         text: templateText,
         isFallback: true,
@@ -95,9 +95,7 @@ export async function shapeWithGemini(
   } catch (err) {
     // Gemini 失敗 — テンプレートテキストにフォールバック
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `[nlg:gemini-shaper] Gemini 失敗 — フォールバック: ${errorMessage}`
-    );
+    log.warn(`Gemini 失敗 — フォールバック: ${errorMessage}`);
 
     return {
       text: templateText,

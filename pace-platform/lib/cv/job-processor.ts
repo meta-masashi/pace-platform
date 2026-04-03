@@ -15,6 +15,8 @@
  */
 
 import { withRetry } from "../shared/retry-handler";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('cv');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -222,7 +224,7 @@ async function markJobCompleted(
     .eq("id", jobId);
 
   if (error) {
-    console.error(`[cv:processor] ジョブ ${jobId} 完了更新失敗:`, error.message);
+    log.error(`ジョブ ${jobId} 完了更新失敗`, { data: { error: error.message } });
   }
 }
 
@@ -246,16 +248,16 @@ async function markJobFailed(
     .eq("id", job.id);
 
   if (error) {
-    console.error(`[cv:processor] ジョブ ${job.id} 失敗更新エラー:`, error.message);
+    log.error(`ジョブ ${job.id} 失敗更新エラー`, { data: { error: error.message } });
   }
 
   if (shouldRetry) {
-    console.warn(
-      `[cv:processor] ジョブ ${job.id} リトライ待機 (${newRetryCount}/${maxRetries}): ${errorMessage}`
+    log.warn(
+      `ジョブ ${job.id} リトライ待機 (${newRetryCount}/${maxRetries}): ${errorMessage}`
     );
   } else {
-    console.error(
-      `[cv:processor] ジョブ ${job.id} 最大リトライ超過、永続失敗: ${errorMessage}`
+    log.error(
+      `ジョブ ${job.id} 最大リトライ超過、永続失敗: ${errorMessage}`
     );
   }
 }
@@ -269,13 +271,13 @@ async function processJob(
   job: CvAnalysisJob
 ): Promise<void> {
   const startTime = Date.now();
-  console.info(`[cv:processor] ジョブ開始: id=${job.id} athlete=${job.athlete_id}`);
+  log.info(`ジョブ開始: id=${job.id} athlete=${job.athlete_id}`);
 
   // ステータスを processing に更新
   try {
     await markJobProcessing(supabase, job.id);
   } catch (err) {
-    console.error(`[cv:processor] ジョブ ${job.id} processing マーク失敗:`, err);
+    log.errorFromException(`ジョブ ${job.id} processing マーク失敗`, err);
     return;
   }
 
@@ -287,9 +289,9 @@ async function processJob(
         maxRetries: 3,
         baseDelayMs: 1_000,
         onRetry: (attempt, err) => {
-          console.warn(
-            `[cv:processor] ジョブ ${job.id} CV API リトライ ${attempt}/3:`,
-            err
+          log.warn(
+            `ジョブ ${job.id} CV API リトライ ${attempt}/3`,
+            { data: { error: err instanceof Error ? err.message : String(err) } }
           );
         },
       }
@@ -304,13 +306,13 @@ async function processJob(
       processing_time_ms: processingTimeMs,
     });
 
-    console.info(
-      `[cv:processor] ジョブ完了: id=${job.id} time=${processingTimeMs}ms` +
+    log.info(
+      `ジョブ完了: id=${job.id} time=${processingTimeMs}ms` +
       ` confidence=${cvResult.kinematics.confidence_score.toFixed(2)}`
     );
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`[cv:processor] ジョブ ${job.id} 処理失敗:`, errorMessage);
+    log.error(`ジョブ ${job.id} 処理失敗: ${errorMessage}`);
     await markJobFailed(supabase, job, errorMessage);
   }
 }
@@ -339,7 +341,7 @@ export async function pollAndProcessJobs(supabase: SupabaseJobClient): Promise<{
     .limit(MAX_CONCURRENT_JOBS);
 
   if (error) {
-    console.error("[cv:processor] ジョブ取得失敗:", error.message);
+    log.error("ジョブ取得失敗", { data: { error: error.message } });
     return { processedCount: 0, errorCount: 1 };
   }
 
@@ -347,7 +349,7 @@ export async function pollAndProcessJobs(supabase: SupabaseJobClient): Promise<{
     return { processedCount: 0, errorCount: 0 };
   }
 
-  console.info(`[cv:processor] ${jobs.length} 件のジョブを並行処理開始`);
+  log.info(`${jobs.length} 件のジョブを並行処理開始`);
 
   // 並行実行（上限 MAX_CONCURRENT_JOBS）
   const results = await Promise.allSettled(
@@ -362,7 +364,7 @@ export async function pollAndProcessJobs(supabase: SupabaseJobClient): Promise<{
       processedCount++;
     } else {
       errorCount++;
-      console.error("[cv:processor] ジョブ処理中に未捕捉エラー:", result.reason);
+      log.errorFromException("ジョブ処理中に未捕捉エラー", result.reason);
     }
   }
 
@@ -381,12 +383,12 @@ export async function pollAndProcessJobs(supabase: SupabaseJobClient): Promise<{
  */
 export function startJobPolling(supabase: SupabaseJobClient): () => void {
   if (isPolling) {
-    console.warn("[cv:processor] ポーリングは既に起動中です");
+    log.warn("ポーリングは既に起動中です");
     return () => { /* noop */ };
   }
 
   isPolling = true;
-  console.info(`[cv:processor] ポーリング開始 (間隔=${POLLING_INTERVAL_MS}ms)`);
+  log.info(`ポーリング開始 (間隔=${POLLING_INTERVAL_MS}ms)`);
 
   let stopped = false;
 
@@ -396,12 +398,12 @@ export function startJobPolling(supabase: SupabaseJobClient): () => void {
     try {
       const { processedCount, errorCount } = await pollAndProcessJobs(supabase);
       if (processedCount > 0 || errorCount > 0) {
-        console.info(
-          `[cv:processor] ポーリング完了: processed=${processedCount} errors=${errorCount}`
+        log.info(
+          `ポーリング完了: processed=${processedCount} errors=${errorCount}`
         );
       }
     } catch (err) {
-      console.error("[cv:processor] ポーリングエラー:", err);
+      log.errorFromException("ポーリングエラー", err);
     }
 
     if (!stopped) {
@@ -415,6 +417,6 @@ export function startJobPolling(supabase: SupabaseJobClient): () => void {
   return () => {
     stopped = true;
     isPolling = false;
-    console.info("[cv:processor] ポーリング停止");
+    log.info("ポーリング停止");
   };
 }

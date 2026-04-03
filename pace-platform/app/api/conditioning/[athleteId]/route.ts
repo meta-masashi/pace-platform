@@ -9,6 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { withApiHandler, ApiError } from "@/lib/api/handler";
 import { calculateConditioningScore } from "@/lib/conditioning/engine";
 import { classifyTrend } from "@/lib/conditioning/team-score";
 import { callGeminiWithRetry, buildCdsSystemPrefix, MEDICAL_DISCLAIMER } from "@/lib/gemini/client";
@@ -93,13 +94,14 @@ async function generateInsight(
     fatigueEwma: number;
     acwr: number;
   },
-  userId: string
+  userId: string,
+  log: { warn: (msg: string, data?: Record<string, unknown>) => void },
 ): Promise<string> {
   try {
     // 防壁3: レートリミットチェック
     const rateLimit = await checkRateLimit(userId, "conditioning-insight");
     if (!rateLimit.allowed) {
-      console.warn("[conditioning] レートリミット超過 — フォールバック使用");
+      log.warn("レートリミット超過 — フォールバック使用");
       return generateFallbackInsight(data);
     }
 
@@ -149,194 +151,166 @@ function generateFallbackInsight(data: {
 // GET /api/conditioning/:athleteId
 // ---------------------------------------------------------------------------
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ athleteId: string }> }
-): Promise<NextResponse<ConditioningResponse | ErrorResponse>> {
-  try {
-    const { athleteId } = await params;
+export const GET = withApiHandler(async (req, ctx) => {
+  const { athleteId } = ctx.params;
 
-    // ----- バリデーション -----
-    if (!athleteId || !validateUUID(athleteId)) {
-      return NextResponse.json(
-        { success: false, error: "アスリートIDが不正です。有効なUUID形式で指定してください。" },
-        { status: 400 }
-      );
-    }
+  // ----- バリデーション -----
+  if (!athleteId || !validateUUID(athleteId)) {
+    throw new ApiError(400, "アスリートIDが不正です。有効なUUID形式で指定してください。");
+  }
 
-    // ----- 認証チェック -----
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+  // ----- 認証チェック -----
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { success: false, error: "認証が必要です。ログインしてください。" },
-        { status: 401 }
-      );
-    }
+  if (authError || !user) {
+    throw new ApiError(401, "認証が必要です。ログインしてください。");
+  }
 
-    // ----- アスリートのアクセス確認（RLS 経由で同組織のスタッフのみ）-----
-    const { data: athlete, error: athleteError } = await supabase
-      .from("athletes")
-      .select("id, org_id")
-      .eq("id", athleteId)
+  // ----- アスリートのアクセス確認（RLS 経由で同組織のスタッフのみ）-----
+  const { data: athlete, error: athleteError } = await supabase
+    .from("athletes")
+    .select("id, org_id")
+    .eq("id", athleteId)
+    .single();
+
+  if (athleteError || !athlete) {
+    throw new ApiError(403, "指定されたアスリートが見つからないか、アクセス権がありません。");
+  }
+
+  // ----- 42日間の daily_metrics を取得 -----
+  const today = new Date().toISOString().split("T")[0]!;
+  const fortyTwoDaysAgo = new Date();
+  fortyTwoDaysAgo.setDate(fortyTwoDaysAgo.getDate() - 42);
+  const fromDate = fortyTwoDaysAgo.toISOString().split("T")[0]!;
+
+  const { data: metricsRows, error: metricsError } = await supabase
+    .from("daily_metrics")
+    .select(
+      "date, srpe, sleep_score, fatigue_subjective, hrv, hrv_baseline, conditioning_score, fitness_ewma, fatigue_ewma, acwr"
+    )
+    .eq("athlete_id", athleteId)
+    .gte("date", fromDate)
+    .lte("date", today)
+    .order("date", { ascending: true });
+
+  if (metricsError) {
+    ctx.log.error("daily_metrics 取得エラー", { detail: metricsError });
+    throw new ApiError(500, "コンディションデータの取得に失敗しました。");
+  }
+
+  const rows = metricsRows ?? [];
+
+  if (rows.length === 0) {
+    throw new ApiError(404, "コンディションデータが存在しません。");
+  }
+
+  // ----- 最新日のデータからコンディショニングスコアを再計算 -----
+  const latestRow = rows[rows.length - 1]!;
+  const historyRows = rows.slice(0, -1);
+
+  const history: DailyMetricRow[] = historyRows.map((row) => ({
+    date: row.date as string,
+    srpe: row.srpe as number | null,
+    sleepScore: row.sleep_score as number | null,
+    fatigueSubjective: row.fatigue_subjective as number | null,
+    hrv: row.hrv as number | null,
+    hrvBaseline: row.hrv_baseline as number | null,
+  }));
+
+  const latestHrv = latestRow.hrv as number | null;
+  const latestHrvBaseline = latestRow.hrv_baseline as number | null;
+
+  const todayInput: ConditioningInput = {
+    srpe: (latestRow.srpe as number | null) ?? 0,
+    sleepScore: (latestRow.sleep_score as number | null) ?? 5,
+    fatigueSubjective: (latestRow.fatigue_subjective as number | null) ?? 5,
+    ...(latestHrv !== null ? { hrv: latestHrv } : {}),
+    ...(latestHrvBaseline !== null ? { hrvBaseline: latestHrvBaseline } : {}),
+  };
+
+  const current = calculateConditioningScore(history, todayInput);
+
+  // ----- トレンドデータの構築 -----
+  const trend: DailyTrendEntry[] = rows.map((row) => ({
+    date: row.date as string,
+    conditioning_score: row.conditioning_score as number | null,
+    fitness_ewma: row.fitness_ewma as number | null,
+    fatigue_ewma: row.fatigue_ewma as number | null,
+    acwr: row.acwr as number | null,
+    srpe: row.srpe as number | null,
+  }));
+
+  // ----- トレンド方向の算出（直近7日） -----
+  const recentScores = rows
+    .slice(-7)
+    .map((r) => (r.conditioning_score as number | null) ?? current.conditioningScore);
+  const trendDirection = classifyTrend(recentScores);
+
+  // ----- スパークライン用トレンド配列（直近14日分）-----
+  const recentRows = rows.slice(-14);
+  const fitnessTrend = recentRows.map(
+    (r) => (r.fitness_ewma as number | null) ?? 0
+  );
+  const fatigueTrend = recentRows.map(
+    (r) => (r.fatigue_ewma as number | null) ?? 0
+  );
+
+  // ----- AI インサイト生成 -----
+  const insight = await generateInsight(
+    {
+      conditioningScore: current.conditioningScore,
+      fitnessEwma: current.fitnessEwma,
+      fatigueEwma: current.fatigueEwma,
+      acwr: current.acwr,
+    },
+    user.id,
+    ctx.log,
+  );
+
+  // ----- コーチング履歴に保存（同日重複は無視） -----
+  const coachingDate = new Date().toISOString().split('T')[0]!;
+  if (insight) {
+    const { data: athleteForOrg } = await supabase
+      .from('athletes')
+      .select('org_id')
+      .eq('id', athleteId)
       .single();
 
-    if (athleteError || !athlete) {
-      return NextResponse.json(
+    if (athleteForOrg?.org_id) {
+      await supabase.from('coaching_history').upsert(
         {
-          success: false,
-          error: "指定されたアスリートが見つからないか、アクセス権がありません。",
-        },
-        { status: 403 }
-      );
-    }
-
-    // ----- 42日間の daily_metrics を取得 -----
-    const today = new Date().toISOString().split("T")[0]!;
-    const fortyTwoDaysAgo = new Date();
-    fortyTwoDaysAgo.setDate(fortyTwoDaysAgo.getDate() - 42);
-    const fromDate = fortyTwoDaysAgo.toISOString().split("T")[0]!;
-
-    const { data: metricsRows, error: metricsError } = await supabase
-      .from("daily_metrics")
-      .select(
-        "date, srpe, sleep_score, fatigue_subjective, hrv, hrv_baseline, conditioning_score, fitness_ewma, fatigue_ewma, acwr"
-      )
-      .eq("athlete_id", athleteId)
-      .gte("date", fromDate)
-      .lte("date", today)
-      .order("date", { ascending: true });
-
-    if (metricsError) {
-      console.error("[conditioning] daily_metrics 取得エラー:", metricsError);
-      return NextResponse.json(
-        { success: false, error: "コンディションデータの取得に失敗しました。" },
-        { status: 500 }
-      );
-    }
-
-    const rows = metricsRows ?? [];
-
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "コンディションデータが存在しません。" },
-        { status: 404 }
-      );
-    }
-
-    // ----- 最新日のデータからコンディショニングスコアを再計算 -----
-    const latestRow = rows[rows.length - 1]!;
-    const historyRows = rows.slice(0, -1);
-
-    const history: DailyMetricRow[] = historyRows.map((row) => ({
-      date: row.date as string,
-      srpe: row.srpe as number | null,
-      sleepScore: row.sleep_score as number | null,
-      fatigueSubjective: row.fatigue_subjective as number | null,
-      hrv: row.hrv as number | null,
-      hrvBaseline: row.hrv_baseline as number | null,
-    }));
-
-    const latestHrv = latestRow.hrv as number | null;
-    const latestHrvBaseline = latestRow.hrv_baseline as number | null;
-
-    const todayInput: ConditioningInput = {
-      srpe: (latestRow.srpe as number | null) ?? 0,
-      sleepScore: (latestRow.sleep_score as number | null) ?? 5,
-      fatigueSubjective: (latestRow.fatigue_subjective as number | null) ?? 5,
-      ...(latestHrv !== null ? { hrv: latestHrv } : {}),
-      ...(latestHrvBaseline !== null ? { hrvBaseline: latestHrvBaseline } : {}),
-    };
-
-    const current = calculateConditioningScore(history, todayInput);
-
-    // ----- トレンドデータの構築 -----
-    const trend: DailyTrendEntry[] = rows.map((row) => ({
-      date: row.date as string,
-      conditioning_score: row.conditioning_score as number | null,
-      fitness_ewma: row.fitness_ewma as number | null,
-      fatigue_ewma: row.fatigue_ewma as number | null,
-      acwr: row.acwr as number | null,
-      srpe: row.srpe as number | null,
-    }));
-
-    // ----- トレンド方向の算出（直近7日） -----
-    const recentScores = rows
-      .slice(-7)
-      .map((r) => (r.conditioning_score as number | null) ?? current.conditioningScore);
-    const trendDirection = classifyTrend(recentScores);
-
-    // ----- スパークライン用トレンド配列（直近14日分）-----
-    const recentRows = rows.slice(-14);
-    const fitnessTrend = recentRows.map(
-      (r) => (r.fitness_ewma as number | null) ?? 0
-    );
-    const fatigueTrend = recentRows.map(
-      (r) => (r.fatigue_ewma as number | null) ?? 0
-    );
-
-    // ----- AI インサイト生成 -----
-    const insight = await generateInsight(
-      {
-        conditioningScore: current.conditioningScore,
-        fitnessEwma: current.fitnessEwma,
-        fatigueEwma: current.fatigueEwma,
-        acwr: current.acwr,
-      },
-      user.id
-    );
-
-    // ----- コーチング履歴に保存（同日重複は無視） -----
-    const coachingDate = new Date().toISOString().split('T')[0]!;
-    if (insight) {
-      const { data: athlete } = await supabase
-        .from('athletes')
-        .select('org_id')
-        .eq('id', athleteId)
-        .single();
-
-      if (athlete?.org_id) {
-        await supabase.from('coaching_history').upsert(
-          {
-            athlete_id: athleteId,
-            org_id: athlete.org_id as string,
-            coaching_date: coachingDate,
-            advice_text: insight,
-            context_snapshot: {
-              conditioningScore: current.conditioningScore,
-              fitnessEwma: current.fitnessEwma,
-              fatigueEwma: current.fatigueEwma,
-              acwr: current.acwr,
-            },
+          athlete_id: athleteId,
+          org_id: athleteForOrg.org_id as string,
+          coaching_date: coachingDate,
+          advice_text: insight,
+          context_snapshot: {
+            conditioningScore: current.conditioningScore,
+            fitnessEwma: current.fitnessEwma,
+            fatigueEwma: current.fatigueEwma,
+            acwr: current.acwr,
           },
-          { onConflict: 'athlete_id,coaching_date' },
-        );
-      }
+        },
+        { onConflict: 'athlete_id,coaching_date' },
+      );
     }
-
-    // ----- レスポンス -----
-    return NextResponse.json({
-      success: true,
-      data: {
-        athlete_id: athleteId,
-        current,
-        latest_date: latestRow.date as string,
-        trend,
-        trendDirection,
-        insight,
-        fitnessTrend,
-        fatigueTrend,
-      },
-    });
-  } catch (err) {
-    console.error("[conditioning] 予期しないエラー:", err);
-    return NextResponse.json(
-      { success: false, error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
   }
-}
+
+  // ----- レスポンス -----
+  return NextResponse.json({
+    success: true,
+    data: {
+      athlete_id: athleteId,
+      current,
+      latest_date: latestRow.date as string,
+      trend,
+      trendDirection,
+      insight,
+      fitnessTrend,
+      fatigueTrend,
+    },
+  });
+}, { service: 'conditioning' });
