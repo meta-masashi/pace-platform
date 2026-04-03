@@ -21,8 +21,8 @@ import { useEffect, useState } from "react";
 export interface GlowingCoreProps {
   /** コンディショニングスコア 0-100 */
   score: number;
-  /** 4段階ステータス */
-  status: "GREEN" | "YELLOW" | "ORANGE" | "RED";
+  /** 5段階ステータス */
+  status: "TEAL" | "GREEN" | "YELLOW" | "ORANGE" | "RED";
   /** 本日のアクション（日本語） */
   actionOfDay: string;
   /** 最優先トリガー P1-P5 */
@@ -54,9 +54,18 @@ interface StatusConfig {
 
 function getStatusConfig(status: GlowingCoreProps["status"]): StatusConfig {
   switch (status) {
+    case "TEAL":
+      return {
+        label: "絶好調",
+        glowClass: "glow-core-healthy",
+        animationClass: "animate-core-pulse-healthy",
+        strokeColor: "#0d9488",
+        gradientColors: ["#0d9488", "#2dd4bf"],
+        textColor: "text-teal-600",
+      };
     case "GREEN":
       return {
-        label: "最適",
+        label: "好調",
         glowClass: "glow-core-healthy",
         animationClass: "animate-core-pulse-healthy",
         strokeColor: "#10b981",
@@ -65,29 +74,29 @@ function getStatusConfig(status: GlowingCoreProps["status"]): StatusConfig {
       };
     case "YELLOW":
       return {
-        label: "注意",
+        label: "まあまあ",
         glowClass: "glow-core-caution",
         animationClass: "animate-core-pulse-warning",
-        strokeColor: "#FF9F29",
-        gradientColors: ["#FF9F29", "#FFC95C"],
+        strokeColor: "#d97706",
+        gradientColors: ["#d97706", "#fbbf24"],
         textColor: "text-amber-caution-500",
       };
     case "ORANGE":
       return {
-        label: "回復優先",
+        label: "やや不調",
         glowClass: "glow-core-caution",
         animationClass: "animate-core-pulse-warning",
-        strokeColor: "#FF9F29",
-        gradientColors: ["#e68c1f", "#FF9F29"],
-        textColor: "text-amber-caution-600",
+        strokeColor: "#ea580c",
+        gradientColors: ["#ea580c", "#fb923c"],
+        textColor: "text-orange-600",
       };
     case "RED":
       return {
-        label: "緊急停止",
+        label: "要注意",
         glowClass: "glow-core-critical",
         animationClass: "animate-core-alert",
-        strokeColor: "#FF4B4B",
-        gradientColors: ["#FF4B4B", "#FF8A8A"],
+        strokeColor: "#dc2626",
+        gradientColors: ["#dc2626", "#f87171"],
         textColor: "text-pulse-red-500",
       };
   }

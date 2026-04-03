@@ -1,16 +1,38 @@
+"use client";
+
 /**
  * AI インサイトカード
  *
- * コンディションスコアに基づく AI 生成インサイトを表示。
- * 電球アイコン付き、グラデーション背景のカード。
+ * 所属組織が Pro 契約の場合: Gemini NLG による日本語アドバイスを表示
+ * Standard 契約 or LLM ダウン時: Readiness ゾーンに基づくテンプレートテキストを表示
+ *
  * M20: 全 AI 出力に医療免責事項を表示。
  */
 
 const MEDICAL_DISCLAIMER =
   "※ この出力はAIによる補助情報です。最終的な判断・処置は必ず有資格スタッフが行ってください。";
 
+/** LLM ダウン時 / Standard プラン用フォールバックテンプレート */
+const FALLBACK_TEMPLATES = {
+  excellent: "絶好調です！今日は積極的にトレーニングできます。",
+  good: "コンディションは良好です。通常メニューで問題ありません。",
+  watch: "少し疲労が溜まっています。無理せず調整しましょう。",
+  critical: "体調管理に注意が必要です。スタッフに相談してください。",
+} as const;
+
+/** スコアからフォールバックテンプレートを選択 */
+function selectFallbackTemplate(score: number): string {
+  if (score >= 85) return FALLBACK_TEMPLATES.excellent;
+  if (score >= 70) return FALLBACK_TEMPLATES.good;
+  if (score >= 40) return FALLBACK_TEMPLATES.watch;
+  return FALLBACK_TEMPLATES.critical;
+}
+
 interface InsightCardProps {
-  insight: string;
+  /** AI 生成インサイトテキスト（Pro + LLM 正常時のみ） */
+  insight?: string | undefined;
+  /** コンディションスコア（フォールバック選択用） */
+  score?: number | undefined;
 }
 
 function LightbulbIcon() {
@@ -33,7 +55,9 @@ function LightbulbIcon() {
   );
 }
 
-export function InsightCard({ insight }: InsightCardProps) {
+export function InsightCard({ insight, score = 50 }: InsightCardProps) {
+  const displayText = insight || selectFallbackTemplate(score);
+
   return (
     <div className="animate-fade-in-up rounded-xl border border-border bg-gradient-to-br from-card to-secondary/30 p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -42,9 +66,9 @@ export function InsightCard({ insight }: InsightCardProps) {
         </div>
         <div className="flex-1">
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            AI インサイト
+            💡 今日のアドバイス
           </h3>
-          <p className="text-sm leading-relaxed text-foreground">{insight}</p>
+          <p className="text-sm leading-relaxed text-foreground">{displayText}</p>
         </div>
       </div>
       {/* M20: 医療免責事項 */}

@@ -4,7 +4,7 @@
  * コンディショニングスコア リング表示コンポーネント
  *
  * SVG ベースの円形プログレスリング。マウント時に 0 からアニメーション。
- * スコア範囲に応じて色が変化: teal(70-100), amber(40-69), red(0-39)
+ * 5ゾーン制: 絶好調(≥85), 好調(70-84), まあまあ(60-69), やや不調(40-59), 要注意(<40)
  */
 
 import { useEffect, useState } from "react";
@@ -19,28 +19,62 @@ const STROKE_WIDTH = 14;
 const RADIUS = (SIZE - STROKE_WIDTH) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-function getStatusConfig(score: number) {
+// ---------------------------------------------------------------------------
+// 5ゾーン判定（PC-001 仕様準拠）
+// ---------------------------------------------------------------------------
+
+export interface ConditionZone {
+  label: string;
+  emoji: string;
+  hex: string;
+  strokeColor: string;
+  textColor: string;
+}
+
+/** スコアから5ゾーンを判定する */
+export function getConditionZone(score: number): ConditionZone {
+  if (score >= 85) {
+    return {
+      label: "絶好調",
+      emoji: "🔵",
+      hex: "#0d9488",
+      strokeColor: "stroke-teal-500",
+      textColor: "text-teal-600",
+    };
+  }
   if (score >= 70) {
     return {
-      label: "最適",
+      label: "好調",
+      emoji: "🟢",
+      hex: "#10b981",
       strokeColor: "stroke-optimal-400",
       textColor: "text-optimal-500",
-      bgGlow: "text-optimal-400/20",
+    };
+  }
+  if (score >= 60) {
+    return {
+      label: "まあまあ",
+      emoji: "🟡",
+      hex: "#d97706",
+      strokeColor: "stroke-watchlist-400",
+      textColor: "text-watchlist-500",
     };
   }
   if (score >= 40) {
     return {
-      label: "注意",
-      strokeColor: "stroke-watchlist-400",
-      textColor: "text-watchlist-500",
-      bgGlow: "text-watchlist-400/20",
+      label: "やや不調",
+      emoji: "🟠",
+      hex: "#ea580c",
+      strokeColor: "stroke-orange-500",
+      textColor: "text-orange-600",
     };
   }
   return {
-    label: "回復優先",
+    label: "要注意",
+    emoji: "🔴",
+    hex: "#dc2626",
     strokeColor: "stroke-critical-400",
     textColor: "text-critical-500",
-    bgGlow: "text-critical-400/20",
   };
 }
 
@@ -49,7 +83,7 @@ export function ConditioningRing({ score }: ConditioningRingProps) {
   const [mounted, setMounted] = useState(false);
 
   const clampedScore = Math.max(0, Math.min(100, score));
-  const config = getStatusConfig(clampedScore);
+  const zone = getConditionZone(clampedScore);
   const targetOffset = CIRCUMFERENCE - (clampedScore / 100) * CIRCUMFERENCE;
 
   useEffect(() => {
@@ -104,7 +138,8 @@ export function ConditioningRing({ score }: ConditioningRingProps) {
             fill="none"
             strokeWidth={STROKE_WIDTH}
             strokeLinecap="round"
-            className={`${config.strokeColor} transition-all duration-300`}
+            stroke={zone.hex}
+            className="transition-all duration-300"
             strokeDasharray={CIRCUMFERENCE}
             strokeDashoffset={mounted ? targetOffset : CIRCUMFERENCE}
             transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
@@ -120,7 +155,7 @@ export function ConditioningRing({ score }: ConditioningRingProps) {
             コンディション
           </span>
           <span
-            className={`text-5xl font-bold tabular-nums ${config.textColor} ${
+            className={`text-5xl font-bold tabular-nums ${zone.textColor} ${
               mounted ? "opacity-100 scale-100" : "opacity-0 scale-75"
             } transition-all duration-500 delay-300`}
           >
@@ -129,11 +164,12 @@ export function ConditioningRing({ score }: ConditioningRingProps) {
         </div>
       </div>
 
-      {/* ステータスラベル */}
+      {/* ステータスラベル + 絵文字 */}
       <span
-        className={`rounded-full px-4 py-1 text-sm font-semibold ${config.textColor} bg-current/10`}
+        className={`rounded-full px-4 py-1 text-sm font-semibold ${zone.textColor}`}
+        style={{ backgroundColor: `${zone.hex}15` }}
       >
-        <span className="relative text-inherit">{config.label}</span>
+        {zone.emoji} {zone.label}
       </span>
     </div>
   );

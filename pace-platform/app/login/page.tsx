@@ -6,7 +6,6 @@ import {
   signInWithMagicLink,
   signInWithGoogle,
 } from '@/lib/supabase/auth-helpers';
-import { createClient } from '@/lib/supabase/client';
 
 // ---------------------------------------------------------------------------
 // 認証タブ定義
@@ -48,6 +47,19 @@ function GoogleIcon({ className }: { className?: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// ロックアイコン SVG
+// ---------------------------------------------------------------------------
+
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ログインページ
 // ---------------------------------------------------------------------------
 
@@ -59,6 +71,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [lockInfo, setLockInfo] = useState<{ locked: boolean; remainingMinutes?: number } | null>(null);
 
   // URL パラメータからエラーメッセージを取得
   if (typeof window !== 'undefined') {
@@ -83,7 +97,7 @@ export default function LoginPage() {
       } else {
         setError(result.error ?? 'マジックリンクの送信に失敗しました。');
       }
-    } catch (err) { void err; // silently handled
+    } catch (err) { void err;
       setError('マジックリンクの送信中にエラーが発生しました。');
     } finally {
       setLoading(false);
@@ -98,49 +112,48 @@ export default function LoginPage() {
 
     try {
       await signInWithGoogle();
-    } catch (err) { void err; // silently handled
+    } catch (err) { void err;
       setError('Googleログイン中にエラーが発生しました。');
       setLoading(false);
     }
   }
 
-  // --- Email/Password ---
+  // --- Email/Password（サーバーサイド API 経由） ---
   async function handleEmailPasswordLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setRemainingAttempts(null);
+    setLockInfo(null);
     setLoading(true);
 
     try {
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (authError) {
-        setError(`認証エラー: ${authError.message}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? '認証エラーが発生しました。');
+
+        // アカウントロック状態
+        if (data.locked) {
+          setLockInfo({ locked: true, remainingMinutes: data.remainingMinutes });
+          setRemainingAttempts(null);
+        }
+        // 残り試行回数
+        else if (data.remainingAttempts !== undefined) {
+          setRemainingAttempts(data.remainingAttempts);
+        }
+
         return;
       }
 
-      // ロール判定: athletes.user_id にマッチすればアスリート → /home
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        const { data: athlete } = await supabase
-          .from('athletes')
-          .select('id')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-
-        if (athlete) {
-          router.push('/home');
-          router.refresh();
-          return;
-        }
-      }
-
-      // スタッフ → /dashboard
-      router.push('/dashboard');
+      // 成功 → リダイレクト
+      router.push(data.redirectTo ?? '/dashboard');
       router.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -155,6 +168,8 @@ export default function LoginPage() {
     setActiveTab(tab);
     setError(null);
     setSuccess(null);
+    setRemainingAttempts(null);
+    setLockInfo(null);
   }
 
   return (
@@ -284,6 +299,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
+                data-testid="email-input"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -304,6 +320,7 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
+                data-testid="password-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -311,18 +328,45 @@ export default function LoginPage() {
               />
             </div>
 
-            {error && (
+            {/* アカウントロック警告 */}
+            {lockInfo?.locked && (
+              <div className="flex items-start gap-3 rounded-md border border-red-300 bg-red-50 p-3">
+                <LockIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+                <div>
+                  <p className="text-sm font-medium text-red-800">アカウントが一時的にロックされています</p>
+                  <p className="mt-1 text-xs text-red-600">
+                    セキュリティ保護のため、ログイン試行が一時的に制限されています。
+                    {lockInfo.remainingMinutes && ` 約${lockInfo.remainingMinutes}分後に再度お試しください。`}
+                  </p>
+                  <p className="mt-2 text-xs text-red-500">
+                    マジックリンクまたは Google ログインをご利用ください。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 通常エラー */}
+            {error && !lockInfo?.locked && (
               <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
                 {error}
               </div>
             )}
 
+            {/* 残り試行回数の警告 */}
+            {remainingAttempts !== null && remainingAttempts <= 3 && !lockInfo?.locked && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                残り試行回数: <span className="font-bold">{remainingAttempts}回</span>
+                {remainingAttempts <= 1 && '（次回失敗でアカウントがロックされます）'}
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || lockInfo?.locked === true}
+              data-testid="login-button"
               className="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? 'ログイン中...' : 'メールアドレスとパスワードでログイン'}
+              {loading ? 'ログイン中...' : lockInfo?.locked ? 'アカウントロック中' : 'メールアドレスとパスワードでログイン'}
             </button>
           </form>
         )}

@@ -16,6 +16,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveContextFlags } from "@/lib/calendar/context-flags-resolver";
 import { compileMenu } from "@/lib/tags/compiler";
 import type { Exercise, FiredNode, MenuDraft } from "@/lib/tags/types";
 import {
@@ -88,6 +89,9 @@ export async function GET(
         { status: 403 }
       );
     }
+
+    // --- Calendar → contextFlags 解決 ---
+    const contextFlags = await resolveContextFlags(teamId, date);
 
     // --- 並列データ取得 ---
     const [athletesResult, exercisesResult] = await Promise.all([
@@ -276,6 +280,8 @@ export async function GET(
         date,
         alertCards,
         teamSummary,
+        isGameDay: contextFlags.isGameDay,
+        isGameDayMinus1: contextFlags.isGameDayMinus1,
       },
     });
   } catch (err) {

@@ -404,4 +404,66 @@ describe('calculateConditioningScore', () => {
       expect(result.acwr).toBe(Math.round(result.acwr * 1000) / 1000)
     })
   })
+
+  // -----------------------------------------------------------------------
+  // Sprint 7 回帰テスト
+  // -----------------------------------------------------------------------
+
+  describe('Sprint 7 回帰テスト', () => {
+    it('42日定常負荷 → スコアが 40-60 の範囲（中立付近）', () => {
+      const history = makeHistory(42, 300)
+      const today: ConditioningInput = { srpe: 300, sleepScore: 7, fatigueSubjective: 3 }
+      const result = calculateConditioningScore(history, today)
+      // 定常状態ではフィットネスと疲労が均衡 → 50 付近
+      expect(result.conditioningScore).toBeGreaterThanOrEqual(40)
+      expect(result.conditioningScore).toBeLessThanOrEqual(60)
+    })
+
+    it('テーパーシナリオ: 高負荷→低負荷 → スコア > 60', () => {
+      // 前半28日: 高負荷 → 後半14日: 低負荷（テーパリング）
+      const highLoad = Array.from({ length: 28 }, (_, i) =>
+        makeDailyRow({ date: `2025-01-${String(i + 1).padStart(2, '0')}`, srpe: 600 })
+      )
+      const lowLoad = Array.from({ length: 14 }, (_, i) =>
+        makeDailyRow({ date: `2025-02-${String(i + 1).padStart(2, '0')}`, srpe: 100 })
+      )
+      const history = [...highLoad, ...lowLoad]
+      const today: ConditioningInput = { srpe: 100, sleepScore: 8, fatigueSubjective: 2 }
+      const result = calculateConditioningScore(history, today)
+      // テーパリング → フィットネス維持 + 疲労回復 → 高スコア
+      expect(result.conditioningScore).toBeGreaterThan(60)
+    })
+
+    it('オーバーリーチ: 低負荷→高負荷 → スコア < 50', () => {
+      // 前半28日: 低負荷 → 後半14日: 急激な高負荷
+      const lowLoad = Array.from({ length: 28 }, (_, i) =>
+        makeDailyRow({ date: `2025-01-${String(i + 1).padStart(2, '0')}`, srpe: 100 })
+      )
+      const highLoad = Array.from({ length: 14 }, (_, i) =>
+        makeDailyRow({ date: `2025-02-${String(i + 1).padStart(2, '0')}`, srpe: 800 })
+      )
+      const history = [...lowLoad, ...highLoad]
+      const today: ConditioningInput = { srpe: 800, sleepScore: 4, fatigueSubjective: 8 }
+      const result = calculateConditioningScore(history, today)
+      // オーバーリーチ → 疲労 > フィットネス → 低スコア
+      expect(result.conditioningScore).toBeLessThan(50)
+    })
+
+    it('最悪ケース: 睡眠1 + 疲労10 + HRV低下 → 最低スコア領域', () => {
+      const history = makeHistory(14, 200)
+      const today: ConditioningInput = {
+        srpe: 800,
+        sleepScore: 1,
+        fatigueSubjective: 10,
+        hrv: 30,
+        hrvBaseline: 60,
+      }
+      const result = calculateConditioningScore(history, today)
+      // 全ペナルティ最大 → 極めて低いスコア
+      expect(result.conditioningScore).toBeLessThan(30)
+      expect(result.penalties.sleepPenalty).toBeGreaterThan(0)
+      expect(result.penalties.fatiguePenalty).toBeGreaterThan(0)
+      expect(result.penalties.hrvPenaltyCoefficient).toBeCloseTo(1 / 0.85, 5)
+    })
+  })
 })

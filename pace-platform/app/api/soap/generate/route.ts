@@ -14,6 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAccess } from "@/lib/billing/plan-gates";
 import {
   checkRateLimit,
   buildRateLimitResponse,
@@ -109,13 +110,23 @@ export async function POST(
     // ----- アスリート情報取得 -----
     const { data: athlete, error: athleteError } = await supabase
       .from("athletes")
-      .select("id, name, age, sex, position, sport")
+      .select("id, name, age, sex, position, sport, org_id")
       .eq("id", body.athleteId)
       .single();
 
     if (athleteError || !athlete) {
       return NextResponse.json(
         { success: false, error: "指定されたアスリートが見つからないか、アクセス権がありません。" },
+        { status: 403 }
+      );
+    }
+
+    // ----- プラン別機能ゲート（Pro+ 必須）-----
+    try {
+      await requireAccess(supabase, athlete.org_id, 'feature_gemini_ai');
+    } catch (gateErr) {
+      return NextResponse.json(
+        { success: false, error: gateErr instanceof Error ? gateErr.message : 'この機能はご利用いただけません。' },
         { status: 403 }
       );
     }

@@ -217,6 +217,10 @@ function checkP3ChronicMaladaptation(
   const severeDeclineCount = Object.values(input.featureVector.zScores)
     .filter((z) => z <= -1.5).length;
 
+  // 3日連続ウェルネス悪化パターン（Saw 2016 Level 2a）
+  const consecutiveDecline = input.featureVector.consecutiveWellnessDeclineDays ?? 0;
+
+  // 条件A（既存）: 当日の Z-Score が 3項目以上悪化 + ACWR正常
   if (isACWRNormal && severeDeclineCount >= 3) {
     reasons.push(
       '練習負荷は適正範囲ですが、主観的コンディションの複数項目が大幅に悪化しています。' +
@@ -225,6 +229,19 @@ function checkP3ChronicMaladaptation(
     );
     reasonsEn.push(
       `Workload is normal (ACWR=${acwr.toFixed(2)}) but ${severeDeclineCount} wellness indicators show severe decline.`,
+    );
+  }
+
+  // 条件B（新規）: 3日連続ウェルネス悪化 + ACWR正常
+  // 当日のZ-Scoreが閾値未満でも、連続悪化パターンは慢性不適応の兆候
+  if (isACWRNormal && consecutiveDecline >= 3 && reasons.length === 0) {
+    reasons.push(
+      '練習負荷は適正範囲ですが、直近3日間でウェルネス指標が連続的に悪化しています。' +
+      'オーバートレーニング症候群の初期兆候の可能性があります。' +
+      'リカバリー日の挿入と専門家への相談を推奨します。',
+    );
+    reasonsEn.push(
+      `Workload normal (ACWR=${acwr.toFixed(2)}) but wellness has declined for 3 consecutive days. Possible early overtraining sign.`,
     );
   }
 

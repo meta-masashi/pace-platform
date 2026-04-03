@@ -216,6 +216,61 @@ function getDefaultTissueDamage(): Record<TissueCategory, number> {
 // 代替: 傷害歴ベースのリスク乗数（context.riskMultipliers）で対応
 
 // ---------------------------------------------------------------------------
+// 3日連続ウェルネス悪化検出（Saw 2016 Level 2a）
+// ---------------------------------------------------------------------------
+
+/**
+ * 直近3日間のウェルネスデータが連続で悪化しているかを検出する。
+ *
+ * 判定基準: 各日のウェルネス平均値が前日より低下し続けている日数を返す。
+ * 3日連続で悪化が続いていれば 3 を返す。
+ *
+ * エビデンス: Saw (2016) Level 2a — 主観指標の持続的悪化が
+ * オーバートレーニング症候群の兆候として有効。
+ *
+ * @param history - 日次入力データの履歴（古い順、当日含む）
+ * @returns 連続悪化日数（0-3）
+ */
+function calculateConsecutiveWellnessDeclineDays(
+  history: DailyInput[],
+): number {
+  if (history.length < 2) return 0;
+
+  // 直近4日分（3日間の変化を見るため4日必要）
+  const recent = history.slice(-4);
+  if (recent.length < 2) return 0;
+
+  // 各日のウェルネス平均を算出（sleepQuality, mood は高い方が良い → 反転不要、
+  // fatigue, muscleSoreness, stressLevel, painNRS は高い方が悪い → 反転）
+  function wellnessAvg(d: DailyInput): number {
+    const s = d.subjectiveScores;
+    // 統一スケール: 高い方が良い状態
+    return (
+      s.sleepQuality +
+      (10 - s.fatigue) +
+      s.mood +
+      (10 - s.muscleSoreness) +
+      (10 - s.stressLevel) +
+      (10 - s.painNRS)
+    ) / 6;
+  }
+
+  let consecutiveDays = 0;
+  for (let i = recent.length - 1; i >= 1; i--) {
+    const todayAvg = wellnessAvg(recent[i]!);
+    const yesterdayAvg = wellnessAvg(recent[i - 1]!);
+    if (todayAvg < yesterdayAvg - 0.1) {
+      // 0.1 は浮動小数点誤差を避けるためのε
+      consecutiveDays++;
+    } else {
+      break;
+    }
+  }
+
+  return Math.min(consecutiveDays, 3);
+}
+
+// ---------------------------------------------------------------------------
 // Node 2 本体
 // ---------------------------------------------------------------------------
 
@@ -292,13 +347,17 @@ export const node2FeatureEngineering: NodeExecutor<
       acwrScore * 0.4 + wellnessScore * 0.4 + 20,
     ));
 
-    // ----- Step 7: 特徴量ベクトル組み立て -----
+    // ----- Step 7: 3日連続ウェルネス悪化検出 -----
+    const consecutiveWellnessDeclineDays = calculateConsecutiveWellnessDeclineDays(fullHistory);
+
+    // ----- Step 8: 特徴量ベクトル組み立て -----
     const featureVector: FeatureVector = {
       acwr: acwrResult.acwr,
       monotonyIndex,
       preparedness,
       tissueDamage,
       zScores,
+      consecutiveWellnessDeclineDays,
     };
 
     return {

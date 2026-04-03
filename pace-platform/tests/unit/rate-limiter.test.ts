@@ -15,6 +15,7 @@ import {
   checkRateLimit,
   logTokenUsage,
   buildRateLimitResponse,
+  _clearInMemoryWindow,
   type RateLimitResult,
 } from '../../lib/gemini/rate-limiter'
 
@@ -172,5 +173,40 @@ describe('buildRateLimitResponse', () => {
 
     const response = buildRateLimitResponse(rateLimitResult)
     expect(response.body.retryAfter).toBe(response.retryAfterSeconds)
+  })
+})
+
+// ===========================================================================
+// インメモリフォールバック テスト
+// ===========================================================================
+
+describe('インメモリフォールバック', () => {
+  it('_clearInMemoryWindow がエクスポートされている', async () => {
+    const mod = await import('../../lib/gemini/rate-limiter')
+    expect(typeof mod._clearInMemoryWindow).toBe('function')
+  })
+
+  it('DB null 時にインメモリフォールバックが適用される（フェイルオープンしない）', async () => {
+    // rate-limiter の checkRateLimit はDB不可時に checkInMemoryRateLimit を呼ぶ
+    // コードパターンを検証
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const filePath = path.resolve(__dirname, '../../lib/gemini/rate-limiter.ts')
+    const content = fs.readFileSync(filePath, 'utf-8')
+
+    // DB null ブロック内に checkInMemoryRateLimit があること
+    const nullBlockStart = content.indexOf('if (!supabase)')
+    const nullBlock = content.slice(nullBlockStart, nullBlockStart + 200)
+    expect(nullBlock).toContain('checkInMemoryRateLimit')
+  })
+
+  it('フォールバック上限が保守的（10 req/min）であること', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const filePath = path.resolve(__dirname, '../../lib/gemini/rate-limiter.ts')
+    const content = fs.readFileSync(filePath, 'utf-8')
+
+    expect(content).toContain('FALLBACK_LIMIT_PER_MIN')
+    expect(content).toMatch(/FALLBACK_LIMIT_PER_MIN\s*=\s*10/)
   })
 })

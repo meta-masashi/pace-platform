@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calculateConditioningScore } from "@/lib/conditioning/engine";
+import { canAccess } from "@/lib/billing/plan-gates";
 import type {
   ConditioningInput,
   ConditioningResult,
@@ -143,6 +144,15 @@ export async function POST(
           success: false,
           error: "指定されたアスリートが見つからないか、アクセス権がありません。",
         },
+        { status: 403 }
+      );
+    }
+
+    // ----- プラン別機能ゲート（防壁3）-----
+    const accessResult = await canAccess(supabase, athlete.org_id, 'feature_daily_checkin');
+    if (!accessResult.allowed) {
+      return NextResponse.json(
+        { success: false, error: accessResult.reason ?? 'この機能はご利用いただけません。' },
         { status: 403 }
       );
     }

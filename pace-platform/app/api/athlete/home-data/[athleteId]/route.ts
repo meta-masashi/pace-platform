@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateUUID } from '@/lib/security/input-validator';
+import { canAccess } from '@/lib/billing/plan-gates';
 import { calculateConditioningScore } from '@/lib/conditioning/engine';
 import type { DailyMetricRow, ConditioningInput } from '@/lib/conditioning/types';
 
@@ -36,6 +37,23 @@ export async function GET(
         { success: false, error: '認証が必要です。' },
         { status: 401 },
       );
+    }
+
+    // ----- プラン別機能ゲート -----
+    const { data: athleteForGate } = await supabase
+      .from('athletes')
+      .select('org_id')
+      .eq('id', athleteId)
+      .single();
+
+    if (athleteForGate?.org_id) {
+      const accessResult = await canAccess(supabase, athleteForGate.org_id, 'feature_condition_score');
+      if (!accessResult.allowed) {
+        return NextResponse.json(
+          { success: false, error: accessResult.reason ?? 'この機能はご利用いただけません。' },
+          { status: 403 },
+        );
+      }
     }
 
     // 直近42日分の daily_metrics を取得

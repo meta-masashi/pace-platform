@@ -65,6 +65,36 @@ jobs:
       - name: Run security tests
         run: npm run test:security
 
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pace-platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: pace-platform/package-lock.json
+
+      - run: npm ci
+
+      - name: npm audit (production deps)
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Generate SBOM
+        run: npx @cyclonedx/cyclonedx-npm --output-file sbom.json --omit dev
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: pace-platform/sbom.json
+          retention-days: 90
+
   build:
     name: Build Verification
     needs: test

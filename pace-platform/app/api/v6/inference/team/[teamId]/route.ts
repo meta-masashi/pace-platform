@@ -18,6 +18,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateUUID } from '@/lib/security/input-validator';
+import { resolveContextFlags } from '@/lib/calendar/context-flags-resolver';
 import type {
   InferenceTraceLog,
   InferenceDecision,
@@ -174,6 +175,7 @@ function buildMinimalTraceLog(
   acwr: number | null,
   conditioningScore: number | null,
   decouplingScore: number,
+  contextFlags?: import('@/lib/engine/v6/types').ContextFlags,
 ): InferenceTraceLog {
   const decision: InferenceDecision =
     severity === 'severe' ? 'RED' :
@@ -229,7 +231,7 @@ function buildMinimalTraceLog(
           stressLevel: 4,
           painNRS: 2,
         },
-        contextFlags: {
+        contextFlags: contextFlags ?? {
           isGameDay: false,
           isGameDayMinus1: false,
           isAcclimatization: false,
@@ -307,6 +309,9 @@ export async function GET(
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const fromDate = sevenDaysAgo.toISOString().split('T')[0]!;
+
+    // Calendar → contextFlags 自動解決
+    const contextFlags = await resolveContextFlags(teamId, today);
 
     // Fetch athletes
     const { data: athletes } = await supabase
@@ -424,6 +429,7 @@ export async function GET(
         acwr,
         conditioningScore,
         decouplingScore,
+        contextFlags,
       );
 
       inferenceAthletes.push({

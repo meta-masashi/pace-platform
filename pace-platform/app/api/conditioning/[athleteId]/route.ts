@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calculateConditioningScore } from "@/lib/conditioning/engine";
+import { classifyTrend } from "@/lib/conditioning/team-score";
 import { callGeminiWithRetry, buildCdsSystemPrefix, MEDICAL_DISCLAIMER } from "@/lib/gemini/client";
 import { checkRateLimit, logTokenUsage, buildRateLimitResponse } from "@/lib/gemini/rate-limiter";
 import { sanitizeUserInput } from "@/lib/shared/security-helpers";
@@ -40,6 +41,7 @@ interface ConditioningResponse {
     current: ConditioningResult;
     latest_date: string;
     trend: DailyTrendEntry[];
+    trendDirection: 'improving' | 'stable' | 'declining';
     insight: string;
     fitnessTrend: number[];
     fatigueTrend: number[];
@@ -262,6 +264,12 @@ export async function GET(
       srpe: row.srpe as number | null,
     }));
 
+    // ----- トレンド方向の算出（直近7日） -----
+    const recentScores = rows
+      .slice(-7)
+      .map((r) => (r.conditioning_score as number | null) ?? current.conditioningScore);
+    const trendDirection = classifyTrend(recentScores);
+
     // ----- スパークライン用トレンド配列（直近14日分）-----
     const recentRows = rows.slice(-14);
     const fitnessTrend = recentRows.map(
@@ -318,6 +326,7 @@ export async function GET(
         current,
         latest_date: latestRow.date as string,
         trend,
+        trendDirection,
         insight,
         fitnessTrend,
         fatigueTrend,

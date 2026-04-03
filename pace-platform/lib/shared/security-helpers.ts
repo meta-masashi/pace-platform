@@ -85,6 +85,17 @@ export function sanitizeUserInput(input: string): string {
   // 文字数ハードキャップ（5000文字 — 防壁2仕様）
   let sanitized = input.slice(0, 5_000);
 
+  // Unicode NFC 正規化
+  sanitized = sanitized.normalize('NFC');
+
+  // Zero-width 文字除去（ZWS, ZWNJ, ZWJ, BOM 等）
+  sanitized = sanitized.replace(/[\u200B-\u200F\u2028-\u202F\uFEFF\u00AD]/g, '');
+
+  // 全角英数 → ASCII 変換（ｉｇｎｏｒｅ → ignore 等のバイパス対策）
+  sanitized = sanitized.replace(/[\uFF01-\uFF5E]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xFEE0),
+  );
+
   // null バイト・制御文字を除去（\x00-\x08, \x0B, \x0C, \x0E-\x1F）
   sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 
@@ -160,6 +171,14 @@ const HARMFUL_OUTPUT_PATTERNS: RegExp[] = [
   /should\s+(undergo|have)\s+(surgery|an?\s+operation)/i,
   // 英語: 骨折・重篤な傷害
   /you\s+(have|sustained)\s+a\s+(fracture|torn|ruptured)/i,
+  // 日本語: hedged 医療診断（「おそらく」「ほぼ確実に」等の曖昧表現でも禁止）
+  /おそらく.{0,10}(骨折|断裂|損傷|脱臼)/,
+  /ほぼ確実に.{0,10}(骨折|断裂|損傷|脱臼)/,
+  /可能性が高い.{0,10}(骨折|断裂|損傷|脱臼)/,
+  // 英語: hedged medical claims
+  /likely\s+(have|has)\s+a\s+(fracture|torn|ruptured)/i,
+  /probably\s+(have|has)\s+a\s+(fracture|torn|ruptured)/i,
+  /most\s+likely\s+(a\s+)?(fracture|torn|ruptured)/i,
 ];
 
 /**

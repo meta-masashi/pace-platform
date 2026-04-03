@@ -6,9 +6,11 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
+      // TODO: Next.js の nonce 対応が安定したら 'unsafe-inline' を nonce に置き換える
+      // 現時点では Next.js がインラインスクリプトを生成するため unsafe-inline が必要
       "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https:",
+      "img-src 'self' data: blob: https://*.supabase.co",
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://api.stripe.com https://*.ingest.sentry.io",
       "frame-src 'self' https://js.stripe.com",
@@ -43,7 +45,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '*.supabase.co',
+        hostname: process.env.SUPABASE_PROJECT_HOST ?? '*.supabase.co',
       },
     ],
   },

@@ -19,7 +19,12 @@ import { PerformanceCompass } from "./performance-compass";
 import type { PerformanceCompassProps } from "./performance-compass";
 import { InsightCard } from "./insight-card";
 import { BreakdownCard } from "./breakdown-card";
+import { KpiBreakdownRow } from "./kpi-breakdown-row";
 import { DailyCoachCard } from "./daily-coach-card";
+import { ConditioningFeed } from "./conditioning-feed";
+import type { DailyFeedEntry } from "./conditioning-feed";
+import { ConditioningTrendAthlete } from "./conditioning-trend-athlete";
+import type { TrendDataPoint } from "./conditioning-trend-athlete";
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -104,9 +109,10 @@ function ColdStartProgress({ validDataDays }: { validDataDays: number }) {
 function scoreToStatus(
   score: number
 ): GlowingCoreProps["status"] {
+  if (score >= 85) return "TEAL";
   if (score >= 70) return "GREEN";
-  if (score >= 50) return "YELLOW";
-  if (score >= 30) return "ORANGE";
+  if (score >= 60) return "YELLOW";
+  if (score >= 40) return "ORANGE";
   return "RED";
 }
 
@@ -156,6 +162,15 @@ export function AthleteHomeContent({
         insight: homeData.conditioning.insight,
       }
     : null;
+  const trendDirection = homeData?.conditioning?.trendDirection ?? null;
+  const trendData: TrendDataPoint[] = (homeData?.conditioning?.trendData ?? []).map((t) => ({
+    date: t.date,
+    conditioningScore: t.conditioning_score,
+    fitnessEwma: t.fitness_ewma,
+    fatigueEwma: t.fatigue_ewma,
+    acwr: t.acwr,
+  }));
+  const feedEntries: DailyFeedEntry[] = homeData?.conditioning?.feedEntries ?? [];
   const validDataDays = homeData?.validDataDays ?? null;
   const error = queryError ? "データの取得に失敗しました。" : null;
 
@@ -250,18 +265,40 @@ export function AthleteHomeContent({
       {/* コールドスタート期プログレスバー */}
       {validDataDays !== null && <ColdStartProgress validDataDays={validDataDays} />}
 
-      {/* AI コンディションサマリ（1文） */}
+      {/* Strava風 コンディションサマリ + トレンド */}
       {data && (
         <div className="rounded-xl bg-primary/5 px-4 py-3">
-          <p className="text-sm text-foreground">
-            {data.conditioningScore >= 70
-              ? `${displayName || 'あなた'}のコンディションは良好です。計画通りのトレーニングを実施できます。`
-              : data.conditioningScore >= 50
-                ? `やや疲労が見られます。ウォーミングアップを入念に行い、強度を調整してください。`
-                : data.conditioningScore >= 30
-                  ? `回復が追いついていません。リカバリーメニューへの切り替えを推奨します。`
-                  : `休養が必要です。スタッフに報告してください。`}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-foreground">
+              {data.conditioningScore >= 70
+                ? `${displayName || 'あなた'}のコンディションは良好です。計画通りのトレーニングを実施できます。`
+                : data.conditioningScore >= 50
+                  ? `やや疲労が見られます。ウォーミングアップを入念に行い、強度を調整してください。`
+                  : data.conditioningScore >= 30
+                    ? `回復が追いついていません。リカバリーメニューへの切り替えを推奨します。`
+                    : `休養が必要です。スタッフに報告してください。`}
+            </p>
+            {trendDirection && (
+              <span
+                className={`ml-2 flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  trendDirection === 'improving'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : trendDirection === 'declining'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {trendDirection === 'improving' && '\u2191'}
+                {trendDirection === 'declining' && '\u2193'}
+                {trendDirection === 'stable' && '\u2192'}
+                {trendDirection === 'improving'
+                  ? '改善中'
+                  : trendDirection === 'declining'
+                    ? '低下傾向'
+                    : '安定'}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -274,6 +311,15 @@ export function AthleteHomeContent({
           primaryTrigger={primaryTrigger}
         />
       </div>
+
+      {/* KPI サブ指標（3カード横並び） */}
+      {data && (
+        <KpiBreakdownRow
+          fitnessEwma={data.fitnessEwma}
+          fatigueEwma={data.fatigueEwma}
+          acwr={data.acwr}
+        />
+      )}
 
       {/* ═══ Layer 2: ナラティブ ═══ */}
       <div className="info-layer-narrative flex flex-col gap-4">
@@ -289,8 +335,8 @@ export function AthleteHomeContent({
           <PerformanceCompass {...compassProps} />
         </div>
 
-        {/* AI インサイト */}
-        {insight && <InsightCard insight={insight} />}
+        {/* AI インサイト（insight がなくてもフォールバックテンプレートを表示） */}
+        <InsightCard insight={insight || undefined} score={score} />
       </div>
 
       {/* ═══ Layer 3: わかりやすい指標（二層表現） ═══ */}
@@ -309,7 +355,7 @@ export function AthleteHomeContent({
 
           {/* 詳細チャート */}
           <BreakdownCard
-            label="体力の蓄積"
+            label="残り体力 / HP"
             value={data.fitnessEwma}
             unit="42日 EWMA"
             trend={data.fitnessTrend}
@@ -337,6 +383,16 @@ export function AthleteHomeContent({
             delay={300}
           />
         </div>
+      )}
+
+      {/* ═══ Layer 4: Strava風コンディショニングトレンド ═══ */}
+      {trendData.length > 0 && (
+        <ConditioningTrendAthlete data={trendData} />
+      )}
+
+      {/* ═══ Layer 5: Strava風デイリーフィード ═══ */}
+      {feedEntries.length > 0 && (
+        <ConditioningFeed entries={feedEntries} />
       )}
     </div>
   );

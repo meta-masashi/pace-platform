@@ -22,9 +22,19 @@ export interface RiskPreventionReport {
   timestamp: string;
 }
 
+export interface ConditioningAlert {
+  athleteId: string;
+  athleteName: string;
+  type: 'recovery_zone' | 'acwr_danger' | 'rapid_decline';
+  conditioningScore?: number;
+  acwr?: number;
+  scoreDelta?: number;
+}
+
 interface AlertActionHubProps {
   alerts: AlertItem[];
   riskReports: RiskPreventionReport[];
+  conditioningAlerts?: ConditioningAlert[];
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +54,29 @@ const priorityConfig = {
   },
 } as const;
 
-export function AlertActionHub({ alerts, riskReports }: AlertActionHubProps) {
+const conditioningAlertConfig = {
+  recovery_zone: {
+    label: 'リカバリーゾーン',
+    icon: '\u26a0\ufe0f',
+    reason: (a: ConditioningAlert) => `スコア ${a.conditioningScore} — 回復ゾーン（< 40）`,
+    priority: 'critical' as const,
+  },
+  acwr_danger: {
+    label: 'ACWR 危険',
+    icon: '\u26a1',
+    reason: (a: ConditioningAlert) =>
+      `ACWR ${a.acwr?.toFixed(2)} — 安全ゾーン外（${(a.acwr ?? 0) > 1.5 ? '> 1.5' : '< 0.5'}）`,
+    priority: 'critical' as const,
+  },
+  rapid_decline: {
+    label: '急激低下',
+    icon: '\u{1f4c9}',
+    reason: (a: ConditioningAlert) => `3日間でスコア ${a.scoreDelta} 低下`,
+    priority: 'watchlist' as const,
+  },
+} as const;
+
+export function AlertActionHub({ alerts, riskReports, conditioningAlerts = [] }: AlertActionHubProps) {
   const sortedAlerts = [...alerts].sort(
     (a, b) => priorityConfig[a.priority].order - priorityConfig[b.priority].order,
   );
@@ -94,6 +126,43 @@ export function AlertActionHub({ alerts, riskReports }: AlertActionHubProps) {
           </ul>
         )}
       </div>
+
+      {/* Conditioning-based Alerts (Sprint 7) */}
+      {conditioningAlerts.length > 0 && (
+        <div className="rounded-lg border border-border bg-card">
+          <div className="border-b border-border px-5 py-3">
+            <h3 className="text-sm font-semibold">コンディショニングアラート</h3>
+          </div>
+          <ul className="divide-y divide-border">
+            {conditioningAlerts.map((ca) => {
+              const config = conditioningAlertConfig[ca.type];
+              const pConfig = priorityConfig[config.priority];
+              return (
+                <li key={`${ca.athleteId}-${ca.type}`} className="flex items-center gap-3 px-5 py-3">
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${pConfig.dot}`}
+                    title={config.label}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="text-sm font-medium">
+                      {config.icon} {ca.athleteName}
+                    </span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {config.reason(ca)}
+                    </span>
+                  </span>
+                  <Link
+                    href={`/athletes/${ca.athleteId}`}
+                    className="shrink-0 rounded-md bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                  >
+                    確認する
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* Risk Prevention Reports (AI Hard Lock) */}
       {riskReports.length > 0 && (

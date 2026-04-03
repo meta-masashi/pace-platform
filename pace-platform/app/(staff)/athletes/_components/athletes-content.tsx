@@ -14,6 +14,7 @@ interface Athlete {
   number: number | null;
   conditioningScore: number | null;
   acwr: number | null;
+  trend: 'improving' | 'stable' | 'declining' | null;
   hardLock: boolean;
   softLock: boolean;
   lastCheckin: string | null;
@@ -23,8 +24,15 @@ interface AthletesContentProps {
   searchParamsPromise: Promise<{ team?: string; q?: string }>;
 }
 
-type SortField = 'name' | 'position' | 'number' | 'conditioningScore' | 'acwr';
+type SortField = 'name' | 'position' | 'number' | 'conditioningScore' | 'acwr' | 'trend';
 type SortDir = 'asc' | 'desc';
+
+const TREND_ORDER = { improving: 0, stable: 1, declining: 2 } as const;
+const TREND_DISPLAY = {
+  improving: { icon: '\u2191', label: '上昇', className: 'text-emerald-600' },
+  stable: { icon: '\u2192', label: '安定', className: 'text-muted-foreground' },
+  declining: { icon: '\u2193', label: '低下', className: 'text-critical-600' },
+} as const;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -38,7 +46,7 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(searchParams.q ?? '');
-  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortField, setSortField] = useState<SortField>('conditioningScore');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   useEffect(() => {
@@ -53,25 +61,28 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(
-          `/api/team/dashboard?team_id=${encodeURIComponent(teamId!)}`,
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error);
+        // Fetch dashboard alerts and team conditioning in parallel
+        const [dashRes, condRes] = await Promise.all([
+          fetch(`/api/team/dashboard?team_id=${encodeURIComponent(teamId!)}`),
+          fetch(`/api/conditioning/team/${encodeURIComponent(teamId!)}`).catch(() => null),
+        ]);
 
-        // Dashboard gives us alerts with athlete info
-        // Build athlete list from alerts (best we have without dedicated endpoint)
-        const alertMap = new Map<string, Athlete>();
-        for (const alert of json.data.alerts ?? []) {
-          if (!alertMap.has(alert.athleteId)) {
-            alertMap.set(alert.athleteId, {
+        if (!dashRes.ok) throw new Error(`HTTP ${dashRes.status}`);
+        const dashJson = await dashRes.json();
+        if (!dashJson.success) throw new Error(dashJson.error);
+
+        // Build athlete map from alerts
+        const athleteMap = new Map<string, Athlete>();
+        for (const alert of dashJson.data.alerts ?? []) {
+          if (!athleteMap.has(alert.athleteId)) {
+            athleteMap.set(alert.athleteId, {
               id: alert.athleteId,
               name: alert.athleteName,
               position: null,
               number: null,
               conditioningScore: null,
               acwr: null,
+              trend: null,
               hardLock: false,
               softLock: false,
               lastCheckin: null,
@@ -79,8 +90,36 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
           }
         }
 
+        // Merge conditioning data if available
+        if (condRes && condRes.ok) {
+          const condJson = await condRes.json();
+          if (condJson.success && condJson.data?.athletes) {
+            for (const ca of condJson.data.athletes) {
+              const existing = athleteMap.get(ca.athleteId);
+              if (existing) {
+                existing.conditioningScore = ca.conditioningScore ?? null;
+                existing.acwr = ca.acwr ?? null;
+                existing.trend = ca.trend ?? null;
+              } else {
+                athleteMap.set(ca.athleteId, {
+                  id: ca.athleteId,
+                  name: ca.name ?? ca.athleteId,
+                  position: null,
+                  number: null,
+                  conditioningScore: ca.conditioningScore ?? null,
+                  acwr: ca.acwr ?? null,
+                  trend: ca.trend ?? null,
+                  hardLock: false,
+                  softLock: false,
+                  lastCheckin: null,
+                });
+              }
+            }
+          }
+        }
+
         if (!cancelled) {
-          setAthletes(Array.from(alertMap.values()));
+          setAthletes(Array.from(athleteMap.values()));
         }
       } catch (err) {
         if (!cancelled) {
@@ -131,6 +170,9 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
           break;
         case 'acwr':
           cmp = (a.acwr ?? 0) - (b.acwr ?? 0);
+          break;
+        case 'trend':
+          cmp = (TREND_ORDER[a.trend ?? 'stable'] ?? 1) - (TREND_ORDER[b.trend ?? 'stable'] ?? 1);
           break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -255,6 +297,13 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
                   onClick={handleSort}
                 />
                 <SortableHeader
+                  label="トレンド"
+                  field="trend"
+                  currentField={sortField}
+                  currentDir={sortDir}
+                  onClick={handleSort}
+                />
+                <SortableHeader
                   label="負荷バランス"
                   field="acwr"
                   currentField={sortField}
@@ -270,7 +319,7 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
               {filteredAthletes.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
                     {searchQuery
@@ -320,12 +369,12 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
                     <td className="px-4 py-2.5 tabular-nums">
                       {athlete.conditioningScore !== null ? (
                         <span
-                          className={`font-medium ${
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
                             athlete.conditioningScore >= 70
-                              ? 'text-optimal-600'
+                              ? 'bg-emerald-100 text-emerald-700'
                               : athlete.conditioningScore >= 40
-                                ? 'text-watchlist-600'
-                                : 'text-critical-600'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-red-100 text-red-700'
                           }`}
                         >
                           {athlete.conditioningScore}
@@ -334,15 +383,25 @@ export function AthletesContent({ searchParamsPromise }: AthletesContentProps) {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-2.5">
+                      {athlete.trend ? (
+                        <span className={`inline-flex items-center gap-1 text-sm font-medium ${TREND_DISPLAY[athlete.trend].className}`}>
+                          <span className="text-base">{TREND_DISPLAY[athlete.trend].icon}</span>
+                          <span className="text-xs">{TREND_DISPLAY[athlete.trend].label}</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 tabular-nums">
                       {athlete.acwr !== null ? (
                         <span
-                          className={`font-medium ${
-                            athlete.acwr <= 1.3
-                              ? 'text-optimal-600'
-                              : athlete.acwr <= 1.5
-                                ? 'text-watchlist-600'
-                                : 'text-critical-600'
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            athlete.acwr >= 0.8 && athlete.acwr <= 1.3
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : athlete.acwr > 1.3 && athlete.acwr <= 1.5
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-red-100 text-red-700'
                           }`}
                         >
                           {athlete.acwr.toFixed(2)}

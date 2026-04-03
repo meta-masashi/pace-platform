@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { requireAccess } from '@/lib/billing/plan-gates';
 import { listEvents, classifyEvents, refreshAccessToken } from '@/lib/calendar/google-client';
 import { predictAvailability } from '@/lib/calendar/load-predictor';
 import { encryptToken, decryptToken } from '@/lib/calendar/token-crypto';
@@ -51,6 +52,24 @@ export async function GET(
         { success: false, error: '認証が必要です。' },
         { status: 401 },
       );
+    }
+
+    // ----- プラン別機能ゲート（Pro+ 必須）-----
+    const { data: staffForGate } = await supabase
+      .from('staff')
+      .select('org_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (staffForGate?.org_id) {
+      try {
+        await requireAccess(supabase, staffForGate.org_id, 'feature_calendar_sync');
+      } catch (gateErr) {
+        return NextResponse.json(
+          { success: false, error: gateErr instanceof Error ? gateErr.message : 'この機能はご利用いただけません。' },
+          { status: 403 },
+        );
+      }
     }
 
     // カレンダー接続情報を取得

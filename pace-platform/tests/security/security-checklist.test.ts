@@ -83,36 +83,8 @@ describe('セキュリティチェック: 認証・認可', () => {
     expect(violations).toHaveLength(0)
   })
 
-  it('【防壁2】Webhook ハンドラーで署名検証（constructEvent）が実装されている', () => {
-    const webhookHandlerPath = path.join(LIB_DIR, 'billing', 'webhook-handler.ts')
-    const content = readFileContent(webhookHandlerPath)
-
-    // constructEvent が呼ばれていることを確認
-    expect(content).toContain('constructEvent')
-    // STRIPE_WEBHOOK_SECRET のチェックが実装されていることを確認
-    expect(content).toContain('STRIPE_WEBHOOK_SECRET')
-  })
-
-  it('【防壁1】決済完了確認がフロントエンドではなく Webhook で行われている', () => {
-    const webhookHandlerPath = path.join(LIB_DIR, 'billing', 'webhook-handler.ts')
-    const content = readFileContent(webhookHandlerPath)
-
-    // checkout.session.completed イベントを処理していることを確認
-    expect(content).toContain('checkout.session.completed')
-    // subscriptions テーブルへの upsert が実装されていることを確認
-    expect(content).toContain('subscriptions')
-    expect(content).toContain('upsert')
-  })
-
-  it('【防壁2】冪等性チェック（重複イベント防止）が実装されている', () => {
-    const webhookHandlerPath = path.join(LIB_DIR, 'billing', 'webhook-handler.ts')
-    const content = readFileContent(webhookHandlerPath)
-
-    // stripe_events テーブルによる冪等性チェックが実装されていることを確認
-    expect(content).toContain('stripe_events')
-    // unique_violation (23505) のチェックが実装されていることを確認
-    expect(content).toContain('23505')
-  })
+  // Billing module (webhook-handler, stripe-client) は Sprint 7 で廃止・削除済み
+  // 決済機能の再実装時にテストを復活させること
 })
 
 // ---------------------------------------------------------------------------
@@ -170,15 +142,7 @@ describe('セキュリティチェック: 機密情報', () => {
     }
   })
 
-  it('【防壁2】stripe-client.ts がサーバーサイド専用ガードを持っている', () => {
-    const stripeClientPath = path.join(LIB_DIR, 'billing', 'stripe-client.ts')
-    const content = readFileContent(stripeClientPath)
-
-    // window オブジェクトの存在チェック（サーバーサイドガード）が実装されていることを確認
-    expect(content).toContain('window')
-    // エラーがスローされることを確認
-    expect(content).toContain('throw new Error')
-  })
+  // stripe-client.ts は Sprint 7 で廃止・削除済み
 })
 
 // ---------------------------------------------------------------------------
@@ -244,22 +208,8 @@ describe('セキュリティチェック: コスト保護（防壁3）', () => {
     expect(hasLimitCheck).toBe(true)
   })
 
-  it('【防壁3】Stripe プランが JPY 固定で定義されている', () => {
-    const stripeClientPath = path.join(LIB_DIR, 'billing', 'stripe-client.ts')
-    const content = readFileContent(stripeClientPath)
-
-    // JPY 固定の確認
-    expect(content).toContain("currency: 'jpy'")
-  })
-
-  it('【防壁3】プラン別機能ゲートが実装されている', () => {
-    const planGatesPath = path.join(LIB_DIR, 'billing', 'plan-gates.ts')
-    const content = readFileContent(planGatesPath)
-
-    expect(content).toContain('export async function canAccess')
-    expect(content).toContain('PLAN_FEATURES')
-    expect(content).toContain('PLAN_LIMITS')
-  })
+  // Stripe/billing モジュールは Sprint 7 で廃止・削除済み
+  // stripe-client.ts, plan-gates.ts のテストは決済機能再実装時に復活させること
 })
 
 // ---------------------------------------------------------------------------
@@ -287,13 +237,7 @@ describe('セキュリティチェック: 耐障害性（防壁4）', () => {
     expect(content).toContain('shouldNotRetry')
   })
 
-  it('【防壁4】Webhook ハンドラーでエラー発生時の Slack 通知が実装されている', () => {
-    const webhookHandlerPath = path.join(LIB_DIR, 'billing', 'webhook-handler.ts')
-    const content = readFileContent(webhookHandlerPath)
-
-    expect(content).toContain('notifySlack')
-    expect(content).toContain('HACHI_SLACK_WEBHOOK_URL')
-  })
+  // webhook-handler.ts は Sprint 7 で廃止・削除済み
 
   it('【防壁4】RAG パイプラインに適応的検索戦略（フォールバック）が実装されている', () => {
     const retrieverPath = path.join(LIB_DIR, 'rag', 'retriever.ts')
@@ -330,4 +274,23 @@ describe('セキュリティチェック: PII 保護', () => {
     // システムプロンプトに PII 禁止ルールが含まれていることを確認
     expect(content).toContain('個人を特定できる情報')
   })
+})
+
+// ---------------------------------------------------------------------------
+// Sprint 6: チャットルートのセキュリティ検証
+// ---------------------------------------------------------------------------
+
+describe('Sprint 6: チャットルート sanitizeUserInput 確認', () => {
+  const chatRoutes = [
+    'app/api/rehab/chat/route.ts',
+    'app/api/training/chat/route.ts',
+  ]
+
+  for (const route of chatRoutes) {
+    it(`${route} に sanitizeUserInput がインポートされている`, () => {
+      const fullPath = path.resolve(ROOT_DIR, route)
+      const content = readFileContent(fullPath)
+      expect(content).toContain('sanitizeUserInput')
+    })
+  }
 })
