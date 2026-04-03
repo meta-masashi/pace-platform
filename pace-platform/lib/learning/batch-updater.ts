@@ -16,6 +16,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('learning');
 import type {
   LearningDataPoint,
   LearningBatchResult,
@@ -94,25 +96,21 @@ export async function runLearningBatch(
     ? lastVersion.createdAt
     : new Date(0); // 初回は全期間
 
-  console.log(
-    `[learning:batch] 前回バッチ: ${lastBatchDate.toISOString()}`
-  );
+  log.info(`前回バッチ: ${lastBatchDate.toISOString()}`);
 
   // ----- 2. アセスメント回答を取得 -----
   const responses = await fetchAssessmentResponses(supabase, lastBatchDate);
   if (responses.length === 0) {
-    console.log("[learning:batch] 新しいアセスメント回答なし — スキップ");
+    log.info('新しいアセスメント回答なし — スキップ');
     result.version = lastVersion?.version ?? "v1.0";
     return result;
   }
 
-  console.log(
-    `[learning:batch] ${responses.length} 件のアセスメント回答を取得`
-  );
+  log.info(`${responses.length} 件のアセスメント回答を取得`);
 
   // ----- 3. 受傷ログを取得 -----
   const injuries = await fetchInjuryLogs(supabase, lastBatchDate);
-  console.log(`[learning:batch] ${injuries.length} 件の受傷ログを取得`);
+  log.info(`${injuries.length} 件の受傷ログを取得`);
 
   // ----- 4. ノードごとの学習データを構築 -----
   const dataByNode = buildLearningDataByNode(responses, injuries);
@@ -132,9 +130,7 @@ export async function runLearningBatch(
     try {
       const nodeDef = nodeDefinitions.get(nodeId);
       if (!nodeDef) {
-        console.warn(
-          `[learning:batch] ノード定義なし: ${nodeId} — スキップ`
-        );
+        log.warn(`ノード定義なし: ${nodeId} — スキップ`);
         result.skippedNodes++;
         continue;
       }
@@ -181,10 +177,7 @@ export async function runLearningBatch(
         updatedWeights.set(nodeId, currentLR); // 提案時は元値を維持
       }
     } catch (err) {
-      console.error(
-        `[learning:batch] ノード ${nodeId} の処理エラー:`,
-        err
-      );
+      log.errorFromException(`ノード ${nodeId} の処理エラー`, err);
       result.skippedNodes++;
     }
   }
@@ -198,11 +191,7 @@ export async function runLearningBatch(
     notes: `バッチ更新: ${result.safeUpdates}件自動, ${result.flaggedUpdates}件レビュー待ち, ${result.skippedNodes}件スキップ`,
   });
 
-  console.log(
-    `[learning:batch] 完了 — バージョン: ${nextVersion}, ` +
-      `更新: ${result.updatedNodes}, 自動: ${result.safeUpdates}, ` +
-      `フラグ: ${result.flaggedUpdates}, スキップ: ${result.skippedNodes}`
-  );
+  log.info(`完了 — バージョン: ${nextVersion}, 更新: ${result.updatedNodes}, 自動: ${result.safeUpdates}, フラグ: ${result.flaggedUpdates}, スキップ: ${result.skippedNodes}`);
 
   return result;
 }
@@ -234,7 +223,7 @@ async function fetchAssessmentResponses(
     .not("assessment_sessions.completed_at", "is", null);
 
   if (error) {
-    console.error("[learning:batch] 回答取得エラー:", error);
+    log.error('回答取得エラー', { data: { error: error.message } });
     return [];
   }
 
@@ -277,7 +266,7 @@ async function fetchInjuryLogs(
     .gt("injury_date", extendedSince.toISOString());
 
   if (error) {
-    console.error("[learning:batch] 受傷ログ取得エラー:", error);
+    log.error('受傷ログ取得エラー', { data: { error: error.message } });
     return [];
   }
 
@@ -299,7 +288,7 @@ async function fetchNodeDefinitions(
     .in("node_id", nodeIds);
 
   if (error) {
-    console.error("[learning:batch] ノード定義取得エラー:", error);
+    log.error('ノード定義取得エラー', { data: { error: error.message } });
     return new Map();
   }
 
@@ -390,10 +379,7 @@ async function updateNodeLR(
     .eq("node_id", nodeId);
 
   if (error) {
-    console.error(
-      `[learning:batch] ノード ${nodeId} の LR 更新失敗:`,
-      error
-    );
+    log.error(`ノード ${nodeId} の LR 更新失敗`, { data: { error: error.message } });
   }
 }
 
@@ -425,10 +411,7 @@ async function insertUpdateProposal(
   });
 
   if (error) {
-    console.error(
-      `[learning:batch] 提案挿入失敗 node=${nodeId}:`,
-      error
-    );
+    log.error(`提案挿入失敗 node=${nodeId}`, { data: { error: error.message } });
   }
 }
 

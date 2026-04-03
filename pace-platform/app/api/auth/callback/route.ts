@@ -12,6 +12,9 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createLogger } from "@/lib/observability/logger";
+
+const log = createLogger('auth');
 
 // ---------------------------------------------------------------------------
 // GET /api/auth/callback
@@ -42,7 +45,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    console.error("[auth/callback] セッション交換エラー:", error);
+    log.error('セッション交換エラー', { data: { error: error.message } });
     return NextResponse.redirect(
       `${origin}/login?error=${encodeURIComponent("認証に失敗しました。もう一度お試しください。")}`
     );

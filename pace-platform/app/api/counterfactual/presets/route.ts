@@ -17,6 +17,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { withApiHandler, ApiError } from "@/lib/api/handler";
 import type {
   PresetIntervention,
   CounterfactualPresetsResponse,
@@ -96,82 +97,54 @@ const STANDARD_PRESETS: PresetIntervention[] = [
 // GET /api/counterfactual/presets
 // ---------------------------------------------------------------------------
 
-export async function GET(
-  request: Request
-): Promise<NextResponse<CounterfactualPresetsResponse | CounterfactualErrorResponse>> {
-  try {
-    const { searchParams } = new URL(request.url);
-    const athleteId = searchParams.get("athleteId");
-    const targetDate = searchParams.get("targetDate");
+export const GET = withApiHandler(async (request, _ctx) => {
+  const { searchParams } = new URL(request.url);
+  const athleteId = searchParams.get("athleteId");
+  const targetDate = searchParams.get("targetDate");
 
-    // ----- バリデーション -----
-    if (!athleteId) {
-      return NextResponse.json(
-        { success: false, error: "athleteId クエリパラメータが必要です。" },
-        { status: 400 }
-      );
-    }
-
-    if (!targetDate) {
-      return NextResponse.json(
-        { success: false, error: "targetDate クエリパラメータが必要です。" },
-        { status: 400 }
-      );
-    }
-
-    // 日付形式バリデーション
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
-      return NextResponse.json(
-        { success: false, error: "targetDate は YYYY-MM-DD 形式で指定してください。" },
-        { status: 400 }
-      );
-    }
-
-    // ----- 認証チェック -----
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { success: false, error: "認証が必要です。ログインしてください。" },
-        { status: 401 }
-      );
-    }
-
-    // ----- アスリートアクセス確認（RLS 経由） -----
-    const { data: athlete, error: athleteError } = await supabase
-      .from("athletes")
-      .select("id, org_id")
-      .eq("id", athleteId)
-      .single();
-
-    if (athleteError || !athlete) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "指定されたアスリートが見つからないか、アクセス権がありません。",
-        },
-        { status: 403 }
-      );
-    }
-
-    // ----- プリセットを返す -----
-    return NextResponse.json({
-      success: true,
-      data: {
-        athleteId,
-        targetDate,
-        presets: STANDARD_PRESETS,
-      },
-    });
-  } catch (err) {
-    console.error("[counterfactual:presets] 予期しないエラー:", err);
-    return NextResponse.json(
-      { success: false, error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
+  // ----- バリデーション -----
+  if (!athleteId) {
+    throw new ApiError(400, "athleteId クエリパラメータが必要です。");
   }
-}
+
+  if (!targetDate) {
+    throw new ApiError(400, "targetDate クエリパラメータが必要です。");
+  }
+
+  // 日付形式バリデーション
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    throw new ApiError(400, "targetDate は YYYY-MM-DD 形式で指定してください。");
+  }
+
+  // ----- 認証チェック -----
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new ApiError(401, "認証が必要です。ログインしてください。");
+  }
+
+  // ----- アスリートアクセス確認（RLS 経由） -----
+  const { data: athlete, error: athleteError } = await supabase
+    .from("athletes")
+    .select("id, org_id")
+    .eq("id", athleteId)
+    .single();
+
+  if (athleteError || !athlete) {
+    throw new ApiError(403, "指定されたアスリートが見つからないか、アクセス権がありません。");
+  }
+
+  // ----- プリセットを返す -----
+  return NextResponse.json({
+    success: true,
+    data: {
+      athleteId,
+      targetDate,
+      presets: STANDARD_PRESETS,
+    },
+  });
+}, { service: 'counterfactual' });

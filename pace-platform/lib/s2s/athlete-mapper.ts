@@ -11,6 +11,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { S2SAthleteData } from "./types";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('s2s');
 
 // ---------------------------------------------------------------------------
 // マッピング結果
@@ -62,7 +64,7 @@ export async function mapAthletes(
     .in("external_id", externalIds);
 
   if (directError) {
-    console.warn("[s2s:mapper] 直接マッピング取得エラー:", directError.message);
+    log.warn('直接マッピング取得エラー', { data: { error: directError.message } });
   }
 
   const directMap = new Map<string, string>();
@@ -96,7 +98,7 @@ export async function mapAthletes(
         .eq("org_id", orgId);
 
       if (orgError) {
-        console.warn("[s2s:mapper] 組織アスリート取得エラー:", orgError.message);
+        log.warn('組織アスリート取得エラー', { data: { error: orgError.message } });
       }
 
       const internalAthletes = orgAthletes ?? [];

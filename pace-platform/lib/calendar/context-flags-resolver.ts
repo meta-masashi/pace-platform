@@ -12,6 +12,8 @@
  */
 
 import { listEvents, classifyEvent } from './google-client';
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('calendar');
 import type { ClassifiedEvent } from './types';
 import type { ContextFlags } from '@/lib/engine/v6/types';
 
@@ -126,7 +128,7 @@ export async function resolveContextFlags(
 
         // リフレッシュ結果の検証
         if (!refreshed.accessToken || refreshed.accessToken.trim() === '') {
-          console.warn('[context-flags-resolver] リフレッシュトークンが空です');
+          log.warn('リフレッシュトークンが空です');
           cache.set(cacheKey, { flags: defaultFlags, cachedAt: Date.now() });
           return defaultFlags;
         }
@@ -144,7 +146,7 @@ export async function resolveContextFlags(
           })
           .eq('team_id', teamId);
       } catch (err) {
-        console.warn('[context-flags-resolver] トークンリフレッシュ失敗:', err);
+        log.errorFromException('トークンリフレッシュ失敗', err);
         cache.set(cacheKey, { flags: defaultFlags, cachedAt: Date.now() });
         return defaultFlags;
       }
@@ -176,7 +178,7 @@ export async function resolveContextFlags(
 
     return flags;
   } catch (err) {
-    console.warn('[context-flags-resolver] 解決失敗（デフォルト使用）:', err);
+    log.errorFromException('解決失敗（デフォルト使用）', err);
     cache.set(cacheKey, { flags: defaultFlags, cachedAt: Date.now() });
     return defaultFlags;
   }

@@ -7,6 +7,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ConditioningResult } from './types';
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('conditioning');
 
 // ---------------------------------------------------------------------------
 // 個人スコアの永続化
@@ -42,7 +44,7 @@ export async function persistConditioningScore(
     );
 
   if (error) {
-    console.error('[score-persister] 個人スコア upsert エラー:', error);
+    log.error('個人スコア upsert エラー', { data: { error: error.message } });
   }
 }
 
@@ -86,6 +88,6 @@ export async function persistTeamScores(
     .upsert(rows, { onConflict: 'athlete_id,date' });
 
   if (error) {
-    console.error('[score-persister] チームスコア一括 upsert エラー:', error);
+    log.error('チームスコア一括 upsert エラー', { data: { error: error.message } });
   }
 }

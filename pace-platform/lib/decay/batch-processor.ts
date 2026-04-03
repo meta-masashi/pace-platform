@@ -10,6 +10,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('decay');
 import type { DecayBatchResult, DecayedRiskEntry } from "./types";
 import {
   calculateDecayedRisk,
@@ -71,10 +73,7 @@ export async function runDecayBatch(
   let rows: ActiveRiskRow[];
 
   if (fetchError || !activeRisks) {
-    console.warn(
-      "[decay:batch] RPC フォールバック — 直接クエリを使用:",
-      fetchError?.message
-    );
+    log.warn('RPC フォールバック — 直接クエリを使用', { data: { error: fetchError?.message } });
 
     const { data: fallbackData, error: fallbackError } = await supabase
       .from("assessment_results")
@@ -93,7 +92,7 @@ export async function runDecayBatch(
       .not("completed_at", "is", null);
 
     if (fallbackError || !fallbackData) {
-      console.error("[decay:batch] リスクデータ取得失敗:", fallbackError);
+      log.error('リスクデータ取得失敗', { data: { error: fallbackError?.message } });
       return result;
     }
 
@@ -124,11 +123,11 @@ export async function runDecayBatch(
   result.processed = rows.length;
 
   if (rows.length === 0) {
-    console.log("[decay:batch] 対象レコードなし — スキップ");
+    log.info('対象レコードなし — スキップ');
     return result;
   }
 
-  console.log(`[decay:batch] ${rows.length} 件のリスクを処理開始`);
+  log.info(`${rows.length} 件のリスクを処理開始`);
 
   // ----- 2. 各リスクの減衰を計算 -----
   const now = new Date();
@@ -209,10 +208,7 @@ export async function runDecayBatch(
 
       result.updated++;
     } catch (err) {
-      console.error(
-        `[decay:batch] 計算エラー athlete=${row.athlete_id} node=${row.node_id}:`,
-        err
-      );
+      log.errorFromException(`計算エラー athlete=${row.athlete_id} node=${row.node_id}`, err);
       result.errors++;
     }
   }
@@ -230,18 +226,13 @@ export async function runDecayBatch(
         });
 
       if (insertError) {
-        console.error(
-          `[decay:batch] ログ挿入エラー (batch ${i / batchSize + 1}):`,
-          insertError
-        );
+        log.error(`ログ挿入エラー (batch ${i / batchSize + 1})`, { data: { error: insertError.message } });
         // 挿入エラーは処理続行（耐障害性）
       }
     }
   }
 
-  console.log(
-    `[decay:batch] 完了 — 処理: ${result.processed}, 更新: ${result.updated}, エラー: ${result.errors}`
-  );
+  log.info(`完了 — 処理: ${result.processed}, 更新: ${result.updated}, エラー: ${result.errors}`);
 
   return result;
 }

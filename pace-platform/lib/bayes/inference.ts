@@ -24,6 +24,8 @@ import type {
   CausalEdge,
   ActiveObservation,
 } from "./types";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('bayes');
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -340,8 +342,8 @@ export async function runLocalInference(input: InferenceInput): Promise<Inferenc
   const cScore = computeCScore(athleteContext);
   const contextModifier = computeContextModifier(athleteContext);
 
-  console.info(
-    `[bayes:inference] C_score=${cScore.toFixed(3)} contextModifier=${contextModifier.toFixed(3)} responses=${session.responses.length}`
+  log.info(
+    `C_score=${cScore.toFixed(3)} contextModifier=${contextModifier.toFixed(3)} responses=${session.responses.length}`
   );
 
   // 各ターゲットの事後確率を計算（前向き伝播）
@@ -588,8 +590,8 @@ export function calculatePosteriorWithDAG(
     const node = nodeMap.get(observation.node_id);
     if (!node) {
       // マスターデータに存在しないノード ID は無視（堅牢性）
-      console.warn(
-        `[bayes:dag] ノード "${observation.node_id}" がマスターデータに存在しません。スキップします。`
+      log.warn(
+        `ノード "${observation.node_id}" がマスターデータに存在しません。スキップします。`
       );
       continue;
     }

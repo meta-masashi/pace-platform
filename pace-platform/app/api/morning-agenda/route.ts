@@ -18,6 +18,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveContextFlags } from "@/lib/calendar/context-flags-resolver";
 import { compileMenu } from "@/lib/tags/compiler";
+import { withApiHandler, ApiError } from "@/lib/api/handler";
 import type { Exercise, FiredNode, MenuDraft } from "@/lib/tags/types";
 import {
   generateEvidenceTemplate,
@@ -47,251 +48,232 @@ const TAG_RISK_THRESHOLD = 15;
 // GET /api/morning-agenda
 // ---------------------------------------------------------------------------
 
-export async function GET(
-  request: Request
-): Promise<NextResponse<MorningAgendaResponse | MorningAgendaErrorResponse>> {
-  try {
-    const { searchParams } = new URL(request.url);
-    const teamId = searchParams.get("teamId");
-    const date = searchParams.get("date") ?? new Date().toISOString().split("T")[0]!;
+export const GET = withApiHandler(async (req, _ctx) => {
+  const { searchParams } = new URL(req.url);
+  const teamId = searchParams.get("teamId");
+  const date = searchParams.get("date") ?? new Date().toISOString().split("T")[0]!;
 
-    if (!teamId) {
-      return NextResponse.json(
-        { success: false, error: "teamId クエリパラメータは必須です。" },
-        { status: 400 }
-      );
-    }
-
-    // --- 認証 ---
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { success: false, error: "認証が必要です。" },
-        { status: 401 }
-      );
-    }
-
-    // --- チームアクセス確認 ---
-    const { data: team, error: teamError } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("id", teamId)
-      .single();
-
-    if (teamError || !team) {
-      return NextResponse.json(
-        { success: false, error: "チームが見つかりません。" },
-        { status: 403 }
-      );
-    }
-
-    // --- Calendar → contextFlags 解決 ---
-    const contextFlags = await resolveContextFlags(teamId, date);
-
-    // --- 並列データ取得 ---
-    const [athletesResult, exercisesResult] = await Promise.all([
-      // チーム内全アスリート
-      supabase
-        .from("athletes")
-        .select("id, name")
-        .eq("team_id", teamId),
-
-      // エクササイズマスタ
-      supabase
-        .from("exercises")
-        .select(
-          "id, name_ja, name_en, category, target_axis, prescription_tags_json, contraindication_tags_json, sets, reps, rpe"
-        )
-        .eq("is_active", true),
-    ]);
-
-    const athletes = athletesResult.data ?? [];
-    const allExercises: Exercise[] = (exercisesResult.data ?? []).map(
-      (row) => ({
-        id: row.id as string,
-        name_ja: row.name_ja as string,
-        name_en: row.name_en as string,
-        category: row.category as string,
-        targetAxis: row.target_axis as string,
-        prescriptionTagsJson: row.prescription_tags_json as string[] | null,
-        contraindicationTagsJson: row.contraindication_tags_json as string[] | null,
-        sets: row.sets as number,
-        reps: row.reps as number,
-        rpe: row.rpe as number,
-      })
-    );
-
-    // --- アスリートごとの処理 ---
-    const alerts: EvidenceAlert[] = [];
-    const menuDrafts = new Map<string, MenuDraft>();
-
-    for (const athlete of athletes) {
-      const athleteId = athlete.id as string;
-      const athleteName = athlete.name as string;
-
-      // 最新の完了済みアセスメント取得
-      const { data: sessionData } = await supabase
-        .from("assessment_sessions")
-        .select(
-          `id, assessment_responses(
-            node_id,
-            answer,
-            assessment_nodes(
-              node_id, question_text, category, target_axis,
-              lr_yes, lr_no, base_prevalence,
-              prescription_tags_json, contraindication_tags_json
-            )
-          )`
-        )
-        .eq("athlete_id", athleteId)
-        .eq("status", "completed")
-        .order("completed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!sessionData) continue;
-
-      // 発火ノード抽出
-      const firedNodes = extractFiredNodes(sessionData);
-      if (firedNodes.length === 0) continue;
-
-      // 現在のメニュー取得
-      const { data: menuData } = await supabase
-        .from("workout_menus")
-        .select(
-          "exercise_id, exercises(id, name_ja, name_en, category, target_axis, prescription_tags_json, contraindication_tags_json, sets, reps, rpe)"
-        )
-        .eq("athlete_id", athleteId)
-        .eq("date", date);
-
-      const currentMenu: Exercise[] = (menuData ?? [])
-        .map((row) => {
-          const ex = (typeof row.exercises === 'object' && row.exercises !== null) ? (row.exercises as unknown as Record<string, unknown>) : null;
-          if (!ex) return null;
-          return {
-            id: ex.id as string,
-            name_ja: ex.name_ja as string,
-            name_en: ex.name_en as string,
-            category: ex.category as string,
-            targetAxis: ex.target_axis as string,
-            prescriptionTagsJson: ex.prescription_tags_json as string[] | null,
-            contraindicationTagsJson: ex.contraindication_tags_json as string[] | null,
-            sets: ex.sets as number,
-            reps: ex.reps as number,
-            rpe: ex.rpe as number,
-          } satisfies Exercise;
-        })
-        .filter((ex): ex is Exercise => ex !== null);
-
-      // タグコンパイラ実行
-      const compilation = compileMenu({
-        currentMenu,
-        firedNodes,
-        allExercises,
-        riskThreshold: TAG_RISK_THRESHOLD,
-      });
-
-      // リスク閾値超過のノードからアラートを生成
-      for (const node of firedNodes) {
-        if (node.answer !== "yes") continue;
-
-        const riskMultiplier =
-          node.priorProbability > 0
-            ? node.posteriorProbability / node.priorProbability
-            : 1;
-
-        if (riskMultiplier < ALERT_RISK_MULTIPLIER_THRESHOLD) continue;
-
-        // このノードに関連するブロック・処方タグを抽出
-        const relatedBlockedTags = compilation.blockedTags.filter((tag) =>
-          node.contraindicationTags.includes(tag)
-        );
-        const relatedPrescribedTags = compilation.prescribedTags.filter((tag) =>
-          node.prescriptionTags.includes(tag)
-        );
-        const relatedMods = compilation.evidenceTrail.filter(
-          (m) => m.nodeId === node.nodeId
-        );
-
-        alerts.push({
-          athleteId,
-          athleteName,
-          riskArea: buildRiskAreaLabel(node.targetAxis, node.category),
-          posteriorProbability: node.posteriorProbability,
-          priorProbability: node.priorProbability,
-          riskMultiplier,
-          nodeName: node.nodeName,
-          evidenceText: node.evidenceText,
-          blockedTags: relatedBlockedTags,
-          prescribedTags: relatedPrescribedTags,
-          modifications: relatedMods,
-        });
-      }
-
-      // メニュードラフト作成
-      if (compilation.evidenceTrail.length > 0) {
-        const blockedIds = new Set(compilation.blockedExercises.map((e) => e.id));
-        const remaining = currentMenu.filter((e) => !blockedIds.has(e.id));
-        const inserted: Exercise[] = compilation.insertedExercises.map((m) => ({
-          id: m.exerciseId,
-          name_ja: m.name_ja,
-          name_en: m.name_en,
-          category: m.category,
-          targetAxis: "",
-          prescriptionTagsJson: [m.matchedTag],
-          contraindicationTagsJson: null,
-          sets: m.sets,
-          reps: m.reps,
-          rpe: m.rpe,
-        }));
-
-        menuDrafts.set(athleteId, {
-          athleteId,
-          date,
-          exercises: [...remaining, ...inserted],
-          isModified: true,
-          modifications: compilation.evidenceTrail,
-        });
-      }
-    }
-
-    // --- NLG テキスト生成 + アラートカード構築 ---
-    let alertCards = generateAlertCards(alerts, menuDrafts);
-
-    // Gemini 整形（オプション — 失敗時はテンプレートのまま）
-    alertCards = await applyGeminiShaping(alertCards, user.id);
-
-    // --- チームサマリー ---
-    const teamSummary = {
-      totalAthletes: athletes.length,
-      criticalCount: alertCards.filter((c) => c.riskLevel === "critical").length,
-      watchlistCount: alertCards.filter((c) => c.riskLevel === "watchlist").length,
-      normalCount: alertCards.filter((c) => c.riskLevel === "normal").length,
-    };
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        date,
-        alertCards,
-        teamSummary,
-        isGameDay: contextFlags.isGameDay,
-        isGameDayMinus1: contextFlags.isGameDayMinus1,
-      },
-    });
-  } catch (err) {
-    console.error("[api/morning-agenda] 予期しないエラー:", err);
-    return NextResponse.json(
-      { success: false, error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
+  if (!teamId) {
+    throw new ApiError(400, "teamId クエリパラメータは必須です。");
   }
-}
+
+  // --- 認証 ---
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new ApiError(401, "認証が必要です。");
+  }
+
+  // --- チームアクセス確認 ---
+  const { data: team, error: teamError } = await supabase
+    .from("teams")
+    .select("id")
+    .eq("id", teamId)
+    .single();
+
+  if (teamError || !team) {
+    throw new ApiError(403, "チームが見つかりません。");
+  }
+
+  // --- Calendar → contextFlags 解決 ---
+  const contextFlags = await resolveContextFlags(teamId, date);
+
+  // --- 並列データ取得 ---
+  const [athletesResult, exercisesResult] = await Promise.all([
+    // チーム内全アスリート
+    supabase
+      .from("athletes")
+      .select("id, name")
+      .eq("team_id", teamId),
+
+    // エクササイズマスタ
+    supabase
+      .from("exercises")
+      .select(
+        "id, name_ja, name_en, category, target_axis, prescription_tags_json, contraindication_tags_json, sets, reps, rpe"
+      )
+      .eq("is_active", true),
+  ]);
+
+  const athletes = athletesResult.data ?? [];
+  const allExercises: Exercise[] = (exercisesResult.data ?? []).map(
+    (row) => ({
+      id: row.id as string,
+      name_ja: row.name_ja as string,
+      name_en: row.name_en as string,
+      category: row.category as string,
+      targetAxis: row.target_axis as string,
+      prescriptionTagsJson: row.prescription_tags_json as string[] | null,
+      contraindicationTagsJson: row.contraindication_tags_json as string[] | null,
+      sets: row.sets as number,
+      reps: row.reps as number,
+      rpe: row.rpe as number,
+    })
+  );
+
+  // --- アスリートごとの処理 ---
+  const alerts: EvidenceAlert[] = [];
+  const menuDrafts = new Map<string, MenuDraft>();
+
+  for (const athlete of athletes) {
+    const athleteId = athlete.id as string;
+    const athleteName = athlete.name as string;
+
+    // 最新の完了済みアセスメント取得
+    const { data: sessionData } = await supabase
+      .from("assessment_sessions")
+      .select(
+        `id, assessment_responses(
+          node_id,
+          answer,
+          assessment_nodes(
+            node_id, question_text, category, target_axis,
+            lr_yes, lr_no, base_prevalence,
+            prescription_tags_json, contraindication_tags_json
+          )
+        )`
+      )
+      .eq("athlete_id", athleteId)
+      .eq("status", "completed")
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!sessionData) continue;
+
+    // 発火ノード抽出
+    const firedNodes = extractFiredNodes(sessionData);
+    if (firedNodes.length === 0) continue;
+
+    // 現在のメニュー取得
+    const { data: menuData } = await supabase
+      .from("workout_menus")
+      .select(
+        "exercise_id, exercises(id, name_ja, name_en, category, target_axis, prescription_tags_json, contraindication_tags_json, sets, reps, rpe)"
+      )
+      .eq("athlete_id", athleteId)
+      .eq("date", date);
+
+    const currentMenu: Exercise[] = (menuData ?? [])
+      .map((row) => {
+        const ex = (typeof row.exercises === 'object' && row.exercises !== null) ? (row.exercises as unknown as Record<string, unknown>) : null;
+        if (!ex) return null;
+        return {
+          id: ex.id as string,
+          name_ja: ex.name_ja as string,
+          name_en: ex.name_en as string,
+          category: ex.category as string,
+          targetAxis: ex.target_axis as string,
+          prescriptionTagsJson: ex.prescription_tags_json as string[] | null,
+          contraindicationTagsJson: ex.contraindication_tags_json as string[] | null,
+          sets: ex.sets as number,
+          reps: ex.reps as number,
+          rpe: ex.rpe as number,
+        } satisfies Exercise;
+      })
+      .filter((ex): ex is Exercise => ex !== null);
+
+    // タグコンパイラ実行
+    const compilation = compileMenu({
+      currentMenu,
+      firedNodes,
+      allExercises,
+      riskThreshold: TAG_RISK_THRESHOLD,
+    });
+
+    // リスク閾値超過のノードからアラートを生成
+    for (const node of firedNodes) {
+      if (node.answer !== "yes") continue;
+
+      const riskMultiplier =
+        node.priorProbability > 0
+          ? node.posteriorProbability / node.priorProbability
+          : 1;
+
+      if (riskMultiplier < ALERT_RISK_MULTIPLIER_THRESHOLD) continue;
+
+      // このノードに関連するブロック・処方タグを抽出
+      const relatedBlockedTags = compilation.blockedTags.filter((tag) =>
+        node.contraindicationTags.includes(tag)
+      );
+      const relatedPrescribedTags = compilation.prescribedTags.filter((tag) =>
+        node.prescriptionTags.includes(tag)
+      );
+      const relatedMods = compilation.evidenceTrail.filter(
+        (m) => m.nodeId === node.nodeId
+      );
+
+      alerts.push({
+        athleteId,
+        athleteName,
+        riskArea: buildRiskAreaLabel(node.targetAxis, node.category),
+        posteriorProbability: node.posteriorProbability,
+        priorProbability: node.priorProbability,
+        riskMultiplier,
+        nodeName: node.nodeName,
+        evidenceText: node.evidenceText,
+        blockedTags: relatedBlockedTags,
+        prescribedTags: relatedPrescribedTags,
+        modifications: relatedMods,
+      });
+    }
+
+    // メニュードラフト作成
+    if (compilation.evidenceTrail.length > 0) {
+      const blockedIds = new Set(compilation.blockedExercises.map((e) => e.id));
+      const remaining = currentMenu.filter((e) => !blockedIds.has(e.id));
+      const inserted: Exercise[] = compilation.insertedExercises.map((m) => ({
+        id: m.exerciseId,
+        name_ja: m.name_ja,
+        name_en: m.name_en,
+        category: m.category,
+        targetAxis: "",
+        prescriptionTagsJson: [m.matchedTag],
+        contraindicationTagsJson: null,
+        sets: m.sets,
+        reps: m.reps,
+        rpe: m.rpe,
+      }));
+
+      menuDrafts.set(athleteId, {
+        athleteId,
+        date,
+        exercises: [...remaining, ...inserted],
+        isModified: true,
+        modifications: compilation.evidenceTrail,
+      });
+    }
+  }
+
+  // --- NLG テキスト生成 + アラートカード構築 ---
+  let alertCards = generateAlertCards(alerts, menuDrafts);
+
+  // Gemini 整形（オプション — 失敗時はテンプレートのまま）
+  alertCards = await applyGeminiShaping(alertCards, user.id);
+
+  // --- チームサマリー ---
+  const teamSummary = {
+    totalAthletes: athletes.length,
+    criticalCount: alertCards.filter((c) => c.riskLevel === "critical").length,
+    watchlistCount: alertCards.filter((c) => c.riskLevel === "watchlist").length,
+    normalCount: alertCards.filter((c) => c.riskLevel === "normal").length,
+  };
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      date,
+      alertCards,
+      teamSummary,
+      isGameDay: contextFlags.isGameDay,
+      isGameDayMinus1: contextFlags.isGameDayMinus1,
+    },
+  });
+}, { service: 'morning-agenda' });
 
 // ---------------------------------------------------------------------------
 // ヘルパー

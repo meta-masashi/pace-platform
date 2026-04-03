@@ -44,6 +44,6 @@ describe('score-persister — コードパターン検証', () => {
 
   it('エラーハンドリングが実装されている', () => {
     expect(content).toContain('if (error)');
-    expect(content).toContain('console.error');
+    expect(content).toContain('log.error');
   });
 });

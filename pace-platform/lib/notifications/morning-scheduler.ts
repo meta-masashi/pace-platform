@@ -9,6 +9,8 @@
  */
 
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('notifications');
 import { sendMorningEmail } from "./email-sender";
 import { sendSlackNotification } from "./slack-sender";
 import { sendWebPush } from "./web-push";
@@ -239,9 +241,7 @@ export async function generateAndSendMorningNotifications(
   // --- 6. 結果ログ ---
   const successCount = results.filter((r) => r.success).length;
   const failCount = results.filter((r) => !r.success).length;
-  console.log(
-    `[morning-scheduler] チーム ${teamName}: 送信完了 (成功: ${successCount}, 失敗: ${failCount})`
-  );
+  log.info(`チーム ${teamName}: 送信完了 (成功: ${successCount}, 失敗: ${failCount})`);
 
   return results;
 }

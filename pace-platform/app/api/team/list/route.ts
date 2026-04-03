@@ -6,8 +6,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withApiHandler, ApiError } from '@/lib/api/handler';
 
-export async function GET() {
+export const GET = withApiHandler(async (req, ctx) => {
   const supabase = await createClient();
 
   const {
@@ -16,10 +17,7 @@ export async function GET() {
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    return NextResponse.json(
-      { error: '認証が必要です。' },
-      { status: 401 },
-    );
+    throw new ApiError(401, '認証が必要です。');
   }
 
   const { data: teams, error: teamsError } = await supabase
@@ -28,12 +26,9 @@ export async function GET() {
     .order('name', { ascending: true });
 
   if (teamsError) {
-    console.error('[team/list] チーム一覧取得エラー:', teamsError);
-    return NextResponse.json(
-      { error: 'チーム一覧の取得に失敗しました。' },
-      { status: 500 },
-    );
+    ctx.log.error('チーム一覧取得エラー', { detail: teamsError });
+    throw new ApiError(500, 'チーム一覧の取得に失敗しました。');
   }
 
   return NextResponse.json({ teams: teams ?? [] });
-}
+}, { service: 'team' });

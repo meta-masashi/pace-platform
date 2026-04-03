@@ -10,6 +10,8 @@
  */
 
 import { embedText } from "../rag/embedding";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('evaluation');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -309,7 +311,7 @@ export async function computeBertScoreApprox(
 ): Promise<number> {
   const geminiApiKey = process.env.GEMINI_API_KEY;
   if (!geminiApiKey) {
-    console.warn("[evaluation:metrics] GEMINI_API_KEY 未設定 — BERTScore 計算をスキップ");
+    log.warn("GEMINI_API_KEY 未設定 — BERTScore 計算をスキップ");
     return 0;
   }
 
@@ -388,7 +390,7 @@ export async function saveEvaluationRun(
     throw new Error("[evaluation:metrics] 保存されたレコードの ID が取得できません");
   }
 
-  console.info(`[evaluation:metrics] 評価結果保存完了: id=${savedId} type=${runResult.evaluationType}`);
+  log.info(`評価結果保存完了: id=${savedId} type=${runResult.evaluationType}`);
   return savedId;
 }
 
@@ -440,8 +442,8 @@ export async function runCompositeEvaluation(
       });
     }
 
-    console.info(
-      `[evaluation] RAG: P@${k}=${ragMetrics.precisionAtK.toFixed(3)} R@${k}=${ragMetrics.recallAtK.toFixed(3)} MRR=${ragMetrics.mrr.toFixed(3)}`
+    log.info(
+      `RAG: P@${k}=${ragMetrics.precisionAtK.toFixed(3)} R@${k}=${ragMetrics.recallAtK.toFixed(3)} MRR=${ragMetrics.mrr.toFixed(3)}`
     );
   }
 
@@ -464,8 +466,8 @@ export async function runCompositeEvaluation(
       });
     }
 
-    console.info(
-      `[evaluation] Bayes: AUROC=${auroc.toFixed(3)} Sens=${sensitivity.toFixed(3)} Spec=${specificity.toFixed(3)}`
+    log.info(
+      `Bayes: AUROC=${auroc.toFixed(3)} Sens=${sensitivity.toFixed(3)} Spec=${specificity.toFixed(3)}`
     );
   }
 
@@ -486,8 +488,8 @@ export async function runCompositeEvaluation(
       });
     }
 
-    console.info(
-      `[evaluation] LLM Quality: avgCosine=${avgCosineSimilarity.toFixed(3)}`
+    log.info(
+      `LLM Quality: avgCosine=${avgCosineSimilarity.toFixed(3)}`
     );
   }
 

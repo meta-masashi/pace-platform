@@ -15,6 +15,8 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('billing');
 
 // ============================================================
 // 型定義
@@ -73,7 +75,7 @@ async function notifySlack(message: string, level: 'warning' | 'error'): Promise
       }),
     })
   } catch (err) {
-    console.error('[dunning] Slack 通知失敗:', err)
+    log.errorFromException('Slack 通知失敗', err)
   }
 }
 
@@ -94,7 +96,7 @@ async function sendPaymentFailedEmail(
     .single()
 
   if (!orgData) {
-    console.warn(`[dunning] 組織が見つかりません: org_id=${orgId}`)
+    log.warn(`組織が見つかりません: org_id=${orgId}`)
     return
   }
 
@@ -102,7 +104,7 @@ async function sendPaymentFailedEmail(
   const { data: userData } = await supabase.auth.admin.getUserById(orgData.owner_user_id)
 
   if (!userData?.user?.email) {
-    console.warn(`[dunning] ユーザーのメールアドレスが見つかりません: user_id=${orgData.owner_user_id}`)
+    log.warn(`ユーザーのメールアドレスが見つかりません: user_id=${orgData.owner_user_id}`)
     return
   }
 
@@ -122,7 +124,7 @@ async function sendPaymentFailedEmail(
   const maskedEmail = userData.user.email
     ? userData.user.email.replace(/^(.{2}).*(@.*)$/, '$1***$2')
     : '***'
-  console.info(`[dunning] メール送信: to=${maskedEmail}, subject=${subject}`)
+  log.info(`メール送信: to=${maskedEmail}, subject=${subject}`)
 
   // TODO: 実際のメール送信は SMTP プロバイダー連携後に実装
   // await sendEmail({ to: userData.user.email, subject, body })
@@ -148,9 +150,9 @@ export async function processDunningDay1(
       })
       .eq('id', schedule.id)
 
-    console.info(`[dunning] Day 1 メール送信完了: org=${schedule.org_id}`)
+    log.info(`Day 1 メール送信完了: org=${schedule.org_id}`)
   } catch (err) {
-    console.error(`[dunning] Day 1 処理エラー:`, err)
+    log.errorFromException('Day 1 処理エラー', err)
     await notifySlack(`Dunning Day 1 処理エラー: org=${schedule.org_id}, error=${err instanceof Error ? err.message : String(err)}`, 'error')
     throw err
   }
@@ -181,9 +183,9 @@ export async function processDunningDay3(
       'warning'
     )
 
-    console.info(`[dunning] Day 3 メール送信完了: org=${schedule.org_id}`)
+    log.info(`Day 3 メール送信完了: org=${schedule.org_id}`)
   } catch (err) {
-    console.error(`[dunning] Day 3 処理エラー:`, err)
+    log.errorFromException('Day 3 処理エラー', err)
     await notifySlack(`Dunning Day 3 処理エラー: org=${schedule.org_id}, error=${err instanceof Error ? err.message : String(err)}`, 'error')
     throw err
   }
@@ -221,9 +223,9 @@ export async function processDunningDay7(
       'warning'
     )
 
-    console.warn(`[dunning] Day 7 アクセス制限: org=${schedule.org_id} を読み取り専用に移行`)
+    log.warn(`Day 7 アクセス制限: org=${schedule.org_id} を読み取り専用に移行`)
   } catch (err) {
-    console.error(`[dunning] Day 7 処理エラー:`, err)
+    log.errorFromException('Day 7 処理エラー', err)
     await notifySlack(`Dunning Day 7 処理エラー: org=${schedule.org_id}, error=${err instanceof Error ? err.message : String(err)}`, 'error')
     throw err
   }
@@ -261,9 +263,9 @@ export async function processDunningDay14(
       'error'
     )
 
-    console.warn(`[dunning] Day 14 サブスクリプション停止: org=${schedule.org_id}（データ保持）`)
+    log.warn(`Day 14 サブスクリプション停止: org=${schedule.org_id}（データ保持）`)
   } catch (err) {
-    console.error(`[dunning] Day 14 処理エラー:`, err)
+    log.errorFromException('Day 14 処理エラー', err)
     await notifySlack(`Dunning Day 14 処理エラー: org=${schedule.org_id}, error=${err instanceof Error ? err.message : String(err)}`, 'error')
     throw err
   }
@@ -286,7 +288,7 @@ export async function resolveDunning(stripeCustomerId: string): Promise<void> {
     .is('resolved_at', null)
 
   if (error) {
-    console.error(`[dunning] Dunning 解決処理エラー: ${error.message}`)
+    log.error(`Dunning 解決処理エラー: ${error.message}`)
   }
 }
 
@@ -305,7 +307,7 @@ export async function processPendingDunningSchedules(): Promise<void> {
     .is('day14_canceled_at', null)
 
   if (error) {
-    console.error('[dunning] Dunning スケジュール取得エラー:', error)
+    log.error('Dunning スケジュール取得エラー', { data: { error: error.message } })
     await notifySlack(`Dunning スケジュール取得エラー: ${error.message}`, 'error')
     return
   }
@@ -332,7 +334,7 @@ export async function processPendingDunningSchedules(): Promise<void> {
       }
     } catch (err) {
       // 個別エラーは既に通知済み。他のスケジュール処理は継続
-      console.error(`[dunning] schedule=${schedule.id} の処理中にエラー（スキップして継続）:`, err)
+      log.errorFromException(`schedule=${schedule.id} の処理中にエラー（スキップして継続）`, err)
     }
   }
 }

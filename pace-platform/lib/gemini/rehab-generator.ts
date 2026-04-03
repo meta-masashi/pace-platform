@@ -11,6 +11,8 @@
 import { callGeminiWithRetry, buildCdsSystemPrefix, MEDICAL_DISCLAIMER, type GeminiCallContext } from "./client";
 import { buildInjectedContext, type BayesianDiagnosisResult, type CvKinematicsData, type AthleteProfile } from "./context-injector";
 import { cleanJsonResponse } from "../shared/security-helpers";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('gemini');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -163,9 +165,7 @@ function validateNoContraindicatedExercises(
     for (const exercise of phase.exercises ?? []) {
       for (const tag of exercise.tags ?? []) {
         if (contraindicationTags.some((ct) => tag.toLowerCase().includes(ct.toLowerCase()))) {
-          console.error(
-            `[rehab-generator] 禁忌タグ違反: exercise="${exercise.name}" tag="${tag}"`
-          );
+          log.error(`禁忌タグ違反: exercise="${exercise.name}" tag="${tag}"`);
           throw new Error(
             `GUARDRAIL_VIOLATION: 禁忌タグ "${tag}" を含む運動 "${exercise.name}" が生成されました`
           );

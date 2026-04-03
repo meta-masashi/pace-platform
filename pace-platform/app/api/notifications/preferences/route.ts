@@ -9,65 +9,49 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { withApiHandler, ApiError } from "@/lib/api/handler";
 
 // ---------------------------------------------------------------------------
 // GET /api/notifications/preferences
 // ---------------------------------------------------------------------------
 
-export async function GET(): Promise<NextResponse> {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+export const GET = withApiHandler(async (_req, _ctx) => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "認証が必要です。" },
-        { status: 401 }
-      );
-    }
-
-    // スタッフ確認
-    const { data: staff } = await supabase
-      .from("staff")
-      .select("id, org_id, email")
-      .eq("id", user.id)
-      .single();
-
-    if (!staff) {
-      return NextResponse.json(
-        { error: "スタッフ情報が見つかりません。" },
-        { status: 403 }
-      );
-    }
-
-    // 通知プリファレンス取得
-    const { data: preferences, error: prefError } = await supabase
-      .from("notification_preferences")
-      .select("*")
-      .eq("staff_id", user.id);
-
-    if (prefError) {
-      return NextResponse.json(
-        { error: prefError.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      email: staff.email,
-      preferences: preferences ?? [],
-    });
-  } catch (err) {
-    console.error("[api/notifications/preferences] GET エラー:", err);
-    return NextResponse.json(
-      { error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
+  if (authError || !user) {
+    throw new ApiError(401, "認証が必要です。");
   }
-}
+
+  // スタッフ確認
+  const { data: staff } = await supabase
+    .from("staff")
+    .select("id, org_id, email")
+    .eq("id", user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, "スタッフ情報が見つかりません。");
+  }
+
+  // 通知プリファレンス取得
+  const { data: preferences, error: prefError } = await supabase
+    .from("notification_preferences")
+    .select("*")
+    .eq("staff_id", user.id);
+
+  if (prefError) {
+    throw new ApiError(500, prefError.message);
+  }
+
+  return NextResponse.json({
+    email: staff.email,
+    preferences: preferences ?? [],
+  });
+}, { service: 'notifications' });
 
 // ---------------------------------------------------------------------------
 // PUT /api/notifications/preferences
@@ -79,83 +63,60 @@ interface PutRequestBody {
   config?: Record<string, unknown>;
 }
 
-export async function PUT(request: Request): Promise<NextResponse> {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+export const PUT = withApiHandler(async (req, _ctx) => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "認証が必要です。" },
-        { status: 401 }
-      );
-    }
-
-    // スタッフ確認
-    const { data: staff } = await supabase
-      .from("staff")
-      .select("id, org_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!staff) {
-      return NextResponse.json(
-        { error: "スタッフ情報が見つかりません。" },
-        { status: 403 }
-      );
-    }
-
-    const body: PutRequestBody = await request.json();
-
-    // バリデーション
-    if (!["email", "slack", "web_push"].includes(body.channel)) {
-      return NextResponse.json(
-        { error: "無効なチャネルです。" },
-        { status: 400 }
-      );
-    }
-
-    if (typeof body.enabled !== "boolean") {
-      return NextResponse.json(
-        { error: "enabled は boolean 値である必要があります。" },
-        { status: 400 }
-      );
-    }
-
-    // upsert（存在しない場合は作成、存在する場合は更新）
-    const { data: result, error: upsertError } = await supabase
-      .from("notification_preferences")
-      .upsert(
-        {
-          staff_id: user.id,
-          org_id: staff.org_id,
-          channel: body.channel,
-          enabled: body.enabled,
-          config: body.config ?? {},
-        },
-        {
-          onConflict: "staff_id,channel",
-        }
-      )
-      .select()
-      .single();
-
-    if (upsertError) {
-      return NextResponse.json(
-        { error: upsertError.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ preference: result });
-  } catch (err) {
-    console.error("[api/notifications/preferences] PUT エラー:", err);
-    return NextResponse.json(
-      { error: "サーバー内部エラーが発生しました。" },
-      { status: 500 }
-    );
+  if (authError || !user) {
+    throw new ApiError(401, "認証が必要です。");
   }
-}
+
+  // スタッフ確認
+  const { data: staff } = await supabase
+    .from("staff")
+    .select("id, org_id")
+    .eq("id", user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, "スタッフ情報が見つかりません。");
+  }
+
+  const body: PutRequestBody = await req.json();
+
+  // バリデーション
+  if (!["email", "slack", "web_push"].includes(body.channel)) {
+    throw new ApiError(400, "無効なチャネルです。");
+  }
+
+  if (typeof body.enabled !== "boolean") {
+    throw new ApiError(400, "enabled は boolean 値である必要があります。");
+  }
+
+  // upsert（存在しない場合は作成、存在する場合は更新）
+  const { data: result, error: upsertError } = await supabase
+    .from("notification_preferences")
+    .upsert(
+      {
+        staff_id: user.id,
+        org_id: staff.org_id,
+        channel: body.channel,
+        enabled: body.enabled,
+        config: body.config ?? {},
+      },
+      {
+        onConflict: "staff_id,channel",
+      }
+    )
+    .select()
+    .single();
+
+  if (upsertError) {
+    throw new ApiError(500, upsertError.message);
+  }
+
+  return NextResponse.json({ preference: result });
+}, { service: 'notifications' });

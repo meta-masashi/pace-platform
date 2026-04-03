@@ -12,6 +12,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('learning');
 import type { ModelVersion, ModelVersionSource } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -60,16 +62,11 @@ export async function saveModelVersion(
   });
 
   if (error) {
-    console.error(
-      `[learning:version] バージョン ${version.version} の保存失敗:`,
-      error
-    );
+    log.error(`バージョン ${version.version} の保存失敗`, { data: { error: error.message } });
     throw new Error(`モデルバージョン保存エラー: ${error.message}`);
   }
 
-  console.log(
-    `[learning:version] バージョン ${version.version} を保存 (source: ${version.source})`
-  );
+  log.info(`バージョン ${version.version} を保存 (source: ${version.source})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +135,7 @@ export async function listVersions(
     .order("created_at", { ascending: false });
 
   if (error || !data) {
-    console.error("[learning:version] バージョン一覧取得エラー:", error);
+    log.error('バージョン一覧取得エラー', { data: { error: error?.message } });
     return [];
   }
 
@@ -184,10 +181,7 @@ export async function rollbackToVersion(
       .eq("node_id", nodeId);
 
     if (error) {
-      console.error(
-        `[learning:version] ノード ${nodeId} のロールバック失敗:`,
-        error
-      );
+      log.error(`ノード ${nodeId} のロールバック失敗`, { data: { error: error.message } });
     } else {
       restoredCount++;
     }
@@ -208,9 +202,7 @@ export async function rollbackToVersion(
     notes: `ロールバック: ${targetVersion} に復元`,
   });
 
-  console.log(
-    `[learning:version] ロールバック完了 — ${targetVersion} に復元, ${restoredCount} ノード`
-  );
+  log.info(`ロールバック完了 — ${targetVersion} に復元, ${restoredCount} ノード`);
 
   return restoredCount;
 }

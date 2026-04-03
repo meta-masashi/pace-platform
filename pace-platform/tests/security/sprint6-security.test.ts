@@ -173,7 +173,7 @@ describe('Sprint 6 セキュリティ: 禁忌ロジック + Finalize', () => {
 
   it('finalize の RBAC チェックが Gemini 呼び出し前（P1-1）', () => {
     // 早期の finalize 権限チェック
-    const earlyCheck = content.indexOf("if (body.finalize) {\n      const approvalRoles")
+    const earlyCheck = content.indexOf("if (body.finalize) {\n    const approvalRoles")
     const geminiCall = content.indexOf('await callGeminiWithRetry')
     expect(earlyCheck).toBeGreaterThan(-1)
     expect(geminiCall).toBeGreaterThan(-1)

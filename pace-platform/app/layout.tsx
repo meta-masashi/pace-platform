@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ServiceWorkerRegister } from './_components/sw-register';
 import { PwaInstallPrompt } from './_components/pwa-install-prompt';
+import { PaceToaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
   title: {
@@ -53,6 +54,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen font-sans">
         {children}
+        <PaceToaster />
         <ServiceWorkerRegister />
         <PwaInstallPrompt />
       </body>

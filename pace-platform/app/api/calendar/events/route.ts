@@ -15,6 +15,7 @@ import { requireAccess } from '@/lib/billing/plan-gates';
 import { listEvents, classifyEvents, refreshAccessToken } from '@/lib/calendar/google-client';
 import { predictAvailability } from '@/lib/calendar/load-predictor';
 import { encryptToken, decryptToken } from '@/lib/calendar/token-crypto';
+import { withApiHandler, ApiError } from '@/lib/api/handler';
 import type {
   CalendarEventsResponse,
   CalendarErrorResponse,
@@ -26,181 +27,159 @@ import type {
 // GET /api/calendar/events
 // ---------------------------------------------------------------------------
 
-export async function GET(
-  request: Request,
-): Promise<NextResponse<CalendarEventsResponse | CalendarErrorResponse>> {
-  try {
-    const { searchParams } = new URL(request.url);
-    const teamId = searchParams.get('team_id');
+export const GET = withApiHandler(async (request, ctx) => {
+  const { searchParams } = new URL(request.url);
+  const teamId = searchParams.get('team_id');
 
-    if (!teamId) {
-      return NextResponse.json(
-        { success: false, error: 'team_id クエリパラメータは必須です。' },
-        { status: 400 },
-      );
-    }
+  if (!teamId) {
+    throw new ApiError(400, 'team_id クエリパラメータは必須です。');
+  }
 
-    // 認証チェック
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+  // 認証チェック
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { success: false, error: '認証が必要です。' },
-        { status: 401 },
-      );
-    }
+  if (authError || !user) {
+    throw new ApiError(401, '認証が必要です。');
+  }
 
-    // ----- プラン別機能ゲート（Pro+ 必須）-----
-    const { data: staffForGate } = await supabase
-      .from('staff')
-      .select('org_id')
-      .eq('user_id', user.id)
-      .single();
+  // ----- プラン別機能ゲート（Pro+ 必須）-----
+  const { data: staffForGate } = await supabase
+    .from('staff')
+    .select('org_id')
+    .eq('user_id', user.id)
+    .single();
 
-    if (staffForGate?.org_id) {
-      try {
-        await requireAccess(supabase, staffForGate.org_id, 'feature_calendar_sync');
-      } catch (gateErr) {
-        return NextResponse.json(
-          { success: false, error: gateErr instanceof Error ? gateErr.message : 'この機能はご利用いただけません。' },
-          { status: 403 },
-        );
-      }
-    }
-
-    // カレンダー接続情報を取得
-    const { data: connection, error: connError } = await supabase
-      .from('calendar_connections')
-      .select('*')
-      .eq('staff_id', user.id)
-      .eq('provider', 'google')
-      .single();
-
-    if (connError || !connection) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          events: [],
-          predictions: [],
-          syncStatus: 'disconnected' as CalendarSyncStatus,
-        },
-      });
-    }
-
-    // トークンの復号
-    let accessToken: string;
+  if (staffForGate?.org_id) {
     try {
-      accessToken = decryptToken(connection.access_token_encrypted as string);
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'トークンの復号に失敗しました。再接続してください。' },
-        { status: 500 },
-      );
+      await requireAccess(supabase, staffForGate.org_id, 'feature_calendar_sync');
+    } catch (gateErr) {
+      throw new ApiError(403, gateErr instanceof Error ? gateErr.message : 'この機能はご利用いただけません。');
     }
+  }
 
-    // トークンの有効期限チェック & 自動リフレッシュ
-    const tokenExpiry = connection.token_expiry as string | null;
-    const isExpired = tokenExpiry && new Date(tokenExpiry).getTime() < Date.now();
+  // カレンダー接続情報を取得
+  const { data: connection, error: connError } = await supabase
+    .from('calendar_connections')
+    .select('*')
+    .eq('staff_id', user.id)
+    .eq('provider', 'google')
+    .single();
 
-    if (isExpired) {
-      const refreshTokenEncrypted = connection.refresh_token_encrypted as string | null;
-
-      if (!refreshTokenEncrypted) {
-        return NextResponse.json({
-          success: true,
-          data: {
-            events: [],
-            predictions: [],
-            syncStatus: 'expired' as CalendarSyncStatus,
-          },
-        });
-      }
-
-      try {
-        const refreshTokenPlain = decryptToken(refreshTokenEncrypted);
-        const refreshed = await refreshAccessToken(refreshTokenPlain);
-        accessToken = refreshed.accessToken;
-
-        // 更新されたトークンを DB に保存
-        const newExpiry = refreshed.expiryDate
-          ? new Date(refreshed.expiryDate).toISOString()
-          : null;
-
-        await supabase
-          .from('calendar_connections')
-          .update({
-            access_token_encrypted: encryptToken(accessToken),
-            token_expiry: newExpiry,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('staff_id', user.id)
-          .eq('provider', 'google');
-      } catch (refreshErr) {
-        console.error('[calendar/events] トークンリフレッシュエラー:', refreshErr);
-        return NextResponse.json({
-          success: true,
-          data: {
-            events: [],
-            predictions: [],
-            syncStatus: 'expired' as CalendarSyncStatus,
-          },
-        });
-      }
-    }
-
-    // イベント取得期間: 今日 〜 30日後
-    const now = new Date();
-    const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const timeMax = new Date(timeMin);
-    timeMax.setDate(timeMax.getDate() + 30);
-
-    const calendarId = (connection.calendar_id as string) || 'primary';
-
-    // Google Calendar からイベントを取得
-    let rawEvents;
-    try {
-      rawEvents = await listEvents(accessToken, calendarId, timeMin, timeMax);
-    } catch (apiErr) {
-      console.error('[calendar/events] Google Calendar API エラー:', apiErr);
-      return NextResponse.json({
-        success: true,
-        data: {
-          events: [],
-          predictions: [],
-          syncStatus: 'error' as CalendarSyncStatus,
-        },
-      });
-    }
-
-    // イベント分類
-    const classifiedEvents = classifyEvents(rawEvents);
-
-    // 現在のチームメトリクスを取得して予測に使用
-    const teamMetrics = await fetchTeamMetrics(supabase, teamId);
-
-    // 負荷予測
-    const predictions = predictAvailability(classifiedEvents, teamMetrics);
-
+  if (connError || !connection) {
     return NextResponse.json({
       success: true,
       data: {
-        events: classifiedEvents,
-        predictions,
-        syncStatus: 'connected' as CalendarSyncStatus,
+        events: [],
+        predictions: [],
+        syncStatus: 'disconnected' as CalendarSyncStatus,
       },
     });
-  } catch (err) {
-    console.error('[calendar/events] 予期しないエラー:', err);
-    return NextResponse.json(
-      { success: false, error: 'カレンダーイベントの取得中にエラーが発生しました。' },
-      { status: 500 },
-    );
   }
-}
+
+  // トークンの復号
+  let accessToken: string;
+  try {
+    accessToken = decryptToken(connection.access_token_encrypted as string);
+  } catch {
+    throw new ApiError(500, 'トークンの復号に失敗しました。再接続してください。');
+  }
+
+  // トークンの有効期限チェック & 自動リフレッシュ
+  const tokenExpiry = connection.token_expiry as string | null;
+  const isExpired = tokenExpiry && new Date(tokenExpiry).getTime() < Date.now();
+
+  if (isExpired) {
+    const refreshTokenEncrypted = connection.refresh_token_encrypted as string | null;
+
+    if (!refreshTokenEncrypted) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          events: [],
+          predictions: [],
+          syncStatus: 'expired' as CalendarSyncStatus,
+        },
+      });
+    }
+
+    try {
+      const refreshTokenPlain = decryptToken(refreshTokenEncrypted);
+      const refreshed = await refreshAccessToken(refreshTokenPlain);
+      accessToken = refreshed.accessToken;
+
+      // 更新されたトークンを DB に保存
+      const newExpiry = refreshed.expiryDate
+        ? new Date(refreshed.expiryDate).toISOString()
+        : null;
+
+      await supabase
+        .from('calendar_connections')
+        .update({
+          access_token_encrypted: encryptToken(accessToken),
+          token_expiry: newExpiry,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('staff_id', user.id)
+        .eq('provider', 'google');
+    } catch (refreshErr) {
+      ctx.log.error('トークンリフレッシュエラー', { detail: refreshErr });
+      return NextResponse.json({
+        success: true,
+        data: {
+          events: [],
+          predictions: [],
+          syncStatus: 'expired' as CalendarSyncStatus,
+        },
+      });
+    }
+  }
+
+  // イベント取得期間: 今日 〜 30日後
+  const now = new Date();
+  const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const timeMax = new Date(timeMin);
+  timeMax.setDate(timeMax.getDate() + 30);
+
+  const calendarId = (connection.calendar_id as string) || 'primary';
+
+  // Google Calendar からイベントを取得
+  let rawEvents;
+  try {
+    rawEvents = await listEvents(accessToken, calendarId, timeMin, timeMax);
+  } catch (apiErr) {
+    ctx.log.error('Google Calendar API エラー', { detail: apiErr });
+    return NextResponse.json({
+      success: true,
+      data: {
+        events: [],
+        predictions: [],
+        syncStatus: 'error' as CalendarSyncStatus,
+      },
+    });
+  }
+
+  // イベント分類
+  const classifiedEvents = classifyEvents(rawEvents);
+
+  // 現在のチームメトリクスを取得して予測に使用
+  const teamMetrics = await fetchTeamMetrics(supabase, teamId);
+
+  // 負荷予測
+  const predictions = predictAvailability(classifiedEvents, teamMetrics);
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      events: classifiedEvents,
+      predictions,
+      syncStatus: 'connected' as CalendarSyncStatus,
+    },
+  });
+}, { service: 'calendar' });
 
 // ---------------------------------------------------------------------------
 // チームメトリクス取得

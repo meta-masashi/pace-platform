@@ -5,6 +5,9 @@
  * 指数バックオフ付きリトライを提供する汎用ユーティリティ。
  */
 
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('shared');
+
 // ---------------------------------------------------------------------------
 // 型定義
 // ---------------------------------------------------------------------------
@@ -81,7 +84,7 @@ export async function withRetry<T>(
       onRetry?.(attempt, err);
 
       if (attempt < maxRetries) {
-        console.warn(`[retry] attempt ${attempt}/${maxRetries} 失敗:`, err);
+        log.errorFromException(`attempt ${attempt}/${maxRetries} 失敗`, err);
       }
     }
   }
@@ -253,9 +256,7 @@ export function parseWithTextFallback<T>(
 
   // 3. テキストフォールバック: 有用な部分を抽出
   const extracted = extractUsableText(rawText);
-  console.warn(
-    `[retry-handler] JSON パース失敗 — テキストフォールバック使用（${extracted.length}文字）`
-  );
+  log.warn(`JSON パース失敗 — テキストフォールバック使用（${extracted.length}文字）`);
 
   return { parsed: null, rawText: extracted, isFallback: true };
 }

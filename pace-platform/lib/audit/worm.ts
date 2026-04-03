@@ -10,6 +10,8 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('security');
 
 export interface AuditEntryParams {
   orgId: string;
@@ -37,7 +39,7 @@ export async function createAuditEntry(
   _supabase: SupabaseClient,
   entry: AuditEntryParams,
 ): Promise<AuditEntry> {
-  console.info('[audit/worm] stub: createAuditEntry', entry.action, entry.athleteId);
+  log.info('stub: createAuditEntry', { data: { action: entry.action, athleteId: entry.athleteId } });
   return {
     id: `stub-${Date.now()}`,
     created_at: new Date().toISOString(),

@@ -18,6 +18,8 @@
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('gemini');
 import { sanitizeUserInput, detectHarmfulOutput, validateAIOutput, cleanJsonResponse } from "../shared/security-helpers";
 import { checkRateLimit as checkRateLimitV2, logTokenUsage as logTokenUsageV2 } from "./rate-limiter";
 
@@ -147,10 +149,7 @@ export async function callGeminiWithRetry<T>(
       // 出力バリデーション（防壁2）— PII・URL・免責文チェック
       const validation = validateAIOutput(rawText);
       if (validation.warnings.length > 0) {
-        console.warn(
-          `[gemini:client] 出力バリデーション警告 (endpoint=${context?.endpoint}):`,
-          validation.warnings
-        );
+        log.warn(`出力バリデーション警告 (endpoint=${context?.endpoint})`, { data: { warnings: validation.warnings } });
       }
 
       return { result: parser(validation.sanitized), attemptNumber: attempt + 1 };
@@ -159,15 +158,15 @@ export async function callGeminiWithRetry<T>(
 
       // ガードレール違反はリトライしない（プロンプト自体の問題）
       if (err instanceof Error && err.message === "GUARDRAIL_VIOLATION") {
-        console.error(`[gemini:client] ガードレール違反 attempt=${attempt + 1}`);
+        log.error(`ガードレール違反 attempt=${attempt + 1}`);
         break;
       }
 
-      console.warn(`[gemini:client] attempt ${attempt + 1}/${MAX_RETRIES} 失敗:`, err);
+      log.errorFromException(`attempt ${attempt + 1}/${MAX_RETRIES} 失敗`, err);
     }
   }
 
-  console.error("[gemini:client] 全リトライ失敗:", lastError);
+  log.errorFromException('全リトライ失敗', lastError);
   throw new Error("GEMINI_EXHAUSTED");
 }
 

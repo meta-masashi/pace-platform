@@ -18,6 +18,8 @@
  */
 
 import type { Locale } from './config'
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('i18n');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -91,7 +93,7 @@ export function formatDateTime(
   const date = new Date(utcDateString)
 
   if (isNaN(date.getTime())) {
-    console.warn(`[i18n:formatters] 不正な日時文字列: ${utcDateString}`)
+    log.warn(`不正な日時文字列: ${utcDateString}`)
     return '---'
   }
 
@@ -126,7 +128,7 @@ export function formatRelativeTime(
   const now = new Date()
 
   if (isNaN(date.getTime())) {
-    console.warn(`[i18n:formatters] 不正な日時文字列: ${utcDateString}`)
+    log.warn(`不正な日時文字列: ${utcDateString}`)
     return '---'
   }
 
@@ -311,14 +313,14 @@ export function t(
 
   for (const part of parts) {
     if (current === null || typeof current !== 'object') {
-      console.warn(`[i18n:formatters] 翻訳キーが見つかりません: ${key}`)
+      log.warn(`翻訳キーが見つかりません: ${key}`)
       return key
     }
     current = (current as Record<string, unknown>)[part]
   }
 
   if (typeof current !== 'string') {
-    console.warn(`[i18n:formatters] 翻訳キーが文字列ではありません: ${key}`)
+    log.warn(`翻訳キーが文字列ではありません: ${key}`)
     return key
   }
 

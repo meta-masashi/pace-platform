@@ -8,6 +8,8 @@
  */
 
 import Stripe from 'stripe'
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('billing');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { stripe } from './stripe-client'
@@ -43,7 +45,7 @@ async function notifySlack(message: string, level: 'info' | 'warning' | 'error' 
   const webhookUrl = process.env.HACHI_SLACK_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL
 
   if (!webhookUrl) {
-    console.warn('[webhook-handler] HACHI_SLACK_WEBHOOK_URL が未設定のため Slack 通知をスキップします。')
+    log.warn('HACHI_SLACK_WEBHOOK_URL が未設定のため Slack 通知をスキップします')
     return
   }
 
@@ -59,7 +61,7 @@ async function notifySlack(message: string, level: 'info' | 'warning' | 'error' 
     })
   } catch (err) {
     // Slack 通知失敗はログのみ（決済処理をブロックしない）
-    console.error('[webhook-handler] Slack 通知失敗:', err)
+    log.errorFromException('Slack 通知失敗', err)
   }
 }
 
@@ -79,7 +81,7 @@ export async function handleStripeWebhook(
 ): Promise<WebhookHandlerResult> {
   if (!stripe) {
     const msg = 'Stripe が初期化されていません。STRIPE_SECRET_KEY を設定してください。'
-    console.error('[webhook-handler]', msg)
+    log.error(msg)
     return { received: false, error: msg }
   }
 
@@ -98,7 +100,7 @@ export async function handleStripeWebhook(
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
   } catch (err) {
     const msg = `Webhook 署名検証失敗: ${err instanceof Error ? err.message : String(err)}`
-    console.error('[webhook-handler]', msg)
+    log.error(msg)
     return { received: false, error: msg }
   }
 
@@ -118,12 +120,12 @@ export async function handleStripeWebhook(
   if (insertError) {
     if (insertError.code === '23505') {
       // unique_violation: 既に処理済み
-      console.info(`[webhook-handler] 重複イベントをスキップ: ${event.id}`)
+      log.info(`重複イベントをスキップ: ${event.id}`)
       return { received: true, alreadyProcessed: true }
     }
     // その他のDBエラー
     const msg = `stripe_events への記録失敗: ${insertError.message} (event: ${event.id})`
-    console.error('[webhook-handler]', msg)
+    log.error(msg)
     await notifySlack(msg, 'error')
     return { received: false, error: msg }
   }
@@ -155,11 +157,11 @@ export async function handleStripeWebhook(
 
       default:
         // 未処理イベントはスキップ（ログのみ）
-        console.info(`[webhook-handler] 未処理イベントタイプ: ${event.type}`)
+        log.info(`未処理イベントタイプ: ${event.type}`)
     }
   } catch (err) {
     const msg = `イベント処理中にエラーが発生しました (event: ${event.id}, type: ${event.type}): ${err instanceof Error ? err.message : String(err)}`
-    console.error('[webhook-handler]', msg)
+    log.error(msg)
     await notifySlack(msg, 'error')
     return { received: false, error: msg }
   }
@@ -213,7 +215,7 @@ async function handleCheckoutCompleted(
     throw new Error(`subscriptions upsert 失敗: ${error.message}`)
   }
 
-  console.info(`[webhook-handler] サブスクリプション有効化完了: org=${orgId}, plan=${planId}`)
+  log.info(`サブスクリプション有効化完了: org=${orgId}, plan=${planId}`)
   await notifySlack(
     `新規サブスクリプション開始: org_id=${orgId}, plan=${planId}, subscription=${stripeSubscriptionId}`,
     'info'
@@ -251,7 +253,7 @@ async function handlePaymentSucceeded(
     .eq('stripe_customer_id', stripeCustomerId)
     .is('resolved_at', null)
 
-  console.info(`[webhook-handler] 支払い成功記録: customer=${stripeCustomerId}`)
+  log.info(`支払い成功記録: customer=${stripeCustomerId}`)
 }
 
 // ============================================================
@@ -298,10 +300,10 @@ async function handlePaymentFailed(
     )
 
   if (dunningError) {
-    console.warn(`[webhook-handler] Dunning スケジュール作成警告: ${dunningError.message}`)
+    log.warn(`Dunning スケジュール作成警告: ${dunningError.message}`)
   }
 
-  console.warn(`[webhook-handler] 支払い失敗 Dunning 開始: customer=${stripeCustomerId}, attempt=${attemptCount}`)
+  log.warn(`支払い失敗 Dunning 開始: customer=${stripeCustomerId}, attempt=${attemptCount}`)
   await notifySlack(
     `支払い失敗を検出しました: customer=${stripeCustomerId}, 試行回数=${attemptCount}。Dunning プロセスを開始します。`,
     'warning'
@@ -336,7 +338,7 @@ async function handleSubscriptionUpdated(
     throw new Error(`subscription.updated 処理失敗: ${error.message}`)
   }
 
-  console.info(`[webhook-handler] サブスクリプション更新: customer=${stripeCustomerId}, plan=${planId}, status=${subscription.status}`)
+  log.info(`サブスクリプション更新: customer=${stripeCustomerId}, plan=${planId}, status=${subscription.status}`)
 }
 
 // ============================================================
@@ -363,7 +365,7 @@ async function handleSubscriptionDeleted(
     throw new Error(`subscription.deleted 処理失敗: ${error.message}`)
   }
 
-  console.info(`[webhook-handler] サブスクリプション解約完了: customer=${stripeCustomerId}`)
+  log.info(`サブスクリプション解約完了: customer=${stripeCustomerId}`)
   await notifySlack(
     `サブスクリプション解約: customer=${stripeCustomerId}。データは保持されています。`,
     'warning'

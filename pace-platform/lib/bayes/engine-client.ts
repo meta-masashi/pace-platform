@@ -20,6 +20,8 @@ import type {
   InferenceSession,
   AthleteContext,
 } from "./types";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('bayes');
 
 // ---------------------------------------------------------------------------
 // 設定
@@ -101,9 +103,9 @@ async function fetchWithRetry<T>(
 
       // AbortError（タイムアウト）は特別扱い
       if (err instanceof Error && err.name === "AbortError") {
-        console.warn(`[bayes:client] タイムアウト attempt=${attempt + 1}`);
+        log.warn(`タイムアウト attempt=${attempt + 1}`);
       } else {
-        console.warn(`[bayes:client] attempt ${attempt + 1}/${retries} 失敗:`, err);
+        log.warn(`attempt ${attempt + 1}/${retries} 失敗`, { data: { error: err instanceof Error ? err.message : String(err) } });
       }
     }
   }

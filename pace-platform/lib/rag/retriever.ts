@@ -10,6 +10,8 @@
  */
 
 import { embedText } from "./embedding";
+import { createLogger } from '@/lib/observability/logger';
+const log = createLogger('rag');
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -131,7 +133,7 @@ export async function retrieveWithAdaptiveStrategy(
     };
   }
 
-  console.info(`[retriever] Step 1 結果不足(${step1.length}件) → 閾値を緩和`);
+  log.info(`Step 1 結果不足(${step1.length}件) → 閾値を緩和`);
 
   // Step 2: 閾値を下げる
   const step2 = await retrieveSimilarDocuments(queryText, supabase, {
@@ -149,7 +151,7 @@ export async function retrieveWithAdaptiveStrategy(
     };
   }
 
-  console.info(`[retriever] Step 2 結果不足(${step2.length}件) → 件数を増加`);
+  log.info(`Step 2 結果不足(${step2.length}件) → 件数を増加`);
 
   // Step 3: 件数を増やす
   const step3 = await retrieveSimilarDocuments(queryText, supabase, {
@@ -167,7 +169,7 @@ export async function retrieveWithAdaptiveStrategy(
     };
   }
 
-  console.info(`[retriever] Step 3 結果不足(${step3.length}件) → ハイブリッド検索`);
+  log.info(`Step 3 結果不足(${step3.length}件) → ハイブリッド検索`);
 
   // Step 4: ハイブリッド検索（フルテキスト + ベクトル融合）
   const hybridDocs = await hybridSearch(queryText, supabase, step3, category);
@@ -237,7 +239,7 @@ async function hybridSearch(
     // 類似度の降順にソート
     return merged.sort((a, b) => b.similarity - a.similarity).slice(0, 10);
   } catch (err) {
-    console.warn("[retriever] ハイブリッド検索フォールバック失敗:", err);
+    log.errorFromException('ハイブリッド検索フォールバック失敗', err);
     return vectorResults;
   }
 }
