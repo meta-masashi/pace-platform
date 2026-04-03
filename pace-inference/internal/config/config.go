@@ -52,6 +52,22 @@ type PipelineConfig struct {
 	FeatureWeights FeatureWeights            `json:"feature_weights" yaml:"feature_weights"`
 }
 
+// ConfigForSport returns a PipelineConfig customized for the given sport.
+// Falls back to "other" profile if the sport is not recognized.
+// The returned config merges sport-specific overrides onto DefaultConfig().
+func ConfigForSport(sport string) PipelineConfig {
+	profile := GetSportProfile(sport)
+
+	cfg := DefaultConfig()
+	cfg.Version = "v6.2-go"
+	cfg.Thresholds.ACWRRedLine = profile.ACWRRedLine
+	cfg.Thresholds.MonotonyRedLine = profile.MonotonyRedLine
+	cfg.EWMA = profile.EWMA
+	cfg.FeatureWeights = profile.Weights
+	cfg.TissueDefaults = profile.Tissue
+	return cfg
+}
+
 // DefaultConfig returns the production default configuration.
 // All thresholds match the TypeScript config.ts values exactly.
 func DefaultConfig() PipelineConfig {

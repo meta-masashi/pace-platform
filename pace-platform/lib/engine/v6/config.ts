@@ -6,6 +6,7 @@
  */
 
 import type { PipelineConfig, ZScoreStage } from './types';
+import { sportConfigOverrides } from './config/sport-profiles';
 
 // ---------------------------------------------------------------------------
 // パイプラインバージョン
@@ -81,6 +82,30 @@ export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
 };
 
 // ---------------------------------------------------------------------------
+// 競技別設定
+// ---------------------------------------------------------------------------
+
+/**
+ * 競技に応じた PipelineConfig を生成する。
+ * SportProfile の値を DEFAULT_PIPELINE_CONFIG に上書きマージする。
+ *
+ * @param sport - 競技ID（'soccer' | 'baseball' | 'basketball' | 'rugby' | 'other'）
+ * @param overrides - 追加のカスタムオーバーライド（組織固有設定など）
+ * @returns マージ済みの PipelineConfig
+ */
+export function configForSport(
+  sport: string,
+  overrides?: Partial<PipelineConfig>,
+): PipelineConfig {
+  const sportOverrides = sportConfigOverrides(sport);
+  const merged = mergePipelineConfig(sportOverrides);
+  if (overrides) {
+    return mergePipelineConfig(overrides, merged);
+  }
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
 // 段階的 Z-Score 重み付け（Go GraduatedZScoreWeight 準拠）
 // ---------------------------------------------------------------------------
 
@@ -105,43 +130,45 @@ export const Z_SCORE_STAGES: ZScoreStage[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * 部分的なオーバーライドをデフォルト設定にマージする。
+ * 部分的なオーバーライドをベース設定にマージする。
  *
  * @param overrides - 上書きしたい設定値（部分的）
+ * @param base - ベース設定（省略時は DEFAULT_PIPELINE_CONFIG）
  * @returns マージ済みの完全な PipelineConfig
  */
 export function mergePipelineConfig(
   overrides: Partial<PipelineConfig>,
+  base: PipelineConfig = DEFAULT_PIPELINE_CONFIG,
 ): PipelineConfig {
   return {
-    version: overrides.version ?? DEFAULT_PIPELINE_CONFIG.version,
+    version: overrides.version ?? base.version,
     thresholds: {
-      ...DEFAULT_PIPELINE_CONFIG.thresholds,
+      ...base.thresholds,
       ...overrides.thresholds,
     },
     ewma: {
-      ...DEFAULT_PIPELINE_CONFIG.ewma,
+      ...base.ewma,
       ...overrides.ewma,
     },
     preparedness: {
-      ...DEFAULT_PIPELINE_CONFIG.preparedness,
+      ...base.preparedness,
       ...overrides.preparedness,
     },
     tissueDefaults: {
       metabolic: {
-        ...DEFAULT_PIPELINE_CONFIG.tissueDefaults.metabolic,
+        ...base.tissueDefaults.metabolic,
         ...overrides.tissueDefaults?.metabolic,
       },
       structural_soft: {
-        ...DEFAULT_PIPELINE_CONFIG.tissueDefaults.structural_soft,
+        ...base.tissueDefaults.structural_soft,
         ...overrides.tissueDefaults?.structural_soft,
       },
       structural_hard: {
-        ...DEFAULT_PIPELINE_CONFIG.tissueDefaults.structural_hard,
+        ...base.tissueDefaults.structural_hard,
         ...overrides.tissueDefaults?.structural_hard,
       },
       neuromotor: {
-        ...DEFAULT_PIPELINE_CONFIG.tissueDefaults.neuromotor,
+        ...base.tissueDefaults.neuromotor,
         ...overrides.tissueDefaults?.neuromotor,
       },
     },
