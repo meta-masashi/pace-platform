@@ -203,7 +203,7 @@ function buildLoadAnalysis(
     date: m.date as string,
     value: (m.acwr as number) ?? 0,
   }));
-  const currentAcwr = acwrTrend.length > 0 ? acwrTrend[acwrTrend.length - 1].value : 0;
+  const currentAcwr = acwrTrend.length > 0 ? acwrTrend[acwrTrend.length - 1]!.value : 0;
 
   // 急性/慢性負荷（sRPE ベース）
   const last7Srpe = last7.map((m) => (m.srpe as number) ?? 0);
@@ -252,7 +252,7 @@ function buildLoadAnalysis(
     let damage = 0;
     for (let i = 0; i < last28.length; i++) {
       const daysSince = last28.length - 1 - i;
-      const srpe = (last28[i].srpe as number) ?? 0;
+      const srpe = (last28[i]!.srpe as number) ?? 0;
       const normalizedLoad = srpe / 1000; // 正規化
       damage += normalizedLoad * Math.exp(-decayFactor * daysSince);
     }
@@ -267,7 +267,7 @@ function buildLoadAnalysis(
     date: m.date as string,
     value: (m.hp_computed as number) ?? 50,
   }));
-  const currentPrep = prepTrend.length > 0 ? prepTrend[prepTrend.length - 1].value : 50;
+  const currentPrep = prepTrend.length > 0 ? prepTrend[prepTrend.length - 1]!.value : 50;
 
   return {
     acwr: { current: Math.round(currentAcwr * 100) / 100, trend: acwrTrend },
@@ -300,7 +300,7 @@ function buildEfficiencyAnalysis(
     };
   });
   const currentDecoupling = decouplingTrend.length > 0
-    ? decouplingTrend[decouplingTrend.length - 1].value
+    ? decouplingTrend[decouplingTrend.length - 1]!.value
     : 0;
 
   // 主観-客観ギャップ（sRPE vs HP ベース推定負荷）
@@ -331,14 +331,14 @@ function buildEfficiencyAnalysis(
   for (const field of fields) {
     const values = allMetrics.map((m) => (m[field] as number) ?? 5).filter((v) => v > 0);
     if (values.length < 7) {
-      zScores[fieldLabels[field]] = 0;
+      zScores[fieldLabels[field]!] = 0;
       continue;
     }
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     const sd = Math.sqrt(values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length);
-    const latest = values[values.length - 1];
+    const latest = values[values.length - 1]!;
     const z = sd > 0 ? (latest - mean) / sd : 0;
-    zScores[fieldLabels[field]] = Math.round(z * 100) / 100;
+    zScores[fieldLabels[field]!] = Math.round(z * 100) / 100;
     if (z <= -1.5) alertCount++;
   }
 
@@ -361,9 +361,9 @@ function buildEfficiencyAnalysis(
     performanceEfficiency: {
       outputPerHrCost: { current: 0, average: 0, deviationPercent: 0 },
       srpeToLoadRatio: {
-        current: gapData.length > 0 ? 1 + (gapData[gapData.length - 1].gapPercent / 100) : 1,
+        current: gapData.length > 0 ? 1 + (gapData[gapData.length - 1]!.gapPercent / 100) : 1,
         average: 1,
-        deviationPercent: gapData.length > 0 ? gapData[gapData.length - 1].gapPercent : 0,
+        deviationPercent: gapData.length > 0 ? gapData[gapData.length - 1]!.gapPercent : 0,
       },
       recoveryHr: { current: 0, average: 0, deviationPercent: 0 },
       sleepEfficiency: {
@@ -401,8 +401,8 @@ function buildPainAnalysis(
 
     let num = 0, denA = 0, denB = 0;
     for (let i = 0; i < nrsVals.length; i++) {
-      const a = nrsVals[i] - nrsMean;
-      const b = srpeVals[i] - srpeMean;
+      const a = nrsVals[i]! - nrsMean;
+      const b = srpeVals[i]! - srpeMean;
       num += a * b;
       denA += a * a;
       denB += b * b;
@@ -414,7 +414,7 @@ function buildPainAnalysis(
   // パターン検出
   const patterns: string[] = [];
   const recentNrs = nrsTrend.slice(-3).map((d) => d.nrs);
-  if (recentNrs.length >= 3 && recentNrs[0] < recentNrs[1] && recentNrs[1] < recentNrs[2]) {
+  if (recentNrs.length >= 3 && recentNrs[0]! < recentNrs[1]! && recentNrs[1]! < recentNrs[2]!) {
     patterns.push('3日連続NRS上昇傾向');
   }
   if (correlation >= 0.7) {

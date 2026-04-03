@@ -31,6 +31,10 @@ export type Feature =
   | 'feature_custom_bayes'       // カスタムベイズノード
   | 'feature_enterprise'         // エンタープライズ専用機能
   | 'feature_multi_team'         // 複数チーム管理
+  | 'feature_condition_score'    // コンディションスコア表示
+  | 'feature_calendar_sync'      // カレンダー同期
+  | 'feature_ai_weekly_plan'     // AI週間プラン生成
+  | 'feature_risk_avoidance_report' // リスク回避レポート
 
 // プラン別に許可される機能 (MASTER-SPEC v6.2)
 export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
@@ -40,6 +44,7 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_advanced_assessment',
     'feature_conditioning_sim',   // 2シナリオまで（UIで制御）
     'feature_rehab_sim',          // 基本版（UIで制御）
+    'feature_condition_score',
   ],
   pro: [
     'feature_basic_assessment',
@@ -50,6 +55,10 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_ai_soap',
     'feature_rag_pipeline',
     'feature_gemini_ai',
+    'feature_condition_score',
+    'feature_calendar_sync',
+    'feature_ai_weekly_plan',
+    'feature_risk_avoidance_report',
   ],
   pro_cv: [
     'feature_basic_assessment',
@@ -61,6 +70,10 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_cv_analysis',
     'feature_rag_pipeline',
     'feature_gemini_ai',
+    'feature_condition_score',
+    'feature_calendar_sync',
+    'feature_ai_weekly_plan',
+    'feature_risk_avoidance_report',
   ],
   enterprise: [
     'feature_basic_assessment',
@@ -75,6 +88,10 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_custom_bayes',
     'feature_enterprise',
     'feature_multi_team',
+    'feature_condition_score',
+    'feature_calendar_sync',
+    'feature_ai_weekly_plan',
+    'feature_risk_avoidance_report',
   ],
 }
 
@@ -311,10 +328,14 @@ function getUpgradeHint(currentPlan: PlanId, feature: Feature): string {
     feature_advanced_assessment: 'standard',
     feature_conditioning_sim: 'standard',
     feature_rehab_sim: 'standard',
+    feature_condition_score: 'standard',
     feature_ai_soap: 'pro',
     feature_cv_analysis: 'pro_cv',        // Pro + CV Addon 以上
     feature_rag_pipeline: 'pro',
     feature_gemini_ai: 'pro',
+    feature_calendar_sync: 'pro',
+    feature_ai_weekly_plan: 'pro',
+    feature_risk_avoidance_report: 'pro',
     feature_custom_bayes: 'enterprise',
     feature_enterprise: 'enterprise',
     feature_multi_team: 'enterprise',
