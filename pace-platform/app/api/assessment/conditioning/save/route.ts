@@ -210,7 +210,6 @@ export async function POST(request: Request) {
       {
         success: false,
         error: 'アセスメントの保存に失敗しました。',
-        details: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
     );

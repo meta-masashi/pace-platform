@@ -76,6 +76,18 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    if (body.athletes.length > 200) {
+      return NextResponse.json(
+        { success: false, error: '一度に登録できる選手は200名までです。' },
+        { status: 400 },
+      );
+    }
+    if (body.invites && body.invites.length > 50) {
+      return NextResponse.json(
+        { success: false, error: '一度に招待できるスタッフは50名までです。' },
+        { status: 400 },
+      );
+    }
 
     // 1. 組織を作成
     // BUG-11 fix: sport を organizations テーブルに保存する

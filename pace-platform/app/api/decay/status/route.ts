@@ -58,10 +58,11 @@ export const GET = withApiHandler(async (req, ctx) => {
   // 各ノードについて最新の computed_at のレコードのみ取得
   const { data: decayLogs, error: logError } = await supabase
     .from("risk_decay_log")
-    .select("*")
+    .select("id, athlete_id, assessment_id, node_id, current_risk, computed_at, decay_factor")
     .eq("athlete_id", athleteId)
     .gt("current_risk", RISK_THRESHOLD)
-    .order("computed_at", { ascending: false });
+    .order("computed_at", { ascending: false })
+    .limit(500);
 
   if (logError) {
     ctx.log.error("減衰ログ取得エラー", { detail: logError });

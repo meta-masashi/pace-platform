@@ -230,3 +230,97 @@ describe('Sprint 7 セキュリティ: インフラ強化', () => {
     expect(content).toContain('認証サービスが一時的に利用できません');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 7.1: 第2次セキュリティ監査修正の回帰テスト
+// ---------------------------------------------------------------------------
+
+describe('Sprint 7.1: エラー情報漏洩防止', () => {
+  const errorLeakFiles = [
+    'app/api/assessment/rehab/[athleteId]/route.ts',
+    'app/api/assessment/conditioning/[athleteId]/route.ts',
+    'app/api/rehab/exercises/route.ts',
+    'app/api/pipeline/route.ts',
+    'app/api/assessment/conditioning/save/route.ts',
+  ];
+
+  errorLeakFiles.forEach((filePath) => {
+    it(`${filePath} が details: err.message を含まない`, () => {
+      const content = readFile(filePath);
+      expect(content).not.toContain('details: err instanceof Error ? err.message');
+      expect(content).not.toContain('details: err.message');
+    });
+  });
+});
+
+describe('Sprint 7.1: IDOR 防止 — locks', () => {
+  const content = readFile('app/api/locks/route.ts');
+
+  it('GET クエリに org_id フィルタが含まれる', () => {
+    expect(content).toContain('athletes.org_id');
+    expect(content).toContain('staff.org_id');
+  });
+
+  it('DELETE でロック対象選手の org_id を検証している', () => {
+    expect(content).toContain('lockAthlete');
+    expect(content).toContain('このロックを削除する権限がありません');
+  });
+});
+
+describe('Sprint 7.1: 非バインドクエリ防止', () => {
+  it('pipeline/team に .limit() が含まれる', () => {
+    const content = readFile('app/api/pipeline/team/route.ts');
+    expect(content).toContain('.limit(');
+  });
+
+  it('decay/status に .limit() が含まれる', () => {
+    const content = readFile('app/api/decay/status/route.ts');
+    expect(content).toContain('.limit(');
+  });
+
+  it('rehab/programs に .limit() が含まれる', () => {
+    const content = readFile('app/api/rehab/programs/route.ts');
+    expect(content).toContain('.limit(');
+  });
+});
+
+describe('Sprint 7.1: バッチ制限', () => {
+  it('onboarding/setup に選手数上限がある', () => {
+    const content = readFile('app/api/onboarding/setup/route.ts');
+    expect(content).toContain('200');
+    expect(content).toContain('一度に登録できる選手は200名まで');
+  });
+
+  it('onboarding/setup にスタッフ招待数上限がある', () => {
+    const content = readFile('app/api/onboarding/setup/route.ts');
+    expect(content).toContain('一度に招待できるスタッフは50名まで');
+  });
+});
+
+describe('Sprint 7.1: UUID バリデーション', () => {
+  it('rehab/programs が athleteId の UUID バリデーションを行う', () => {
+    const content = readFile('app/api/rehab/programs/route.ts');
+    expect(content).toContain('validateUUID');
+    expect(content).toContain('athleteId の形式が不正');
+  });
+});
+
+describe('Sprint 7.1: SELECT * 排除', () => {
+  it('pipeline/team が SELECT * を使用していない', () => {
+    const content = readFile('app/api/pipeline/team/route.ts');
+    expect(content).not.toContain(".select('*')");
+  });
+
+  it('decay/status が SELECT * を使用していない', () => {
+    const content = readFile('app/api/decay/status/route.ts');
+    expect(content).not.toContain(".select('*')");
+  });
+});
+
+describe('Sprint 7.1: Calendar IDOR 防止', () => {
+  it('calendar/events の fetchTeamMetrics に org_id パラメータがある', () => {
+    const content = readFile('app/api/calendar/events/route.ts');
+    expect(content).toContain('staffOrgId');
+    expect(content).toContain("eq('org_id', staffOrgId)");
+  });
+});

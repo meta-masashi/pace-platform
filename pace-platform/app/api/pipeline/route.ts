@@ -238,7 +238,6 @@ export async function POST(request: Request) {
       {
         success: false,
         error: 'パイプライン実行中にサーバーエラーが発生しました。',
-        details: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
     );

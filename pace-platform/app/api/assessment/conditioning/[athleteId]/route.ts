@@ -181,7 +181,6 @@ export async function GET(
       {
         success: false,
         error: 'アセスメントデータの取得に失敗しました。',
-        details: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
     );

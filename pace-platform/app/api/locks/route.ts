@@ -74,8 +74,10 @@ export const GET = withApiHandler(async (req, ctx) => {
       athletes!inner ( id, name, org_id ),
       staff:set_by_staff_id ( name )
     `)
+    .eq("athletes.org_id", staff.org_id)
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
-    .order("set_at", { ascending: false });
+    .order("set_at", { ascending: false })
+    .limit(500);
 
   if (athleteId) {
     query = query.eq("athlete_id", athleteId);
@@ -276,6 +278,17 @@ export const DELETE = withApiHandler(async (req, ctx) => {
 
   if (lockFetchError || !lock) {
     throw new ApiError(404, "指定されたロックが見つかりません。");
+  }
+
+  // ロックの対象選手が自組織に属するか検証（IDOR防止）
+  const { data: lockAthlete } = await supabase
+    .from("athletes")
+    .select("org_id")
+    .eq("id", lock.athlete_id)
+    .single();
+
+  if (!lockAthlete || (lockAthlete.org_id as string) !== (staff.org_id as string)) {
+    throw new ApiError(403, "このロックを削除する権限がありません。");
   }
 
   // Hard Lock 削除は master のみ

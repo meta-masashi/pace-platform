@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { withApiHandler, ApiError } from "@/lib/api/handler";
+import { validateUUID } from "@/lib/security/input-validator";
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -59,6 +60,11 @@ export const GET = withApiHandler(async (req, ctx) => {
   const athleteId = searchParams.get("athleteId");
   const statusFilter = searchParams.get("status"); // active, completed, on_hold
 
+  // UUID 形式バリデーション
+  if (athleteId && !validateUUID(athleteId)) {
+    throw new ApiError(400, "athleteId の形式が不正です。");
+  }
+
   // ----- プログラム取得 -----
   let query = supabase
     .from("rehab_programs")
@@ -76,7 +82,8 @@ export const GET = withApiHandler(async (req, ctx) => {
       athletes!inner ( id, name, position, number )
     `)
     .eq("org_id", staff.org_id)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(200);
 
   if (athleteId) {
     query = query.eq("athlete_id", athleteId);

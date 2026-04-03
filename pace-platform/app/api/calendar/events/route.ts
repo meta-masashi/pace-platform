@@ -166,7 +166,7 @@ export const GET = withApiHandler(async (request, ctx) => {
   const classifiedEvents = classifyEvents(rawEvents);
 
   // 現在のチームメトリクスを取得して予測に使用
-  const teamMetrics = await fetchTeamMetrics(supabase, teamId);
+  const teamMetrics = await fetchTeamMetrics(supabase, teamId, staffForGate?.org_id as string);
 
   // 負荷予測
   const predictions = predictAvailability(classifiedEvents, teamMetrics);
@@ -192,14 +192,21 @@ export const GET = withApiHandler(async (request, ctx) => {
 async function fetchTeamMetrics(
   supabase: Awaited<ReturnType<typeof createClient>>,
   teamId: string,
+  staffOrgId?: string,
 ): Promise<TeamMetrics> {
   const today = new Date().toISOString().split('T')[0]!;
 
-  // チームの選手一覧を取得
-  const { data: athletes } = await supabase
+  // チームの選手一覧を取得（org_id で IDOR 防止）
+  let athleteQuery = supabase
     .from('athletes')
     .select('id')
     .eq('team_id', teamId);
+
+  if (staffOrgId) {
+    athleteQuery = athleteQuery.eq('org_id', staffOrgId);
+  }
+
+  const { data: athletes } = await athleteQuery;
 
   const athleteIds = (athletes ?? []).map((a) => a.id as string);
 
