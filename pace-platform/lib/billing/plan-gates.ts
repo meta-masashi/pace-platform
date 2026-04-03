@@ -19,8 +19,12 @@ import type { PlanId } from './stripe-client'
 // ============================================================
 
 export type Feature =
-  | 'feature_basic_assessment'   // 基本アセスメント
-  | 'feature_daily_checkin'      // 日次チェックイン
+  | 'feature_basic_assessment'   // 基本アセスメント（負荷集中・疼痛パターン簡易版）
+  | 'feature_daily_checkin'      // 日次チェックイン（トリアージ入力源）
+  | 'feature_advanced_assessment'// 高度アセスメント（運動効率・総合評価タブ）
+  | 'feature_conditioning_sim'   // コンディショニング・シミュレータ
+  | 'feature_rehab_sim'          // リハビリ・シミュレータ
+  | 'feature_ai_soap'            // AI SOAP補助
   | 'feature_cv_analysis'        // CV（コンピュータビジョン）解析 ※pro_cv以上
   | 'feature_rag_pipeline'       // RAG パイプライン
   | 'feature_gemini_ai'          // Gemini AI機能
@@ -28,21 +32,32 @@ export type Feature =
   | 'feature_enterprise'         // エンタープライズ専用機能
   | 'feature_multi_team'         // 複数チーム管理
 
-// プラン別に許可される機能 (MASTER-SPEC v1.1)
+// プラン別に許可される機能 (MASTER-SPEC v6.2)
 export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
   standard: [
     'feature_basic_assessment',
     'feature_daily_checkin',
+    'feature_advanced_assessment',
+    'feature_conditioning_sim',   // 2シナリオまで（UIで制御）
+    'feature_rehab_sim',          // 基本版（UIで制御）
   ],
   pro: [
     'feature_basic_assessment',
     'feature_daily_checkin',
+    'feature_advanced_assessment',
+    'feature_conditioning_sim',   // 無制限
+    'feature_rehab_sim',          // フル機能
+    'feature_ai_soap',
     'feature_rag_pipeline',
     'feature_gemini_ai',
   ],
   pro_cv: [
     'feature_basic_assessment',
     'feature_daily_checkin',
+    'feature_advanced_assessment',
+    'feature_conditioning_sim',
+    'feature_rehab_sim',
+    'feature_ai_soap',
     'feature_cv_analysis',
     'feature_rag_pipeline',
     'feature_gemini_ai',
@@ -50,6 +65,10 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
   enterprise: [
     'feature_basic_assessment',
     'feature_daily_checkin',
+    'feature_advanced_assessment',
+    'feature_conditioning_sim',
+    'feature_rehab_sim',
+    'feature_ai_soap',
     'feature_cv_analysis',
     'feature_rag_pipeline',
     'feature_gemini_ai',
@@ -289,6 +308,10 @@ function getUpgradeHint(currentPlan: PlanId, feature: Feature): string {
   const featureToMinPlan: Record<Feature, PlanId | null> = {
     feature_basic_assessment: null,       // 全プランで利用可能
     feature_daily_checkin: null,
+    feature_advanced_assessment: 'standard',
+    feature_conditioning_sim: 'standard',
+    feature_rehab_sim: 'standard',
+    feature_ai_soap: 'pro',
     feature_cv_analysis: 'pro_cv',        // Pro + CV Addon 以上
     feature_rag_pipeline: 'pro',
     feature_gemini_ai: 'pro',
