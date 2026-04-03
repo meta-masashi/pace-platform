@@ -103,13 +103,39 @@ function validateOrigin(request: NextRequest): boolean {
     }
   }
 
-  // server-to-server リクエスト（Origin/Referer なし）は許可
-  // ブラウザからのリクエストは必ず Origin または Referer を送る
+  // Origin/Referer 両方なし:
+  // NEXT_PUBLIC_SITE_URL 設定済みの場合は厳格化（ブラウザは通常どちらかを送る）
+  // Sec-Fetch-Site ヘッダーがある場合はブラウザリクエストと判断
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite) {
+    // ブラウザからのリクエストで Origin/Referer がない → 拒否
+    console.warn('[middleware] CSRF: ブラウザリクエストに Origin/Referer がありません');
+    return false;
+  }
+
+  // server-to-server リクエスト（Sec-Fetch-Site なし）は許可
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// 廃止 URL ネームスペース（Sprint 7: 410 Gone を返す）
+// ---------------------------------------------------------------------------
+
+const DEPRECATED_PREFIXES = ['/api/telehealth', '/api/insurance'];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // -----------------------------------------------------------------------
+  // 廃止 API ガード — 410 Gone
+  // テレヘルス・保険請求は実装変更指示書（2026-03-25）により廃止
+  // -----------------------------------------------------------------------
+  if (DEPRECATED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.json(
+      { success: false, error: 'このエンドポイントは廃止されました。' },
+      { status: 410 },
+    );
+  }
 
   // Skip auth check for public routes and static assets
   if (
@@ -136,6 +162,25 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'CSRF 検証に失敗しました。リクエスト元が不正です。' },
         { status: 403 },
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Content-Type バリデーション — API POST/PUT/PATCH に application/json を強制
+  // -----------------------------------------------------------------------
+  if (
+    pathname.startsWith('/api/') &&
+    ['POST', 'PUT', 'PATCH'].includes(request.method) &&
+    !API_AUTH_EXEMPT.some((route) => pathname.startsWith(route))
+  ) {
+    const contentType = request.headers.get('content-type') ?? '';
+    const isJson = contentType.includes('application/json');
+    const isMultipart = contentType.includes('multipart/form-data');
+    if (!isJson && !isMultipart) {
+      return NextResponse.json(
+        { success: false, error: 'Content-Type は application/json または multipart/form-data である必要があります。' },
+        { status: 415 },
       );
     }
   }

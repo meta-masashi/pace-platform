@@ -25,6 +25,26 @@ interface AthleteHomeData {
     fatigueTrend: number[];
     insight: string;
     latestDate: string;
+    trendDirection?: 'improving' | 'stable' | 'declining';
+    /** 直近14日分のトレンドデータ（チャート用） */
+    trendData?: Array<{
+      date: string;
+      conditioning_score: number | null;
+      fitness_ewma: number | null;
+      fatigue_ewma: number | null;
+      acwr: number | null;
+      srpe: number | null;
+    }>;
+    /** 直近7日分のフィードデータ */
+    feedEntries?: Array<{
+      date: string;
+      conditioningScore: number | null;
+      fitnessEwma: number | null;
+      fatigueEwma: number | null;
+      acwr: number | null;
+      sleepScore: number | null;
+      insight?: string;
+    }>;
   };
   validDataDays: number;
 }

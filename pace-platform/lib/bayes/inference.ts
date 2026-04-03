@@ -596,8 +596,9 @@ export function calculatePosteriorWithDAG(
 
     // ノードの生の陽性尤度比を取得
     // lr_yes_sr（κ補正済み）が存在しない場合は lr_yes にフォールバック
-    const lrRaw = (node as unknown as Record<string, unknown>)["lr_yes_sr"] !== undefined
-      ? (node as unknown as Record<string, unknown>)["lr_yes_sr"] as number
+    const nodeRecord = node as unknown as Record<string, unknown>;
+    const lrRaw = nodeRecord["lr_yes_sr"] !== undefined
+      ? Number(nodeRecord["lr_yes_sr"])
       : node.lr_yes;
 
     // LR が 1.0（情報なし）の場合はスキップ（乗算しても変化なし）

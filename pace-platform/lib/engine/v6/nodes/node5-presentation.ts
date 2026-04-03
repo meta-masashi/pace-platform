@@ -29,7 +29,6 @@ import type {
   NodeResult,
   PipelineConfig,
   PipelineOutput,
-  TrendNotice,
 } from '../types';
 import { PIPELINE_VERSION } from '../config';
 
@@ -192,10 +191,6 @@ function generateNLGSummary(
   }
 
   lines.push('---');
-
-  // トレンド通知は情報提供のみ（判定色は変更しない）
-  // NLG テキストにインラインで表示
-
   lines.push(LEGAL_DISCLAIMER);
 
   return lines.join('\n');
@@ -243,8 +238,6 @@ export interface PresentationInput {
   dataQuality: DataQualityReport;
   /** クリーニング済み入力データ */
   cleanedInput: DailyInput;
-  /** トレンド通知（情報提供のみ） */
-  trendNotices?: TrendNotice[];
   /** 各ノードの実行結果サマリー */
   nodeResults: Record<
     NodeId,
@@ -291,7 +284,6 @@ export const node5Presentation: NodeExecutor<
       featureVector: input.featureVector,
       inference: input.inference,
       dataQuality: input.dataQuality,
-      ...(input.trendNotices ? { trendNotices: input.trendNotices } : {}),
       pipelineVersion: PIPELINE_VERSION,
     };
 

@@ -179,7 +179,7 @@ ${sessionConstraints ? `=== S&C セッション制約 ===\n${sessionConstraints}
 // ヘルパー
 // ---------------------------------------------------------------------------
 
-function buildTeamConditionSummary(athletes: AthleteConditionSummary[]): string {
+export function buildTeamConditionSummary(athletes: AthleteConditionSummary[]): string {
   const lines: string[] = [];
 
   const hardLocked = athletes.filter((a) => a.hard_lock_active);

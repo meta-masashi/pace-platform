@@ -27,7 +27,7 @@ export { cleanJsonResponse };
 // モデル設定
 // ---------------------------------------------------------------------------
 
-const MODEL_ID = "gemini-2.0-flash";
+const MODEL_ID = "gemini-2.5-pro";
 const MAX_RETRIES = 3;
 
 // シングルトンインスタンス

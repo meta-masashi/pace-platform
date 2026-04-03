@@ -266,6 +266,12 @@ export interface FeatureVector {
   zScores: Record<string, number>;
   /** 段階的 Z-Score 重み（0.0-1.0、Go GraduatedZScoreWeight 準拠） */
   zScoreStageWeight?: number;
+  /**
+   * 直近3日間のウェルネス連続悪化カウント（日数）。
+   * 3日連続で1つ以上の主観指標が悪化し続けた場合に 3 となる。
+   * P3 慢性不適応判定に使用（Saw 2016 Level 2a）。
+   */
+  consecutiveWellnessDeclineDays?: number;
   /** EKF デカップリング指標 */
   decouplingScore?: number;
   /** 構造的脆弱性 Φ_structural */

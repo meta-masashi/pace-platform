@@ -3,12 +3,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { MenuCard } from './menu-card';
+import { TrainingChat } from './training-chat';
+import { RehabChat } from './rehab-chat';
+import { PlanGateOverlay } from '@/app/_components/plan-gate-overlay';
 
 // ---------------------------------------------------------------------------
 // 型定義
 // ---------------------------------------------------------------------------
 
 interface Team {
+  id: string;
+  name: string;
+}
+
+interface Athlete {
   id: string;
   name: string;
 }
@@ -51,6 +59,8 @@ interface TrainingMenu {
   approved_at: string | null;
   distributed_at: string | null;
 }
+
+type TabId = 'team-menu' | 'chat' | 'rehab';
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
   strength: '筋力',
@@ -115,10 +125,17 @@ export function TrainingMenuContent() {
   const [generating, setGenerating] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>('team-menu');
+  const [isStandard, setIsStandard] = useState(false);
+  const [trainingPeriod, setTrainingPeriod] = useState<'pre_season' | 'in_season' | 'post_season' | 'off_season'>('in_season');
+
+  // リハビリチャット用
+  const [athletes, setAthletes] = useState<Athlete[]>([]);
+  const [selectedAthleteId, setSelectedAthleteId] = useState('');
 
   const weekStart = getWeekStart(weekOffset);
 
-  // チーム一覧取得
+  // チーム一覧取得 + プランチェック
   useEffect(() => {
     async function fetchTeams() {
       try {
@@ -130,6 +147,13 @@ export function TrainingMenuContent() {
             setSelectedTeamId(data.teams[0].id);
           }
         }
+        // プラン情報取得
+        const dashRes = await fetch('/api/team/dashboard');
+        if (dashRes.ok) {
+          const dashData = await dashRes.json();
+          const planId = dashData.data?.planId ?? 'standard';
+          setIsStandard(planId === 'standard');
+        }
       } catch (err) { void err; // silently handled
         // silent
       } finally {
@@ -139,6 +163,21 @@ export function TrainingMenuContent() {
     fetchTeams();
     // eslint-disable-next-line -- initial fetch only
   }, []);
+
+  // 選手一覧取得（リハビリチャット用）
+  useEffect(() => {
+    if (!selectedTeamId) return;
+    async function fetchAthletes() {
+      try {
+        const res = await fetch(`/api/team/athletes?teamId=${selectedTeamId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setAthletes(data.athletes ?? []);
+        }
+      } catch { /* silent */ }
+    }
+    fetchAthletes();
+  }, [selectedTeamId]);
 
   // メニュー取得
   const fetchMenu = useCallback(async () => {
@@ -277,6 +316,9 @@ export function TrainingMenuContent() {
   // レンダリング
   // ---------------------------------------------------------------------------
 
+  const selectedTeamName = teams.find((t) => t.id === selectedTeamId)?.name ?? '';
+  const selectedAthleteName = athletes.find((a) => a.id === selectedAthleteId)?.name ?? '';
+
   return (
     <div>
       {/* ヘッダー */}
@@ -301,6 +343,18 @@ export function TrainingMenuContent() {
               ))}
             </select>
           )}
+
+          {/* トレーニング期間セレクター */}
+          <select
+            value={trainingPeriod}
+            onChange={(e) => setTrainingPeriod(e.target.value as typeof trainingPeriod)}
+            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="pre_season">プレシーズン</option>
+            <option value="in_season">インシーズン</option>
+            <option value="post_season">ポストシーズン</option>
+            <option value="off_season">オフシーズン</option>
+          </select>
 
           {/* 週セレクター */}
           <div className="flex items-center gap-1">
@@ -334,6 +388,88 @@ export function TrainingMenuContent() {
         </div>
       </div>
 
+      {/* タブ */}
+      <div className="mb-4 flex gap-1 rounded-lg border border-border bg-muted/30 p-1">
+        {([
+          { id: 'team-menu' as TabId, label: 'チームメニュー' },
+          { id: 'chat' as TabId, label: 'AI チャット' },
+          { id: 'rehab' as TabId, label: 'リハビリチャット' },
+        ] as const).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === tab.id
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* AI チャットタブ */}
+      {activeTab === 'chat' && (
+        selectedTeamId ? (
+          <TrainingChat
+            teamId={selectedTeamId}
+            teamName={selectedTeamName}
+            weekStartDate={weekStart}
+            trainingPeriod={trainingPeriod}
+            onMenuFinalized={() => {
+              setActiveTab('team-menu');
+              fetchMenu();
+            }}
+          />
+        ) : (
+          <div className="rounded-lg border border-border bg-card p-12 text-center">
+            <p className="text-muted-foreground">チームを選択してください。</p>
+          </div>
+        )
+      )}
+
+      {/* リハビリチャットタブ（Pro+ 専用）*/}
+      {activeTab === 'rehab' && (
+        <PlanGateOverlay gated={isStandard} featureName="リハビリチャット">
+          <div>
+            {/* 選手セレクター */}
+            <div className="mb-4">
+              <select
+                value={selectedAthleteId}
+                onChange={(e) => setSelectedAthleteId(e.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">選手を選択</option>
+                {athletes.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedAthleteId ? (
+              <RehabChat
+                key={selectedAthleteId}
+                athleteId={selectedAthleteId}
+                athleteName={selectedAthleteName}
+                onMenuFinalized={() => {
+                  // リハビリメニュー確定後の処理
+                }}
+              />
+            ) : (
+              <div className="rounded-lg border border-border bg-card p-12 text-center">
+                <p className="text-muted-foreground">選手を選択してください。</p>
+              </div>
+            )}
+          </div>
+        </PlanGateOverlay>
+      )}
+
+      {/* チームメニュータブ */}
+      {activeTab === 'team-menu' && (<>
       {/* エラー表示 */}
       {error && (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -496,63 +632,66 @@ export function TrainingMenuContent() {
             ))}
           </div>
 
-          {/* 個別調整 */}
+          {/* 個別調整（Pro+ 専用） */}
           {menu.individual_adjustments &&
             menu.individual_adjustments.length > 0 && (
-              <div className="mt-6">
-                <h3 className="mb-3 text-lg font-semibold">個別調整</h3>
-                <div className="space-y-3">
-                  {menu.individual_adjustments.map((adj) => (
-                    <div
-                      key={adj.athlete_id}
-                      className="rounded-lg border border-amber-200 bg-amber-50/30 p-4"
-                    >
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="font-medium">
-                          {adj.athlete_name}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          — {adj.reason}
-                        </span>
-                      </div>
-
-                      {adj.modifications.length > 0 && (
-                        <div className="mb-1">
-                          <span className="text-xs font-medium text-amber-700">
-                            修正:
+              <PlanGateOverlay gated={isStandard} featureName="個別選手調整">
+                <div className="mt-6">
+                  <h3 className="mb-3 text-lg font-semibold">個別調整</h3>
+                  <div className="space-y-3">
+                    {menu.individual_adjustments.map((adj) => (
+                      <div
+                        key={adj.athlete_id}
+                        className="rounded-lg border border-amber-200 bg-amber-50/30 p-4"
+                      >
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="font-medium">
+                            {adj.athlete_name}
                           </span>
-                          <ul className="ml-4 list-disc text-xs text-amber-700">
-                            {adj.modifications.map((mod, i) => (
-                              <li key={i}>{mod}</li>
-                            ))}
-                          </ul>
+                          <span className="text-sm text-muted-foreground">
+                            — {adj.reason}
+                          </span>
                         </div>
-                      )}
 
-                      {adj.excluded_exercises.length > 0 && (
-                        <div>
-                          <span className="text-xs font-medium text-red-600">
-                            除外エクササイズ:
-                          </span>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {adj.excluded_exercises.map((ex, i) => (
-                              <span
-                                key={i}
-                                className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-600"
-                              >
-                                {ex}
-                              </span>
-                            ))}
+                        {adj.modifications.length > 0 && (
+                          <div className="mb-1">
+                            <span className="text-xs font-medium text-amber-700">
+                              修正:
+                            </span>
+                            <ul className="ml-4 list-disc text-xs text-amber-700">
+                              {adj.modifications.map((mod, i) => (
+                                <li key={i}>{mod}</li>
+                              ))}
+                            </ul>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        )}
+
+                        {adj.excluded_exercises.length > 0 && (
+                          <div>
+                            <span className="text-xs font-medium text-red-600">
+                              除外エクササイズ:
+                            </span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {adj.excluded_exercises.map((ex, i) => (
+                                <span
+                                  key={i}
+                                  className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-600"
+                                >
+                                  {ex}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </PlanGateOverlay>
             )}
         </div>
       )}
+      </>)}
     </div>
   );
 }

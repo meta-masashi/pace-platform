@@ -1,8 +1,10 @@
 'use client';
 
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { KpiCard } from './kpi-card';
+import { PlanGateOverlay } from '@/app/_components/plan-gate-overlay';
+import { RoiReport } from './roi-report';
 import { BioOverview, type BioOverviewData } from './bio-overview';
 import { AlertActionHub } from './alert-action-hub';
 import { AlertCardApproval, type AlertCardData } from './alert-card-approval';
@@ -10,7 +12,7 @@ import { KineticHeatmap } from './kinetic-heatmap';
 import { DecouplingIndicator } from './decoupling-indicator';
 import { WhatIfSimulator } from './what-if-simulator';
 import { EvidenceVault } from './evidence-vault';
-import type { AlertItem, RiskPreventionReport } from './alert-action-hub';
+import type { AlertItem, RiskPreventionReport, ConditioningAlert } from './alert-action-hub';
 import type { AcwrDataPoint } from './acwr-trend-chart';
 import type { ConditioningDataPoint } from './conditioning-trend-chart';
 import type { ClassifiedEvent, LoadPrediction, CalendarSyncStatus } from '@/lib/calendar/types';
@@ -18,6 +20,10 @@ import type { ChainReaction } from './kinetic-heatmap';
 import type { InnovationPoint } from './decoupling-indicator';
 import type { SimulationParams, SimulationResult } from './what-if-simulator';
 import type { InferenceTraceLog } from '@/lib/engine/v6/types';
+import { TeamConditioningChart } from './team-conditioning-chart';
+import type { TeamTrendDataPoint } from './team-conditioning-chart';
+import { ScoreBucketBar } from './score-bucket-bar';
+import type { TeamConditioningResult } from '@/lib/conditioning/team-score';
 
 // Dynamic imports for Recharts components (SSR disabled)
 const AcwrTrendChart = dynamic(
@@ -66,13 +72,27 @@ const CalendarOverlayChart = dynamic(
 // Types
 // ---------------------------------------------------------------------------
 
+interface KpiMeta {
+  criticalSparkline: number[];
+  availabilitySparkline: number[];
+  conditioningSparkline: number[];
+  watchlistSparkline: number[];
+  peakingSparkline: number[];
+  dod: { critical: number; availability: number; conditioning: number; watchlist: number; peaking: number };
+  wow: { critical: number; availability: number; conditioning: number; watchlist: number; peaking: number };
+}
+
 interface DashboardData {
   kpi: {
     criticalAlerts: number;
     availability: string;
     conditioningScore: number;
     watchlistCount: number;
+    peakingRate: number;
   };
+  kpiMeta: KpiMeta;
+  orgId: string;
+  planId: string;
   acwrTrend: AcwrDataPoint[];
   conditioningTrend: ConditioningDataPoint[];
   alerts: AlertItem[];
@@ -134,6 +154,10 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
   const [v6Data, setV6Data] = useState<V6TeamData | null>(null);
   const [v6Loading, setV6Loading] = useState(false);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
+
+  // Team conditioning state (Sprint 7)
+  const [teamConditioning, setTeamConditioning] = useState<TeamConditioningResult | null>(null);
+  const [teamConditioningLoading, setTeamConditioningLoading] = useState(false);
 
   useEffect(() => {
     if (!teamId) {
@@ -282,6 +306,39 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
     };
   }, [teamId]);
 
+  // Fetch team conditioning data (Sprint 7)
+  useEffect(() => {
+    if (!teamId) {
+      setTeamConditioning(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchTeamConditioning() {
+      setTeamConditioningLoading(true);
+      try {
+        const res = await fetch(
+          `/api/conditioning/team/${encodeURIComponent(teamId!)}`,
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json.success) {
+          setTeamConditioning(json.data ?? null);
+        }
+      } catch (err) { void err;
+        console.warn('[dashboard] チームコンディショニングデータの取得に失敗しました');
+      } finally {
+        if (!cancelled) setTeamConditioningLoading(false);
+      }
+    }
+
+    fetchTeamConditioning();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId]);
+
   /** Google Calendar 接続を開始する */
   const handleConnectCalendar = useCallback(async () => {
     setConnectingCalendar(true);
@@ -394,6 +451,33 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
     }
   }, [v6Data, selectedAthleteId]);
 
+  // Derive conditioning-based alerts from team conditioning data (Sprint 7 D5)
+  const conditioningAlerts = useMemo<ConditioningAlert[]>(() => {
+    if (!teamConditioning?.athletes) return [];
+    const alerts: ConditioningAlert[] = [];
+    for (const athlete of teamConditioning.athletes) {
+      // Recovery zone: score < 40
+      if (athlete.conditioningScore < 40) {
+        alerts.push({
+          athleteId: athlete.athleteId,
+          athleteName: athlete.name,
+          type: 'recovery_zone',
+          conditioningScore: athlete.conditioningScore,
+        });
+      }
+      // ACWR danger zone: > 1.5 or < 0.5
+      if (athlete.acwr > 1.5 || athlete.acwr < 0.5) {
+        alerts.push({
+          athleteId: athlete.athleteId,
+          athleteName: athlete.name,
+          type: 'acwr_danger',
+          acwr: athlete.acwr,
+        });
+      }
+    }
+    return alerts;
+  }, [teamConditioning]);
+
   // No team selected
   if (!teamId) {
     return (
@@ -420,6 +504,9 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
       </div>
     );
   }
+
+  // プラン判定（Standard プランかどうか）
+  const isStandard = data?.planId === 'standard';
 
   // No data
   if (!data) {
@@ -460,41 +547,113 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
         />
       </div>
 
-      {/* KPI Row (4 cards) */}
-      <div className="kpi-row-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* KPI Row (4 cards + Pro-gated Team Peaking) */}
+      <div className="kpi-row grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5">
         <KpiCard
           label="Critical アラート"
           value={data.kpi.criticalAlerts}
           color="red"
           subtext="要介入"
+          sparklineData={data.kpiMeta?.criticalSparkline}
+          dodDelta={data.kpiMeta?.dod.critical}
+          wowDelta={data.kpiMeta?.wow.critical}
         />
         <KpiCard
           label="プレー可能率"
           value={data.kpi.availability}
           color="default"
           subtext="Availability"
+          sparklineData={data.kpiMeta?.availabilitySparkline}
+          dodDelta={data.kpiMeta?.dod.availability}
+          wowDelta={data.kpiMeta?.wow.availability}
         />
         <KpiCard
           label="コンディション・スコア"
           value={data.kpi.conditioningScore}
           color="green"
-          subtext="Team Peaking (0-100)"
+          subtext="チーム平均 (0-100)"
+          sparklineData={data.kpiMeta?.conditioningSparkline}
+          dodDelta={data.kpiMeta?.dod.conditioning}
+          wowDelta={data.kpiMeta?.wow.conditioning}
         />
         <KpiCard
           label="Watchlist（隠れリスク）"
           value={data.kpi.watchlistCount}
           color="amber"
           subtext="主観-客観乖離"
+          sparklineData={data.kpiMeta?.watchlistSparkline}
+          dodDelta={data.kpiMeta?.dod.watchlist}
+          wowDelta={data.kpiMeta?.wow.watchlist}
         />
+        {/* Team Peaking — Pro+ 専用 */}
+        <PlanGateOverlay gated={isStandard} featureName="Team Peaking">
+          <KpiCard
+            label="Team Peaking"
+            value={`${data.kpi.peakingRate}%`}
+            color="green"
+            subtext="Readiness ≥ 80%"
+            sparklineData={data.kpiMeta?.peakingSparkline}
+            dodDelta={data.kpiMeta?.dod.peaking}
+            wowDelta={data.kpiMeta?.wow.peaking}
+          />
+        </PlanGateOverlay>
       </div>
 
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <AcwrTrendChart data={data.acwrTrend} />
+        <PlanGateOverlay gated={isStandard} featureName="ACWR トレンド分析">
+          <AcwrTrendChart data={data.acwrTrend} />
+        </PlanGateOverlay>
         <ConditioningTrendChart data={data.conditioningTrend} />
       </div>
 
-      {/* Calendar Overlay */}
+      {/* Team Conditioning (Sprint 7) */}
+      {teamConditioning && (
+        <div className="space-y-4">
+          <ScoreBucketBar
+            optimal={teamConditioning.scoreBuckets.optimal}
+            caution={teamConditioning.scoreBuckets.caution}
+            recovery={teamConditioning.scoreBuckets.recovery}
+            noData={teamConditioning.scoreBuckets.noData}
+            athleteNames={{
+              optimal: teamConditioning.athletes
+                .filter((a) => a.conditioningScore >= 70)
+                .map((a) => a.name),
+              caution: teamConditioning.athletes
+                .filter((a) => a.conditioningScore >= 40 && a.conditioningScore < 70)
+                .map((a) => a.name),
+              recovery: teamConditioning.athletes
+                .filter((a) => a.conditioningScore < 40 && a.dataCompleteness > 0)
+                .map((a) => a.name),
+              noData: teamConditioning.athletes
+                .filter((a) => a.dataCompleteness === 0)
+                .map((a) => a.name),
+            }}
+          />
+          <TeamConditioningChart
+            data={[
+              {
+                date: teamConditioning.date,
+                teamScore: teamConditioning.teamScore,
+                optimalCount: teamConditioning.scoreBuckets.optimal,
+                cautionCount: teamConditioning.scoreBuckets.caution,
+                recoveryCount: teamConditioning.scoreBuckets.recovery,
+              },
+            ]}
+          />
+        </div>
+      )}
+      {teamConditioningLoading && (
+        <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
+      )}
+
+      {/* ROI Report — Pro+ 専用 */}
+      <PlanGateOverlay gated={isStandard} featureName="ROI レポート">
+        <RoiReport teamId={teamId!} />
+      </PlanGateOverlay>
+
+      {/* Calendar Overlay — Pro+ 専用 */}
+      <PlanGateOverlay gated={isStandard} featureName="カレンダーオーバーレイ">
       <CalendarSection
         calendarStatus={calendarStatus}
         calendarLoading={calendarLoading}
@@ -503,9 +662,10 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
         connectingCalendar={connectingCalendar}
         onConnectCalendar={handleConnectCalendar}
       />
+      </PlanGateOverlay>
 
       {/* Alert Action Hub */}
-      <AlertActionHub alerts={data.alerts} riskReports={data.riskReports} />
+      <AlertActionHub alerts={data.alerts} riskReports={data.riskReports} conditioningAlerts={conditioningAlerts} />
 
       {/* Bio-War Room removed from dashboard — use athlete detail page instead */}
     </div>

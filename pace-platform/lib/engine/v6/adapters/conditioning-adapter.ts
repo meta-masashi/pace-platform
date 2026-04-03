@@ -56,7 +56,15 @@ export function adaptEWMA(
   history: DailyInput[],
   config: PipelineConfig,
 ): EWMAResult {
-  const loads = history.map((d) => d.sessionLoad);
+  // GPS 外部負荷統合（Level 2b: Hickey 2021, Matas-Bustos 2025）
+  // GPS データが存在する場合: combined_load = sRPE * 0.6 + gpsPlayerLoad * 0.4
+  // GPS データが存在しない場合: sessionLoad（sRPE × duration）のみ使用
+  const loads = history.map((d) => {
+    if (d.gpsLoad?.playerLoad != null && d.gpsLoad.playerLoad > 0) {
+      return d.sessionLoad * 0.6 + d.gpsLoad.playerLoad * 0.4;
+    }
+    return d.sessionLoad;
+  });
 
   if (loads.length === 0) {
     return { acuteEWMA: 0, chronicEWMA: 0 };

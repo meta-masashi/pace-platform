@@ -23,11 +23,9 @@ import type {
   NodeResult,
   PipelineConfig,
   TissueCategory,
-  ZScoreStage,
 } from '../types';
 import type { CleaningOutput } from './node1-cleaning';
 import { adaptACWR } from '../adapters/conditioning-adapter';
-import { Z_SCORE_STAGES } from '../config';
 // ODE・EKF は Level 5 エビデンスのため排除（REMEDIATION-PLAN-v2）
 // import { callODEEngine, callEKFEngine } from '../gateway';
 
@@ -130,48 +128,14 @@ function calculatePreparedness(
 }
 
 // ---------------------------------------------------------------------------
-// 段階的 Z-Score 重み付け（Go GraduatedZScoreWeight 準拠）
-// ---------------------------------------------------------------------------
-
-/**
- * データ蓄積日数に応じた段階的 Z-Score 重みを返す。
- *
- * Go エンジン `GraduatedZScoreWeight()` と同一ロジック:
- *   Day  0-13: 0.0  (Z-Score 未使用)
- *   Day 14-21: 0.5  (学習初期)
- *   Day 22-27: 0.75 (学習後期)
- *   Day 28+  : 1.0  (完全モード)
- *
- * @param validDataDays - データ蓄積日数
- * @param stages - 段階設定（デフォルト: Z_SCORE_STAGES）
- * @returns 0.0〜1.0 の重み
- */
-export function getZScoreStageWeight(
-  validDataDays: number,
-  stages: ZScoreStage[] = Z_SCORE_STAGES,
-): number {
-  for (const stage of stages) {
-    if (validDataDays >= stage.minDays && validDataDays <= stage.maxDays) {
-      return stage.weight;
-    }
-  }
-  // フォールバック: 最後のステージの重み（通常到達しない）
-  return stages.length > 0 ? stages[stages.length - 1]!.weight : 0;
-}
-
-// ---------------------------------------------------------------------------
 // Z-Score 計算
 // ---------------------------------------------------------------------------
 
 /**
  * 主観スコアの Z-Score を 28 日履歴から計算する。
  *
- * Z = (today - μ_28d) / σ_28d × stageWeight
- *
- * Go エンジンと同様に段階的重み付けを適用:
- *   Day 14-21: rawZ × 0.5
- *   Day 22-27: rawZ × 0.75
- *   Day 28+  : rawZ × 1.0
+ * Z = (today - μ_28d) / σ_28d
+ * データ蓄積日数が 14 日未満の場合は null Z-Score を返す。
  *
  * @param today - 当日の主観スコア
  * @param history - 日次入力データの履歴（古い順）
@@ -185,9 +149,8 @@ function calculateZScores(
 ): Record<string, number> {
   const zScores: Record<string, number> = {};
 
-  // 段階的重み付け: weight=0 ならスキップ
-  const stageWeight = getZScoreStageWeight(validDataDays);
-  if (stageWeight === 0) {
+  // データ蓄積が不十分な場合は空マップを返す
+  if (validDataDays < Z_SCORE_MIN_DAYS) {
     return zScores;
   }
 
@@ -210,13 +173,12 @@ function calculateZScores(
     const sigma = Math.sqrt(variance);
 
     if (sigma < MONOTONY_SIGMA_EPSILON) {
+      // 分散がほぼ 0 の場合、Z-Score は 0（変化なし）
       zScores[key] = 0;
       continue;
     }
 
-    // rawZ に段階的重みを適用（Go 準拠）
-    const rawZ = (today[key] - mean) / sigma;
-    zScores[key] = rawZ * stageWeight;
+    zScores[key] = (today[key] - mean) / sigma;
   }
 
   return zScores;
@@ -252,6 +214,61 @@ function getDefaultTissueDamage(): Record<TissueCategory, number> {
 // [REMOVED] Φ_structural — Level 5（FEMベース、ヒト in vivo データなし）
 // CV-ENGINE-REMEDIATION-SOCCER-EVIDENCE-BASED.md: 排除指定
 // 代替: 傷害歴ベースのリスク乗数（context.riskMultipliers）で対応
+
+// ---------------------------------------------------------------------------
+// 3日連続ウェルネス悪化検出（Saw 2016 Level 2a）
+// ---------------------------------------------------------------------------
+
+/**
+ * 直近3日間のウェルネスデータが連続で悪化しているかを検出する。
+ *
+ * 判定基準: 各日のウェルネス平均値が前日より低下し続けている日数を返す。
+ * 3日連続で悪化が続いていれば 3 を返す。
+ *
+ * エビデンス: Saw (2016) Level 2a — 主観指標の持続的悪化が
+ * オーバートレーニング症候群の兆候として有効。
+ *
+ * @param history - 日次入力データの履歴（古い順、当日含む）
+ * @returns 連続悪化日数（0-3）
+ */
+function calculateConsecutiveWellnessDeclineDays(
+  history: DailyInput[],
+): number {
+  if (history.length < 2) return 0;
+
+  // 直近4日分（3日間の変化を見るため4日必要）
+  const recent = history.slice(-4);
+  if (recent.length < 2) return 0;
+
+  // 各日のウェルネス平均を算出（sleepQuality, mood は高い方が良い → 反転不要、
+  // fatigue, muscleSoreness, stressLevel, painNRS は高い方が悪い → 反転）
+  function wellnessAvg(d: DailyInput): number {
+    const s = d.subjectiveScores;
+    // 統一スケール: 高い方が良い状態
+    return (
+      s.sleepQuality +
+      (10 - s.fatigue) +
+      s.mood +
+      (10 - s.muscleSoreness) +
+      (10 - s.stressLevel) +
+      (10 - s.painNRS)
+    ) / 6;
+  }
+
+  let consecutiveDays = 0;
+  for (let i = recent.length - 1; i >= 1; i--) {
+    const todayAvg = wellnessAvg(recent[i]!);
+    const yesterdayAvg = wellnessAvg(recent[i - 1]!);
+    if (todayAvg < yesterdayAvg - 0.1) {
+      // 0.1 は浮動小数点誤差を避けるためのε
+      consecutiveDays++;
+    } else {
+      break;
+    }
+  }
+
+  return Math.min(consecutiveDays, 3);
+}
 
 // ---------------------------------------------------------------------------
 // Node 2 本体
@@ -294,27 +311,16 @@ export const node2FeatureEngineering: NodeExecutor<
     // ----- Step 2: 単調性指標 -----
     const monotonyIndex = calculateMonotonyIndex(fullHistory);
 
-    // ----- Step 3: Z-Score 計算（段階的重み付け適用） -----
-    const zScoreStageWeight = getZScoreStageWeight(context.validDataDays);
+    // ----- Step 3: Z-Score 計算 -----
     const zScores = calculateZScores(
       cleanedInput.subjectiveScores,
       history,
       context.validDataDays,
     );
 
-    if (Object.keys(zScores).length === 0) {
-      if (zScoreStageWeight === 0) {
-        warnings.push(
-          `データ蓄積日数（${context.validDataDays}日）が ${Z_SCORE_MIN_DAYS} 日未満のため Z-Score は未計算`,
-        );
-      } else {
-        warnings.push(
-          `Z-Score 参照履歴が ${Z_SCORE_MIN_DAYS} 日分に達していないため Z-Score は未計算`,
-        );
-      }
-    } else if (zScoreStageWeight < 1.0) {
+    if (Object.keys(zScores).length === 0 && context.validDataDays < Z_SCORE_MIN_DAYS) {
       warnings.push(
-        `Z-Score 段階的重み付け: ${zScoreStageWeight * 100}%（データ蓄積${context.validDataDays}日）`,
+        `データ蓄積日数（${context.validDataDays}日）が ${Z_SCORE_MIN_DAYS} 日未満のため Z-Score は未計算`,
       );
     }
 
@@ -341,14 +347,17 @@ export const node2FeatureEngineering: NodeExecutor<
       acwrScore * 0.4 + wellnessScore * 0.4 + 20,
     ));
 
-    // ----- Step 7: 特徴量ベクトル組み立て -----
+    // ----- Step 7: 3日連続ウェルネス悪化検出 -----
+    const consecutiveWellnessDeclineDays = calculateConsecutiveWellnessDeclineDays(fullHistory);
+
+    // ----- Step 8: 特徴量ベクトル組み立て -----
     const featureVector: FeatureVector = {
       acwr: acwrResult.acwr,
       monotonyIndex,
       preparedness,
       tissueDamage,
       zScores,
-      zScoreStageWeight,
+      consecutiveWellnessDeclineDays,
     };
 
     return {

@@ -55,6 +55,16 @@ interface ConditioningDataPoint {
   score: number;
 }
 
+interface KpiMeta {
+  criticalSparkline: number[];
+  availabilitySparkline: number[];
+  conditioningSparkline: number[];
+  watchlistSparkline: number[];
+  peakingSparkline: number[];
+  dod: { critical: number; availability: number; conditioning: number; watchlist: number; peaking: number };
+  wow: { critical: number; availability: number; conditioning: number; watchlist: number; peaking: number };
+}
+
 interface DashboardResponse {
   success: true;
   data: {
@@ -63,7 +73,11 @@ interface DashboardResponse {
       availability: string;
       conditioningScore: number;
       watchlistCount: number;
+      peakingRate: number;
     };
+    kpiMeta: KpiMeta;
+    orgId: string;
+    planId: string;
     acwrTrend: AcwrDataPoint[];
     conditioningTrend: ConditioningDataPoint[];
     alerts: AlertItem[];
@@ -118,7 +132,7 @@ export async function GET(
     // Verify team access
     const { data: team, error: teamError } = await supabase
       .from('teams')
-      .select('id')
+      .select('id, org_id')
       .eq('id', teamId)
       .single();
 
@@ -128,6 +142,16 @@ export async function GET(
         { status: 403 },
       );
     }
+
+    const orgId = (team.org_id as string) ?? '';
+
+    // プラン情報取得（フロント側ゲート判定用）
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('plan')
+      .eq('org_id', orgId)
+      .single();
+    const planId = (subscription?.plan as string) ?? 'standard';
 
     // キャッシュチェック
     const cacheKey = `dashboard:${teamId}`;
@@ -141,6 +165,10 @@ export async function GET(
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
     const dateFrom = fourteenDaysAgo.toISOString().split('T')[0]!;
 
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const dateFrom7 = sevenDaysAgo.toISOString().split('T')[0]!;
+
     // --- Parallel fetches ---
     const [
       athleteIdsResult,
@@ -149,6 +177,7 @@ export async function GET(
       condTrendResult,
       alertsResult,
       riskResult,
+      sparklineMetricsResult,
     ] = await Promise.all([
       // 1. Athlete IDs for this team
       supabase.from('athletes').select('id, name').eq('team_id', teamId),
@@ -194,6 +223,14 @@ export async function GET(
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: false })
         .limit(5),
+
+      // 7. 7-day daily metrics for sparkline + DoD/WoW
+      supabase
+        .from('daily_metrics')
+        .select('date, athlete_id, conditioning_score, acwr, nrs, hard_lock, soft_lock')
+        .eq('team_id', teamId)
+        .gte('date', dateFrom7)
+        .order('date', { ascending: true }),
     ]);
 
     const athleteRows = athleteIdsResult.data ?? [];
@@ -237,6 +274,110 @@ export async function GET(
 
     const conditioningScore =
       scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 10) / 10 : 0;
+
+    // --- Peaking Rate (Readiness ≥ 80) ---
+    let peakingCount = 0;
+    for (const m of metricsRows) {
+      const score = m.conditioning_score as number | null;
+      if (score !== null && score >= 80) peakingCount++;
+    }
+    const peakingRate =
+      metricsRows.length > 0
+        ? Math.round((peakingCount / metricsRows.length) * 100)
+        : 0;
+
+    // --- 7-day sparkline computation ---
+    const sparklineRows = (sparklineMetricsResult.data ?? []).filter((m) =>
+      athleteIds.has(m.athlete_id as string),
+    );
+
+    // Group 7-day metrics by date
+    const dailyKpis = new Map<string, {
+      critical: number; available: number; total: number;
+      scoreSum: number; scoreCount: number; watchlist: number; peaking: number;
+    }>();
+
+    for (const m of sparklineRows) {
+      const d = m.date as string;
+      const entry = dailyKpis.get(d) ?? {
+        critical: 0, available: 0, total: 0,
+        scoreSum: 0, scoreCount: 0, watchlist: 0, peaking: 0,
+      };
+      entry.total++;
+      const score = m.conditioning_score as number | null;
+      const nrs = m.nrs as number | null;
+      const hardLock = m.hard_lock === true;
+      const softLock = m.soft_lock === true;
+      const acwr = m.acwr as number | null;
+
+      if (score !== null) {
+        entry.scoreSum += score;
+        entry.scoreCount++;
+        if (score >= 80) entry.peaking++;
+      }
+      if (score !== null && (score < 30 || (nrs !== null && nrs >= 7) || hardLock)) {
+        entry.critical++;
+      } else if (score !== null && ((score >= 30 && score < 50) || (acwr !== null && acwr > 1.5) || softLock)) {
+        entry.watchlist++;
+      } else if (score !== null && score >= 60 && !hardLock) {
+        entry.available++;
+      } else if (score !== null) {
+        entry.watchlist++;
+      }
+      dailyKpis.set(d, entry);
+    }
+
+    const sortedDates = Array.from(dailyKpis.keys()).sort();
+    const criticalSparkline = sortedDates.map((d) => dailyKpis.get(d)!.critical);
+    const availabilitySparkline = sortedDates.map((d) => {
+      const e = dailyKpis.get(d)!;
+      return e.total > 0 ? Math.round((e.available / e.total) * 100) : 0;
+    });
+    const conditioningSparkline = sortedDates.map((d) => {
+      const e = dailyKpis.get(d)!;
+      return e.scoreCount > 0 ? Math.round(e.scoreSum / e.scoreCount) : 0;
+    });
+    const watchlistSparkline = sortedDates.map((d) => dailyKpis.get(d)!.watchlist);
+    const peakingSparkline = sortedDates.map((d) => {
+      const e = dailyKpis.get(d)!;
+      return e.scoreCount > 0 ? Math.round((e.peaking / e.scoreCount) * 100) : 0;
+    });
+
+    // DoD (day-over-day) / WoW (week-over-week) computation
+    function computeDelta(sparkline: number[]): { dod: number; wow: number } {
+      const len = sparkline.length;
+      const dod = len >= 2 ? sparkline[len - 1]! - sparkline[len - 2]! : 0;
+      const wow = len >= 7 ? sparkline[len - 1]! - sparkline[0]! : 0;
+      return { dod, wow };
+    }
+
+    const criticalDelta = computeDelta(criticalSparkline);
+    const availDelta = computeDelta(availabilitySparkline);
+    const condDelta = computeDelta(conditioningSparkline);
+    const watchDelta = computeDelta(watchlistSparkline);
+    const peakDelta = computeDelta(peakingSparkline);
+
+    const kpiMeta: KpiMeta = {
+      criticalSparkline,
+      availabilitySparkline,
+      conditioningSparkline,
+      watchlistSparkline,
+      peakingSparkline,
+      dod: {
+        critical: criticalDelta.dod,
+        availability: availDelta.dod,
+        conditioning: condDelta.dod,
+        watchlist: watchDelta.dod,
+        peaking: peakDelta.dod,
+      },
+      wow: {
+        critical: criticalDelta.wow,
+        availability: availDelta.wow,
+        conditioning: condDelta.wow,
+        watchlist: watchDelta.wow,
+        peaking: peakDelta.wow,
+      },
+    };
 
     // --- Aggregate ACWR trend by date ---
     const acwrByDate = new Map<string, { sum: number; count: number }>();
@@ -307,7 +448,11 @@ export async function GET(
         availability: `${availableCount}/${athleteRows.length}`,
         conditioningScore,
         watchlistCount,
+        peakingRate,
       },
+      kpiMeta,
+      orgId,
+      planId,
       acwrTrend,
       conditioningTrend,
       alerts,
