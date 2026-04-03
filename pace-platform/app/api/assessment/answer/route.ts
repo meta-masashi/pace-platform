@@ -130,6 +130,23 @@ export async function POST(
       );
     }
 
+    // ----- 所有権チェック: セッションが認証ユーザーまたは同一組織に属するか -----
+    const { data: staff } = await supabase
+      .from("staff")
+      .select("id, org_id")
+      .eq("id", user.id)
+      .single();
+
+    const isOwner = session.athlete_id === user.id || session.staff_id === user.id;
+    const isSameOrg = staff && session.org_id === staff.org_id;
+
+    if (!isOwner && !isSameOrg) {
+      return NextResponse.json(
+        { success: false, error: "このアセスメントセッションへのアクセス権がありません。" },
+        { status: 403 }
+      );
+    }
+
     // ----- アセスメントノードを取得 -----
     const fileTypeFilter =
       (session.assessment_type as string) === "f1_acute" ? "F1" : (session.assessment_type as string);

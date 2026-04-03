@@ -7,6 +7,8 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import { OfflineBadge } from "@/app/_components/offline-badge";
 import { QueryProvider } from "@/app/_providers/query-provider";
 
@@ -144,11 +146,15 @@ const TABS: TabItem[] = [
 // レイアウト
 // ---------------------------------------------------------------------------
 
-export default function AthleteLayout({
+export default async function AthleteLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* オフライン状態バッジ (M16) */}

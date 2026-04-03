@@ -149,8 +149,8 @@ export async function GET(
         }));
 
         // 回復度スコア（NRS改善率 + Phase進捗 + 基準達成率の複合）
-        const initialNrs = nrsTrend.length > 0 ? nrsTrend[0].nrs : 0;
-        const currentNrs = nrsTrend.length > 0 ? nrsTrend[nrsTrend.length - 1].nrs : 0;
+        const initialNrs = nrsTrend.length > 0 ? nrsTrend[0]?.nrs ?? 0 : 0;
+        const currentNrs = nrsTrend.length > 0 ? nrsTrend[nrsTrend.length - 1]?.nrs ?? 0 : 0;
         const nrsImprovement = initialNrs > 0
           ? Math.round(((initialNrs - currentNrs) / initialNrs) * 100)
           : 0;
@@ -253,7 +253,6 @@ export async function GET(
       {
         success: false,
         error: 'リハビリアセスメントデータの取得に失敗しました。',
-        details: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
     );

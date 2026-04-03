@@ -8,6 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeString } from "@/lib/security/input-validator";
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -199,7 +200,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      updateFields.s_text = body.sText;
+      updateFields.s_text = sanitizeString(body.sText, 5000);
     }
     if (body.oText !== undefined) {
       if (body.oText.length < 10) {
@@ -208,7 +209,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      updateFields.o_text = body.oText;
+      updateFields.o_text = sanitizeString(body.oText, 5000);
     }
     if (body.aText !== undefined) {
       if (body.aText.length < 10) {
@@ -217,7 +218,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      updateFields.a_text = body.aText;
+      updateFields.a_text = sanitizeString(body.aText, 5000);
     }
     if (body.pText !== undefined) {
       if (body.pText.length < 10) {
@@ -226,7 +227,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      updateFields.p_text = body.pText;
+      updateFields.p_text = sanitizeString(body.pText, 5000);
     }
 
     if (Object.keys(updateFields).length === 0) {

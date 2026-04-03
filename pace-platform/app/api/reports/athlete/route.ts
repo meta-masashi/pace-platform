@@ -61,11 +61,26 @@ export async function GET(request: Request) {
       );
     }
 
-    // ----- 選手情報取得 -----
+    // ----- スタッフ権限チェック -----
+    const { data: staff } = await supabase
+      .from('staff')
+      .select('id, org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    if (!staff) {
+      return NextResponse.json(
+        { success: false, error: '権限がありません' },
+        { status: 403 }
+      );
+    }
+
+    // ----- 選手情報取得 (org_id スコープ) -----
     const { data: athlete, error: athleteError } = await supabase
       .from('athletes')
       .select('id, name, position, number, sport')
       .eq('id', athleteId)
+      .eq('org_id', staff.org_id)
       .single();
 
     if (athleteError || !athlete) {

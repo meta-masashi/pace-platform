@@ -55,6 +55,51 @@ interface ConditioningDataPoint {
   score: number;
 }
 
+interface LoadConcentrationItem {
+  name: string;
+  percent: number;
+}
+
+interface TeamLoadSummary {
+  avgAcwr: number;
+  avgMonotony: number;
+  loadConcentration: LoadConcentrationItem[];
+  concentrationTotal: number;
+}
+
+interface AttentionAthlete {
+  athleteId: string;
+  name: string;
+  number: string;
+  position: string;
+  priority: string;
+  decision: string;
+  reason: string;
+  metrics: {
+    acwr: number;
+    monotony: number;
+    nrs: number;
+    fatigue: number;
+    sleepScore: number;
+    srpe: number;
+  };
+  sparkline: number[];
+}
+
+interface RehabAthlete {
+  athleteId: string;
+  name: string;
+  number: string;
+  position: string;
+  diagnosis: string;
+  currentPhase: number;
+  totalPhases: number;
+  daysSinceInjury: number;
+  recoveryScore: number;
+  nrsCurrent: number;
+  nrsPrevious: number;
+}
+
 interface DashboardResponse {
   success: true;
   data: {
@@ -68,6 +113,9 @@ interface DashboardResponse {
     conditioningTrend: ConditioningDataPoint[];
     alerts: AlertItem[];
     riskReports: RiskPreventionReport[];
+    teamLoadSummary: TeamLoadSummary;
+    attentionAthletes: AttentionAthlete[];
+    rehabAthletes: RehabAthlete[];
   };
 }
 
@@ -140,6 +188,9 @@ export async function GET(
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
     const dateFrom = fourteenDaysAgo.toISOString().split('T')[0]!;
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const dateFrom7 = sevenDaysAgo.toISOString().split('T')[0]!;
 
     // --- Parallel fetches ---
     const [
@@ -149,14 +200,17 @@ export async function GET(
       condTrendResult,
       alertsResult,
       riskResult,
+      metricsLast7Result,
+      traceLogsResult,
+      rehabProgramsResult,
     ] = await Promise.all([
       // 1. Athlete IDs for this team
-      supabase.from('athletes').select('id, name').eq('team_id', teamId),
+      supabase.from('athletes').select('id, name, position, number').eq('team_id', teamId),
 
       // 2. Today's metrics
       supabase
         .from('daily_metrics')
-        .select('athlete_id, conditioning_score, acwr, nrs, hard_lock, soft_lock')
+        .select('athlete_id, conditioning_score, acwr, nrs, hard_lock, soft_lock, srpe, fatigue_subjective, sleep_score')
         .eq('date', today),
 
       // 3. 14-day ACWR trend (team average per day)
@@ -194,6 +248,40 @@ export async function GET(
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: false })
         .limit(5),
+
+      // 7. Last 7 days metrics per athlete (for monotony + sparkline)
+      supabase
+        .from('daily_metrics')
+        .select('athlete_id, date, srpe, acwr')
+        .eq('team_id', teamId)
+        .gte('date', dateFrom7)
+        .order('date', { ascending: true }),
+
+      // 8. Today's inference trace logs (for attention athletes)
+      supabase
+        .from('inference_trace_logs')
+        .select('athlete_id, athlete_name, decision, priority, inference_snapshot')
+        .gte('timestamp_utc', `${today}T00:00:00Z`)
+        .lte('timestamp_utc', `${today}T23:59:59Z`)
+        .in('decision', ['RED', 'ORANGE', 'YELLOW']),
+
+      // 9. Active rehab programs
+      supabase
+        .from('rehab_programs')
+        .select(`
+          id,
+          athlete_id,
+          diagnosis_code,
+          current_phase,
+          status,
+          start_date,
+          estimated_rtp_date,
+          rehab_phase_gates (
+            phase,
+            gate_met_at
+          )
+        `)
+        .eq('status', 'active'),
     ]);
 
     const athleteRows = athleteIdsResult.data ?? [];
@@ -301,6 +389,241 @@ export async function GET(
       }),
     );
 
+    // --- Team Load Summary ---
+    // avgAcwr: average ACWR from today's metrics
+    const acwrValues = metricsRows
+      .map((m) => m.acwr as number | null)
+      .filter((v): v is number => v !== null);
+    const avgAcwr =
+      acwrValues.length > 0
+        ? Math.round((acwrValues.reduce((a, b) => a + b, 0) / acwrValues.length) * 100) / 100
+        : 0;
+
+    // avgMonotony: per athlete, compute mean/SD of 7-day sRPE, then average
+    const last7Rows = (metricsLast7Result.data ?? []).filter((m) =>
+      athleteIds.has(m.athlete_id as string),
+    );
+    const athleteSrpeMap = new Map<string, number[]>();
+    for (const row of last7Rows) {
+      const aid = row.athlete_id as string;
+      const srpe = row.srpe as number | null;
+      if (srpe === null) continue;
+      const arr = athleteSrpeMap.get(aid) ?? [];
+      arr.push(srpe);
+      athleteSrpeMap.set(aid, arr);
+    }
+    let monotonySum = 0;
+    let monotonyCount = 0;
+    for (const [, loads] of athleteSrpeMap) {
+      if (loads.length < 2) continue;
+      const mean = loads.reduce((a, b) => a + b, 0) / loads.length;
+      const variance = loads.reduce((a, b) => a + (b - mean) ** 2, 0) / loads.length;
+      const sd = Math.sqrt(variance);
+      if (sd > 0) {
+        monotonySum += mean / sd;
+        monotonyCount++;
+      }
+    }
+    const avgMonotony =
+      monotonyCount > 0
+        ? Math.round((monotonySum / monotonyCount) * 100) / 100
+        : 0;
+
+    // loadConcentration: top 3 athletes by sRPE share
+    const athleteNameMap = new Map(
+      athleteRows.map((a) => [a.id as string, a.name as string]),
+    );
+    const todaySrpeByAthlete: { name: string; srpe: number }[] = [];
+    let totalSrpe = 0;
+    for (const m of metricsRows) {
+      const srpe = m.srpe as number | null;
+      if (srpe === null || srpe === 0) continue;
+      totalSrpe += srpe;
+      todaySrpeByAthlete.push({
+        name: athleteNameMap.get(m.athlete_id as string) ?? '',
+        srpe,
+      });
+    }
+    todaySrpeByAthlete.sort((a, b) => b.srpe - a.srpe);
+    const loadConcentration: LoadConcentrationItem[] = todaySrpeByAthlete
+      .slice(0, 3)
+      .map((item) => ({
+        name: item.name,
+        percent:
+          totalSrpe > 0
+            ? Math.round((item.srpe / totalSrpe) * 1000) / 10
+            : 0,
+      }));
+    const concentrationTotal = loadConcentration.reduce(
+      (sum, item) => sum + item.percent,
+      0,
+    );
+
+    const teamLoadSummary: TeamLoadSummary = {
+      avgAcwr,
+      avgMonotony,
+      loadConcentration,
+      concentrationTotal: Math.round(concentrationTotal * 10) / 10,
+    };
+
+    // --- Attention Athletes ---
+    const athleteInfoMap = new Map(
+      athleteRows.map((a) => [
+        a.id as string,
+        {
+          name: a.name as string,
+          number: String(a.number ?? ''),
+          position: (a.position as string) ?? '',
+        },
+      ]),
+    );
+
+    // Build 7-day ACWR sparkline per athlete
+    const athleteAcwrSparkline = new Map<string, number[]>();
+    for (const row of last7Rows) {
+      const aid = row.athlete_id as string;
+      const acwrVal = row.acwr as number | null;
+      if (acwrVal === null) continue;
+      const arr = athleteAcwrSparkline.get(aid) ?? [];
+      arr.push(Math.round(acwrVal * 100) / 100);
+      athleteAcwrSparkline.set(aid, arr);
+    }
+
+    // Build today's metrics lookup
+    const todayMetricsMap = new Map(
+      metricsRows.map((m) => [m.athlete_id as string, m]),
+    );
+
+    const traceRows = (traceLogsResult.data ?? []).filter((t) =>
+      athleteIds.has(t.athlete_id as string),
+    );
+    // Deduplicate: keep latest per athlete (last entry wins since order is not guaranteed)
+    const traceByAthlete = new Map<string, Record<string, unknown>>();
+    for (const t of traceRows) {
+      traceByAthlete.set(t.athlete_id as string, t as Record<string, unknown>);
+    }
+
+    const attentionAthletes: AttentionAthlete[] = [];
+    for (const [athleteId, trace] of traceByAthlete) {
+      const info = athleteInfoMap.get(athleteId);
+      if (!info) continue;
+      const todayM = todayMetricsMap.get(athleteId);
+
+      // Monotony for this athlete
+      const loads = athleteSrpeMap.get(athleteId) ?? [];
+      let athleteMonotony = 0;
+      if (loads.length >= 2) {
+        const mean = loads.reduce((a, b) => a + b, 0) / loads.length;
+        const variance = loads.reduce((a, b) => a + (b - mean) ** 2, 0) / loads.length;
+        const sd = Math.sqrt(variance);
+        if (sd > 0) athleteMonotony = Math.round((mean / sd) * 100) / 100;
+      }
+
+      const snapshot = trace.inference_snapshot as Record<string, unknown> | null;
+      const reason =
+        (snapshot?.reason as string) ??
+        (snapshot?.summary as string) ??
+        `${trace.decision} — ${trace.priority}`;
+
+      attentionAthletes.push({
+        athleteId,
+        name: info.name,
+        number: info.number,
+        position: info.position,
+        priority: (trace.priority as string) ?? '',
+        decision: (trace.decision as string) ?? '',
+        reason,
+        metrics: {
+          acwr: todayM ? ((todayM.acwr as number) ?? 0) : 0,
+          monotony: athleteMonotony,
+          nrs: todayM ? ((todayM.nrs as number) ?? 0) : 0,
+          fatigue: todayM ? ((todayM.fatigue_subjective as number) ?? 0) : 0,
+          sleepScore: todayM ? ((todayM.sleep_score as number) ?? 0) : 0,
+          srpe: todayM ? ((todayM.srpe as number) ?? 0) : 0,
+        },
+        sparkline: athleteAcwrSparkline.get(athleteId) ?? [],
+      });
+    }
+
+    // Sort by priority (P1 first)
+    const priorityOrder: Record<string, number> = {
+      P1_SAFETY: 0,
+      P2_MECHANICAL_RISK: 1,
+      P3_OVERLOAD: 2,
+      P4_RECOVERY: 3,
+      P5_OPTIMAL: 4,
+    };
+    attentionAthletes.sort(
+      (a, b) => (priorityOrder[a.priority] ?? 5) - (priorityOrder[b.priority] ?? 5),
+    );
+
+    // --- Rehab Athletes ---
+    const rehabRows = (rehabProgramsResult.data ?? []).filter((r) =>
+      athleteIds.has(r.athlete_id as string),
+    );
+
+    // Fetch yesterday's NRS for rehab athletes (for nrsPrevious)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0]!;
+    const rehabAthleteIds = rehabRows.map((r) => r.athlete_id as string);
+    const yesterdayMetricsMap = new Map<string, number>();
+    if (rehabAthleteIds.length > 0) {
+      const { data: yesterdayData } = await supabase
+        .from('daily_metrics')
+        .select('athlete_id, nrs')
+        .eq('date', yesterdayStr)
+        .in('athlete_id', rehabAthleteIds);
+      for (const row of yesterdayData ?? []) {
+        yesterdayMetricsMap.set(
+          row.athlete_id as string,
+          (row.nrs as number) ?? 0,
+        );
+      }
+    }
+
+    const rehabAthletes: RehabAthlete[] = rehabRows.map((program) => {
+      const athleteId = program.athlete_id as string;
+      const info = athleteInfoMap.get(athleteId);
+      const todayM = todayMetricsMap.get(athleteId);
+
+      const currentPhase = Number(program.current_phase ?? 1);
+      const gates = (program.rehab_phase_gates ?? []) as Array<
+        Record<string, unknown>
+      >;
+      const totalPhases = Math.max(
+        currentPhase,
+        ...gates.map((g) => Number(g.phase ?? 0)),
+        5, // default 5-phase rehab
+      );
+
+      const startDate = new Date(program.start_date as string);
+      const daysSinceInjury = Math.max(
+        0,
+        Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+
+      // Recovery score: phase progression percentage
+      const recoveryScore = Math.round((currentPhase / totalPhases) * 100);
+
+      const nrsCurrent = todayM ? ((todayM.nrs as number) ?? 0) : 0;
+      const nrsPrevious = yesterdayMetricsMap.get(athleteId) ?? 0;
+
+      return {
+        athleteId,
+        name: info?.name ?? '',
+        number: info?.number ?? '',
+        position: info?.position ?? '',
+        diagnosis: (program.diagnosis_code as string) ?? '',
+        currentPhase,
+        totalPhases,
+        daysSinceInjury,
+        recoveryScore,
+        nrsCurrent,
+        nrsPrevious,
+      };
+    });
+
     const dashboardData: DashboardResponse['data'] = {
       kpi: {
         criticalAlerts: criticalCount,
@@ -312,6 +635,9 @@ export async function GET(
       conditioningTrend,
       alerts,
       riskReports,
+      teamLoadSummary,
+      attentionAthletes,
+      rehabAthletes,
     };
 
     // キャッシュに保存（60秒 TTL）

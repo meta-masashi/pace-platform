@@ -50,8 +50,9 @@ export async function GET(): Promise<NextResponse> {
       .eq("staff_id", user.id);
 
     if (prefError) {
+      console.error("[api/notifications/preferences] 取得エラー:", prefError);
       return NextResponse.json(
-        { error: prefError.message },
+        { error: "通知設定の取得に失敗しました。" },
         { status: 500 }
       );
     }
@@ -144,8 +145,9 @@ export async function PUT(request: Request): Promise<NextResponse> {
       .single();
 
     if (upsertError) {
+      console.error("[api/notifications/preferences] 更新エラー:", upsertError);
       return NextResponse.json(
-        { error: upsertError.message },
+        { error: "通知設定の更新に失敗しました。" },
         { status: 500 }
       );
     }

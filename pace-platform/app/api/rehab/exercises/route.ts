@@ -110,7 +110,6 @@ export async function GET(request: Request) {
       {
         success: false,
         error: 'リハビリ種目の取得に失敗しました。',
-        details: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
     );

@@ -91,6 +91,23 @@ export async function POST(
       );
     }
 
+    // ----- 所有権チェック: セッションが認証ユーザーまたは同一組織に属するか -----
+    const { data: staff } = await supabase
+      .from('staff')
+      .select('id, org_id')
+      .eq('id', user.id)
+      .single();
+
+    const isOwner = sessionRow.athlete_id === user.id || sessionRow.staff_id === user.id;
+    const isSameOrg = staff && sessionRow.org_id === staff.org_id;
+
+    if (!isOwner && !isSameOrg) {
+      return NextResponse.json(
+        { success: false, error: 'このアセスメントセッションへのアクセス権がありません。' },
+        { status: 403 },
+      );
+    }
+
     // ----- 回答を保存 -----
     const now = new Date().toISOString();
     const { error: insertError } = await supabase

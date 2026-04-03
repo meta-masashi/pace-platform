@@ -49,8 +49,16 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   // 明示的なリダイレクト先が指定されている場合はそちらを使用
+  // Open Redirect 防止: 単一 "/" で始まり、"//"・"@"・"\"・プロトコルスキームを含まないことを検証
   if (next) {
-    return NextResponse.redirect(`${origin}${next}`);
+    const isSafePath =
+      /^\/[^/]/.test(next) &&
+      !next.includes("//") &&
+      !next.includes("@") &&
+      !next.includes("\\") &&
+      !/^\/[a-zA-Z][a-zA-Z\d+\-.]*:/.test(next);
+    const destination = isSafePath ? next : "/dashboard";
+    return NextResponse.redirect(`${origin}${destination}`);
   }
 
   // ロールに基づくリダイレクト先の決定

@@ -137,16 +137,10 @@ export class InferencePipeline {
    *
    * @param configOverrides - デフォルト設定をオーバーライドする部分設定
    */
-  constructor(configOrOverrides?: PipelineConfig | Partial<PipelineConfig>) {
-    if (!configOrOverrides) {
-      this.config = DEFAULT_PIPELINE_CONFIG;
-    } else if (configOrOverrides.version && configOrOverrides.thresholds && configOrOverrides.ewma) {
-      // Full PipelineConfig provided (e.g. from configForSport)
-      this.config = configOrOverrides as PipelineConfig;
-    } else {
-      // Partial overrides
-      this.config = { ...DEFAULT_PIPELINE_CONFIG, ...configOrOverrides };
-    }
+  constructor(configOverrides?: Partial<PipelineConfig>) {
+    this.config = configOverrides
+      ? { ...DEFAULT_PIPELINE_CONFIG, ...configOverrides }
+      : DEFAULT_PIPELINE_CONFIG;
   }
 
   /**

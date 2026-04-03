@@ -78,15 +78,10 @@ export async function POST(request: Request) {
     }
 
     // 1. 組織を作成
-    // BUG-11 fix: sport を organizations テーブルに保存する
-    const validSports = ['soccer', 'baseball', 'basketball', 'rugby', 'other'];
-    const normalizedSport = validSports.includes(body.sport) ? body.sport : 'other';
-
     const { data: org, error: orgError } = await supabase
       .from('organizations')
       .insert({
         name: body.organizationName.trim(),
-        sport: normalizedSport,
         plan: 'standard',
       })
       .select('id')

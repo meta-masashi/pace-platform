@@ -98,11 +98,9 @@ export async function POST(request: Request) {
       .eq('org_id', staff.org_id);
 
     if (!athletes || athletes.length === 0) {
-      // RLSでフィルタされている可能性を含めてデバッグ情報を返す
       return NextResponse.json(
         {
           error: 'チームに選手が登録されていないか、アクセス権限がありません。選手管理ページで選手を登録してください。',
-          debug: { teamId: body.teamId, orgId: staff.org_id },
         },
         { status: 400 },
       );

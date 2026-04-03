@@ -52,11 +52,26 @@ export async function GET(request: Request) {
       );
     }
 
-    // ----- チーム情報取得 -----
+    // ----- スタッフ権限チェック -----
+    const { data: staff } = await supabase
+      .from('staff')
+      .select('id, org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    if (!staff) {
+      return NextResponse.json(
+        { success: false, error: '権限がありません' },
+        { status: 403 }
+      );
+    }
+
+    // ----- チーム情報取得 (org_id スコープ) -----
     const { data: team, error: teamError } = await supabase
       .from('teams')
-      .select('id, name')
+      .select('id, name, org_id')
       .eq('id', teamId)
+      .eq('org_id', staff.org_id)
       .single();
 
     if (teamError || !team) {

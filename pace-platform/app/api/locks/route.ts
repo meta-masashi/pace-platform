@@ -343,7 +343,7 @@ export async function DELETE(request: Request) {
     // ----- ロック取得 -----
     const { data: lock, error: lockFetchError } = await supabase
       .from("athlete_locks")
-      .select("id, lock_type, athlete_id")
+      .select("id, lock_type, athlete_id, athletes!inner(org_id)")
       .eq("id", body.lockId)
       .single();
 
@@ -351,6 +351,15 @@ export async function DELETE(request: Request) {
       return NextResponse.json(
         { success: false, error: "指定されたロックが見つかりません。" },
         { status: 404 }
+      );
+    }
+
+    // ----- org_id 所有権チェック -----
+    const lockOrgId = (lock.athletes as unknown as { org_id: string })?.org_id;
+    if (lockOrgId !== staff.org_id) {
+      return NextResponse.json(
+        { success: false, error: "このロックを削除する権限がありません。" },
+        { status: 403 }
       );
     }
 

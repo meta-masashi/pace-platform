@@ -43,26 +43,6 @@ export async function POST(
   request: Request
 ): Promise<NextResponse<CounterfactualEvaluateResponse | CounterfactualErrorResponse>> {
   try {
-    // ----- リクエストパース -----
-    const query = (await request.json()) as CounterfactualQuery;
-
-    if (!query.athleteId || !query.targetNodeId || !query.targetDate) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "athleteId, targetNodeId, targetDate は必須です。",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!query.interventions || query.interventions.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "少なくとも1つの介入が必要です。" },
-        { status: 400 }
-      );
-    }
-
     // ----- 認証・認可チェック -----
     const supabase = await createClient();
     const {
@@ -91,6 +71,26 @@ export async function POST(
           error: "この操作には AT、PT、または master ロールが必要です。",
         },
         { status: 403 }
+      );
+    }
+
+    // ----- リクエストパース -----
+    const query = (await request.json()) as CounterfactualQuery;
+
+    if (!query.athleteId || !query.targetNodeId || !query.targetDate) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "athleteId, targetNodeId, targetDate は必須です。",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!query.interventions || query.interventions.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "少なくとも1つの介入が必要です。" },
+        { status: 400 }
       );
     }
 

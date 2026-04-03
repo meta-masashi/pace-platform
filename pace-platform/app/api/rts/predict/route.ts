@@ -48,11 +48,26 @@ export async function GET(request: Request) {
       );
     }
 
-    // ----- プログラム取得 -----
+    // ----- スタッフ権限チェック -----
+    const { data: staff } = await supabase
+      .from('staff')
+      .select('id, org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    if (!staff) {
+      return NextResponse.json(
+        { success: false, error: '権限がありません' },
+        { status: 403 },
+      );
+    }
+
+    // ----- プログラム取得 (org_id スコープ) -----
     const { data: program, error: programError } = await supabase
       .from('rehab_programs')
-      .select('id, athlete_id, current_phase, start_date, estimated_rtp_date, status')
+      .select('id, athlete_id, current_phase, start_date, estimated_rtp_date, status, athletes!inner(org_id)')
       .eq('id', programId)
+      .eq('athletes.org_id', staff.org_id)
       .single();
 
     if (programError || !program) {
