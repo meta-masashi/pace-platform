@@ -19,7 +19,22 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createLogger } from '@/lib/observability/logger';
+import { alertGeminiLatency } from '@/lib/observability/alerts';
 const log = createLogger('gemini');
+
+// ---------------------------------------------------------------------------
+// タイムアウトユーティリティ
+// ---------------------------------------------------------------------------
+
+const GEMINI_TIMEOUT_MS = 30_000; // 30秒
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`TIMEOUT: ${label} exceeded ${ms}ms`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+import { isCircuitOpen, recordSuccess, recordFailure } from "./circuit-breaker";
 import { sanitizeUserInput, detectHarmfulOutput, validateAIOutput, cleanJsonResponse } from "../shared/security-helpers";
 import { checkRateLimit as checkRateLimitV2, logTokenUsage as logTokenUsageV2 } from "./rate-limiter";
 
@@ -116,6 +131,11 @@ export async function callGeminiWithRetry<T>(
   parser: (text: string) => T,
   context?: GeminiCallContext
 ): Promise<GeminiResult<T>> {
+  // サーキットブレーカーチェック — 連続障害時はリクエストを即座に拒否
+  if (isCircuitOpen()) {
+    throw new Error("CIRCUIT_OPEN");
+  }
+
   // レートリミット + 日次上限チェック（防壁3 — rate-limiter.ts 経由）
   if (context) {
     await checkRateLimitInternal(context.userId, context.endpoint);
@@ -138,7 +158,20 @@ export async function callGeminiWithRetry<T>(
       }
 
       const model = getModel();
-      const response = await model.generateContent(sanitizedPrompt);
+      const callStart = Date.now();
+      const response = await withTimeout(
+        model.generateContent(sanitizedPrompt),
+        GEMINI_TIMEOUT_MS,
+        `gemini.${context?.endpoint ?? 'unknown'}`
+      );
+      const callDuration = Date.now() - callStart;
+
+      // レイテンシアラート（ベストエフォート）
+      void alertGeminiLatency({
+        endpoint: context?.endpoint ?? 'unknown',
+        durationMs: callDuration,
+      });
+
       const rawText = response.response.text();
 
       // 出力ガードレール（防壁2）— 有害コンテンツ検出
@@ -152,9 +185,11 @@ export async function callGeminiWithRetry<T>(
         log.warn(`出力バリデーション警告 (endpoint=${context?.endpoint})`, { data: { warnings: validation.warnings } });
       }
 
+      recordSuccess();
       return { result: parser(validation.sanitized), attemptNumber: attempt + 1 };
     } catch (err) {
       lastError = err;
+      recordFailure();
 
       // ガードレール違反はリトライしない（プロンプト自体の問題）
       if (err instanceof Error && err.message === "GUARDRAIL_VIOLATION") {

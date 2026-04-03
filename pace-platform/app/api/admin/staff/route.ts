@@ -104,7 +104,13 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   // 招待コード生成 + スタッフレコード作成（非アクティブ）
-  const inviteCode = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+  // セキュリティ: 招待コードに十分なエントロピーを確保（128ビット）
+  const randomBytes = new Uint8Array(16);
+  crypto.getRandomValues(randomBytes);
+  const inviteCode = Array.from(randomBytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
 
   const { data: newStaff, error: insertError } = await supabase
     .from("staff")

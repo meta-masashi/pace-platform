@@ -10,6 +10,8 @@
  *   3. Sentry 連携 (エラー自動キャプチャ)
  *   4. レスポンスへの traceId 付与
  *   5. 統一エラーレスポンス形式
+ *   6. 分散トレーシング (tracer.withSpan 統合)
+ *   7. リクエストボディサイズ制限
  *
  * 使用例:
  *   export const GET = withApiHandler(async (req, { log, traceId }) => {
@@ -21,8 +23,15 @@
 
 import { NextResponse } from 'next/server';
 import { createLogger, type LogLevel } from '@/lib/observability/logger';
-import { getTraceIdFromRequest } from '@/lib/observability/tracer';
+import { getTraceIdFromRequest, createTracer } from '@/lib/observability/tracer';
 import { captureSentryException, setSentryTraceTag } from '@/lib/observability/sentry';
+
+// ---------------------------------------------------------------------------
+// 定数
+// ---------------------------------------------------------------------------
+
+/** デフォルトのリクエストボディサイズ上限 (1 MB) */
+const DEFAULT_MAX_BODY_SIZE = 1_048_576;
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -58,6 +67,8 @@ export interface ApiHandlerOptions {
   captureErrors?: boolean;
   /** レスポンスに X-Trace-Id を付与するか（デフォルト: true） */
   exposeTraceId?: boolean;
+  /** リクエストボディの最大サイズ（バイト単位、デフォルト: 1_048_576 = 1MB） */
+  maxBodySize?: number;
 }
 
 /**
@@ -131,11 +142,12 @@ export function withApiHandler(
   const service = options?.service ?? 'api';
   const captureErrors = options?.captureErrors ?? true;
   const exposeTraceId = options?.exposeTraceId ?? true;
+  const maxBodySize = options?.maxBodySize ?? DEFAULT_MAX_BODY_SIZE;
   const log = createLogger(service, options?.logLevel);
+  const serviceTracer = createTracer(service);
 
   return async (req: Request, routeCtx?: { params?: Promise<Record<string, string>> }) => {
     const traceId = getTraceIdFromRequest(req);
-    const startMs = Date.now();
     const method = req.method;
     const url = new URL(req.url);
     const pathname = url.pathname;
@@ -153,82 +165,117 @@ export function withApiHandler(
 
     apiLog.info(`→ ${method} ${pathname}`);
 
-    try {
-      // params を解決（Next.js 15 では Promise）
-      const resolvedParams = routeCtx?.params ? await routeCtx.params : undefined;
-
-      const ctx: ApiContext = {
-        traceId,
-        log: apiLog,
-        params: resolvedParams ?? {},
-      };
-
-      const result = await handler(req, ctx);
-
-      const durationMs = Date.now() - startMs;
-
-      // ハンドラーが NextResponse を直接返した場合
-      if (result instanceof NextResponse) {
-        apiLog.info(`← ${method} ${pathname} ${result.status}`, { durationMs });
-        if (exposeTraceId) {
-          result.headers.set('X-Trace-Id', traceId);
-        }
-        return result;
-      }
-
-      // オブジェクトを返した場合 → { success: true, ...result } でラップ
-      apiLog.info(`← ${method} ${pathname} 200`, { durationMs });
-      const response = NextResponse.json(
-        { success: true, ...result },
-        { status: 200 },
-      );
-      if (exposeTraceId) {
-        response.headers.set('X-Trace-Id', traceId);
-      }
-      return response;
-
-    } catch (err) {
-      const durationMs = Date.now() - startMs;
-
-      // ApiError（意図的なエラー）
-      if (err instanceof ApiError) {
-        apiLog.warn(`← ${method} ${pathname} ${err.status}: ${err.userMessage}`, {
-          durationMs,
-          status: err.status,
+    // -----------------------------------------------------------------------
+    // リクエストボディサイズ制限チェック
+    // -----------------------------------------------------------------------
+    const contentLength = req.headers.get('Content-Length');
+    if (contentLength !== null) {
+      const bodySize = parseInt(contentLength, 10);
+      if (!Number.isNaN(bodySize) && bodySize > maxBodySize) {
+        apiLog.warn(`← ${method} ${pathname} 413: リクエストボディが上限を超過`, {
+          contentLength: bodySize,
+          maxBodySize,
         });
-
         const response = NextResponse.json(
-          { success: false, error: err.userMessage, traceId } satisfies ApiErrorResponse,
-          { status: err.status },
+          {
+            success: false,
+            error: `リクエストボディが上限（${maxBodySize} bytes）を超えています。`,
+            traceId,
+          } satisfies ApiErrorResponse,
+          { status: 413 },
         );
         if (exposeTraceId) response.headers.set('X-Trace-Id', traceId);
         return response;
       }
-
-      // 予期しないエラー
-      log.errorFromException(`← ${method} ${pathname} 500`, err, {
-        traceId,
-        duration: durationMs,
-      });
-
-      // Sentry にキャプチャ（ノンブロッキング）
-      if (captureErrors) {
-        void captureSentryException(err, {
-          traceId,
-          data: { method, pathname, durationMs },
-        });
-      }
-
-      const userMessage = err instanceof Error && err.message.length < 200
-        ? err.message
-        : 'サーバー内部エラーが発生しました。';
-
-      const response = NextResponse.json(
-        { success: false, error: userMessage, traceId } satisfies ApiErrorResponse,
-        { status: 500 },
-      );
-      if (exposeTraceId) response.headers.set('X-Trace-Id', traceId);
-      return response;
     }
+
+    // -----------------------------------------------------------------------
+    // tracer.withSpan でハンドラー全体をトレース
+    // -----------------------------------------------------------------------
+    return serviceTracer.withSpan(
+      'http.handler',
+      traceId,
+      async () => {
+        const startMs = Date.now();
+
+        try {
+          // params を解決（Next.js 15 では Promise）
+          const resolvedParams = routeCtx?.params ? await routeCtx.params : undefined;
+
+          const ctx: ApiContext = {
+            traceId,
+            log: apiLog,
+            params: resolvedParams ?? {},
+          };
+
+          const result = await handler(req, ctx);
+
+          const durationMs = Date.now() - startMs;
+
+          // ハンドラーが NextResponse を直接返した場合
+          if (result instanceof NextResponse) {
+            apiLog.info(`← ${method} ${pathname} ${result.status}`, { durationMs });
+            if (exposeTraceId) {
+              result.headers.set('X-Trace-Id', traceId);
+            }
+            return result;
+          }
+
+          // オブジェクトを返した場合 → { success: true, ...result } でラップ
+          apiLog.info(`← ${method} ${pathname} 200`, { durationMs });
+          const response = NextResponse.json(
+            { success: true, ...result },
+            { status: 200 },
+          );
+          if (exposeTraceId) {
+            response.headers.set('X-Trace-Id', traceId);
+          }
+          return response;
+
+        } catch (err) {
+          const durationMs = Date.now() - startMs;
+
+          // ApiError（意図的なエラー）
+          if (err instanceof ApiError) {
+            apiLog.warn(`← ${method} ${pathname} ${err.status}: ${err.userMessage}`, {
+              durationMs,
+              status: err.status,
+            });
+
+            const response = NextResponse.json(
+              { success: false, error: err.userMessage, traceId } satisfies ApiErrorResponse,
+              { status: err.status },
+            );
+            if (exposeTraceId) response.headers.set('X-Trace-Id', traceId);
+            return response;
+          }
+
+          // 予期しないエラー
+          log.errorFromException(`← ${method} ${pathname} 500`, err, {
+            traceId,
+            duration: durationMs,
+          });
+
+          // Sentry にキャプチャ（ノンブロッキング）
+          if (captureErrors) {
+            void captureSentryException(err, {
+              traceId,
+              data: { method, pathname, durationMs },
+            });
+          }
+
+          // セキュリティ: 生のエラーメッセージは絶対にクライアントに返さない
+          const response = NextResponse.json(
+            { success: false, error: 'サーバー内部エラーが発生しました。', traceId } satisfies ApiErrorResponse,
+            { status: 500 },
+          );
+          if (exposeTraceId) response.headers.set('X-Trace-Id', traceId);
+          return response;
+        }
+      },
+      {
+        attributes: { method, pathname },
+      },
+    );
   };
 }

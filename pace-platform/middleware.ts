@@ -10,6 +10,7 @@ const API_AUTH_EXEMPT = [
   '/api/auth/login',           // Login (pre-auth, has own brute force protection)
   '/api/s2s/ingest',           // Machine-to-machine (API key auth)
   '/api/webhooks/',            // Stripe webhooks (signature verification)
+  '/api/health',               // Health check endpoint (infrastructure monitoring)
 ];
 
 // Allowed origins for CSRF Origin header validation
@@ -189,14 +190,11 @@ export async function middleware(request: NextRequest) {
   // API ルートの防御多層化 — セッション認証チェック
   // 個別ルートの auth チェックに加えて middleware でも検証する
   // -----------------------------------------------------------------------
+  // Auth exempt API ルート — セッションチェックをスキップ、ヘッダーのみ適用
   if (
     pathname.startsWith('/api/') &&
-    !API_AUTH_EXEMPT.some((route) => pathname.startsWith(route))
+    API_AUTH_EXEMPT.some((route) => pathname.startsWith(route))
   ) {
-    // API ルートには認証チェックを適用（GET 含む）
-    // 認証不要の API は API_AUTH_EXEMPT に追加する
-  } else if (pathname.startsWith('/api/')) {
-    // Auth exempt API routes — skip session check, just apply headers
     const response = NextResponse.next();
     applySecurityHeaders(response, pathname);
     return response;
@@ -268,14 +266,15 @@ export async function middleware(request: NextRequest) {
     applySecurityHeaders(response, pathname);
     return response;
   } catch (err) {
-    // Middleware crash fallback
-    console.error('[middleware] Error:', err);
+    // Middleware crash fallback — 認証基盤障害は 503 Service Unavailable
+    // ユーザーの資格情報が有効でも検証不能なため 401 は不適切
+    console.error('[middleware] Supabase auth service failure:', { error: err, pathname, method: request.method });
 
-    // API ルートは crash 時も 401 を返す（認証なしで通過させない）
+    // API ルートは認証基盤障害時に 503 を返す
     if (pathname.startsWith('/api/')) {
       return NextResponse.json(
-        { success: false, error: '認証処理中にエラーが発生しました。' },
-        { status: 401 },
+        { success: false, error: '認証サービスが一時的に利用できません。しばらく後に再試行してください。' },
+        { status: 503 },
       );
     }
 

@@ -207,17 +207,13 @@ export async function POST(request: NextRequest) {
   // --- Service client を 1 回だけ取得 ---
   const service = await getServiceClient()
   if (!service) {
-    // DB 不可 → フェイルオープン（ブルートフォースチェックなしでログイン処理）
-    const supabase = await createClient()
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    if (authError || !authData.user) {
-      return NextResponse.json(
-        { success: false, error: 'メールアドレスまたはパスワードが正しくありません。' },
-        { status: 401 },
-      )
-    }
-    const { data: athlete } = await supabase.from('athletes').select('id').eq('user_id', authData.user.id).maybeSingle()
-    return NextResponse.json({ success: true, redirectTo: athlete ? '/home' : '/dashboard', user: { id: authData.user.id, email: authData.user.email, role: athlete ? 'athlete' : 'staff' } })
+    // セキュリティ: DB 不可時はフェイルセキュア（ログインを拒否）
+    // ブルートフォース保護なしでの認証は許可しない
+    log.error('service client 取得失敗 — ログインをブロック')
+    return NextResponse.json(
+      { success: false, error: '認証サービスが一時的に利用できません。しばらく後に再試行してください。' },
+      { status: 503 },
+    )
   }
 
   // --- IP レート制限 + アカウントロック確認を並列実行 ---

@@ -20,6 +20,27 @@ const log = createLogger('auth');
 // GET /api/auth/callback
 // ---------------------------------------------------------------------------
 
+/**
+ * リダイレクト先パスのバリデーション（オープンリダイレクト防止）。
+ * - `/` で始まること
+ * - `//` で始まらないこと（プロトコル相対URL防止）
+ * - プロトコル文字列を含まないこと
+ * - バックスラッシュを含まないこと（IE互換プロトコル回避）
+ */
+function isValidRedirectPath(path: string): boolean {
+  if (!path.startsWith('/')) return false;
+  if (path.startsWith('//')) return false;
+  if (/[:\\]/.test(path)) return false;
+  // URL エンコードされたプロトコル相対パスを防止
+  try {
+    const decoded = decodeURIComponent(path);
+    if (decoded.startsWith('//') || /[:\\]/.test(decoded)) return false;
+  } catch {
+    return false; // デコード失敗 = 不正入力
+  }
+  return true;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -52,7 +73,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   // 明示的なリダイレクト先が指定されている場合はそちらを使用
-  if (next) {
+  // セキュリティ: リダイレクト先はサイト内パスのみ許可（オープンリダイレクト防止）
+  if (next && isValidRedirectPath(next)) {
     return NextResponse.redirect(`${origin}${next}`);
   }
 

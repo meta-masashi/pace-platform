@@ -53,8 +53,19 @@ export const GET = withApiHandler(async (req, ctx) => {
     throw new ApiError(403, 'スタッフ情報が見つかりません。');
   }
 
-  // master 以外は自チームのみアクセス可
+  // IDOR 防止: master であっても自組織のチームのみアクセス可
   if (staff.role !== 'master' && staff.team_id !== teamId) {
+    throw new ApiError(403, 'このチームへのアクセス権がありません。');
+  }
+
+  // 組織間アクセス防止: チームが自組織に属することを検証
+  const { data: teamRow } = await supabase
+    .from('teams')
+    .select('org_id')
+    .eq('id', teamId)
+    .single();
+
+  if (!teamRow || (teamRow.org_id as string) !== (staff.org_id as string)) {
     throw new ApiError(403, 'このチームへのアクセス権がありません。');
   }
 

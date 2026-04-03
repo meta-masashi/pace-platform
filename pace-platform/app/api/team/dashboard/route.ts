@@ -129,6 +129,21 @@ export const GET = withApiHandler(async (request, ctx) => {
     throw new ApiError(403, 'チームが見つかりません。');
   }
 
+  // IDOR 防止: ユーザーの組織がチームの組織と一致することを検証
+  const { data: userStaff, error: staffError } = await supabase
+    .from('staff')
+    .select('org_id, role, team_id')
+    .eq('id', user.id)
+    .single();
+
+  if (staffError || !userStaff) {
+    throw new ApiError(403, 'スタッフ情報が見つかりません。');
+  }
+
+  if ((userStaff.org_id as string) !== (team.org_id as string)) {
+    throw new ApiError(403, 'このチームへのアクセス権がありません。');
+  }
+
   const orgId = (team.org_id as string) ?? '';
 
   // プラン情報取得（フロント側ゲート判定用）

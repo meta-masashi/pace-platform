@@ -14,6 +14,11 @@ import { getTokensFromCode } from '@/lib/calendar/google-client';
 import { encryptToken } from '@/lib/calendar/token-crypto';
 import { withApiHandler } from '@/lib/api/handler';
 
+/** リダイレクト先のベースURL（オープンリダイレクト防止） */
+function getSafeOrigin(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL ?? '';
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/calendar/callback
 // ---------------------------------------------------------------------------
@@ -28,13 +33,13 @@ export const GET = withApiHandler(async (request, ctx) => {
   if (errorParam) {
     ctx.log.warn('ユーザーが OAuth 同意を拒否', { detail: errorParam });
     return NextResponse.redirect(
-      `${origin}/dashboard?calendar_error=${encodeURIComponent('Google Calendar の接続がキャンセルされました。')}`,
+      `${getSafeOrigin()}/dashboard?calendar_error=${encodeURIComponent('Google Calendar の接続がキャンセルされました。')}`,
     );
   }
 
   if (!code || !state) {
     return NextResponse.redirect(
-      `${origin}/dashboard?calendar_error=${encodeURIComponent('不正なコールバックパラメータです。')}`,
+      `${getSafeOrigin()}/dashboard?calendar_error=${encodeURIComponent('不正なコールバックパラメータです。')}`,
     );
   }
 
@@ -42,7 +47,7 @@ export const GET = withApiHandler(async (request, ctx) => {
   const colonIndex = state.indexOf(':');
   if (colonIndex === -1) {
     return NextResponse.redirect(
-      `${origin}/dashboard?calendar_error=${encodeURIComponent('不正な state パラメータです。')}`,
+      `${getSafeOrigin()}/dashboard?calendar_error=${encodeURIComponent('不正な state パラメータです。')}`,
     );
   }
   const stateUserId = state.slice(0, colonIndex);
@@ -56,7 +61,7 @@ export const GET = withApiHandler(async (request, ctx) => {
 
   if (authError || !user) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent('認証が必要です。ログインしてください。')}`,
+      `${getSafeOrigin()}/login?error=${encodeURIComponent('認証が必要です。ログインしてください。')}`,
     );
   }
 
@@ -66,7 +71,7 @@ export const GET = withApiHandler(async (request, ctx) => {
       detail: { stateUserId, sessionUserId: user.id },
     });
     return NextResponse.redirect(
-      `${origin}/dashboard?calendar_error=${encodeURIComponent('セッションが無効です。再度お試しください。')}`,
+      `${getSafeOrigin()}/dashboard?calendar_error=${encodeURIComponent('セッションが無効です。再度お試しください。')}`,
     );
   }
 
@@ -82,7 +87,7 @@ export const GET = withApiHandler(async (request, ctx) => {
   } catch (err) {
     ctx.log.error('トークン交換エラー', { detail: err });
     return NextResponse.redirect(
-      `${origin}/dashboard?calendar_error=${encodeURIComponent('Google Calendar の接続中にエラーが発生しました。')}`,
+      `${getSafeOrigin()}/dashboard?calendar_error=${encodeURIComponent('Google Calendar の接続中にエラーが発生しました。')}`,
     );
   }
 
@@ -100,7 +105,7 @@ export const GET = withApiHandler(async (request, ctx) => {
   if (staffError || !staffRow) {
     ctx.log.error('スタッフ情報取得エラー', { detail: staffError });
     return NextResponse.redirect(
-      `${origin}/dashboard?calendar_error=${encodeURIComponent('スタッフ情報の取得に失敗しました。')}`,
+      `${getSafeOrigin()}/dashboard?calendar_error=${encodeURIComponent('スタッフ情報の取得に失敗しました。')}`,
     );
   }
 
@@ -128,12 +133,12 @@ export const GET = withApiHandler(async (request, ctx) => {
   if (upsertError) {
     ctx.log.error('calendar_connections upsert エラー', { detail: upsertError });
     return NextResponse.redirect(
-      `${origin}/dashboard?calendar_error=${encodeURIComponent('カレンダー接続情報の保存に失敗しました。')}`,
+      `${getSafeOrigin()}/dashboard?calendar_error=${encodeURIComponent('カレンダー接続情報の保存に失敗しました。')}`,
     );
   }
 
   // 成功 — ダッシュボードにリダイレクト
   return NextResponse.redirect(
-    `${origin}/dashboard?calendar_connected=true`,
+    `${getSafeOrigin()}/dashboard?calendar_connected=true`,
   );
 }, { service: 'calendar' });

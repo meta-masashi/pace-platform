@@ -34,6 +34,17 @@ export const POST = withApiHandler(async (req, _ctx) => {
     throw new ApiError(400, 'CSVファイルが見つかりません。');
   }
 
+  // MIME タイプバリデーション（CSV インジェクション防止）
+  const allowedTypes = ['text/csv', 'text/plain', 'application/vnd.ms-excel'];
+  if (file.type && !allowedTypes.includes(file.type)) {
+    throw new ApiError(400, 'CSVファイル（.csv）のみアップロード可能です。');
+  }
+
+  // ファイル名バリデーション（パストラバーサル防止）
+  if (file.name && !/^[\w\-. ]+\.csv$/i.test(file.name.split('/').pop() ?? '')) {
+    throw new ApiError(400, 'ファイル名が不正です。.csv 拡張子のファイルを使用してください。');
+  }
+
   // ファイルサイズ制限（1MB）
   if (file.size > 1024 * 1024) {
     throw new ApiError(400, 'ファイルサイズは1MB以下にしてください。');
@@ -63,14 +74,14 @@ export const POST = withApiHandler(async (req, _ctx) => {
       continue;
     }
 
-    const name = cols[0]?.trim();
+    const name = sanitizeCsvCell(cols[0]?.trim() ?? '');
     if (!name) {
       errors.push(`行${i + 2}: 名前が空です。`);
       continue;
     }
 
-    const position = cols[1]?.trim() ?? '';
-    const number = cols[2]?.trim() ?? '';
+    const position = sanitizeCsvCell(cols[1]?.trim() ?? '');
+    const number = sanitizeCsvCell(cols[2]?.trim() ?? '');
 
     // 番号が数値かチェック（空でなければ）
     if (number && isNaN(parseInt(number, 10))) {
@@ -130,4 +141,14 @@ function parseCsvLine(line: string): string[] {
 
   result.push(current);
   return result;
+}
+
+/**
+ * CSV セルの数式インジェクション対策。
+ * =, +, -, @, \t, \r で始まるセルは攻撃の可能性があるため先頭を除去。
+ */
+function sanitizeCsvCell(value: string): string {
+  if (!value) return value;
+  // 数式インジェクションパターンを除去
+  return value.replace(/^[=+\-@\t\r]+/, '');
 }
