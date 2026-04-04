@@ -40,6 +40,29 @@ export const GET = withApiHandler(async (request, ctx) => {
     throw new ApiError(401, '認証が必要です。ログインしてください。');
   }
 
+  // ----- スタッフ権限チェック -----
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, '権限がありません');
+  }
+
+  // ----- プログラムの org_id 確認 -----
+  const { data: program } = await supabase
+    .from('rehab_programs')
+    .select('id, athletes!inner(org_id)')
+    .eq('id', programId)
+    .eq('athletes.org_id', staff.org_id)
+    .single();
+
+  if (!program) {
+    throw new ApiError(403, '権限がありません');
+  }
+
   // ----- pending 提案取得 -----
   const { data: proposals, error: fetchError } = await supabase
     .from('reroute_proposals')
@@ -94,15 +117,41 @@ export const PATCH = withApiHandler(async (request, ctx) => {
     throw new ApiError(401, '認証が必要です。ログインしてください。');
   }
 
+  // ----- スタッフ権限チェック -----
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    throw new ApiError(403, '権限がありません');
+  }
+
+  if (!['doctor', 'physio', 'head_trainer', 'trainer', 'admin'].includes(staff.role)) {
+    throw new ApiError(403, 'この操作を行う権限がありません。');
+  }
+
   // ----- 提案取得 -----
   const { data: proposal, error: fetchError } = await supabase
     .from('reroute_proposals')
-    .select('id, program_id, new_estimated_rts, status, adjustments')
+    .select('id, program_id, new_estimated_rts, status, adjustments, athlete_id')
     .eq('id', body.proposalId)
     .single();
 
   if (fetchError || !proposal) {
     throw new ApiError(404, 'リルート提案が見つかりません。');
+  }
+
+  // ----- org_id 所属確認 -----
+  const { data: proposalAthlete } = await supabase
+    .from('athletes')
+    .select('org_id')
+    .eq('id', proposal.athlete_id)
+    .single();
+
+  if (!proposalAthlete || proposalAthlete.org_id !== staff.org_id) {
+    throw new ApiError(403, '権限がありません');
   }
 
   if (proposal.status !== 'pending') {

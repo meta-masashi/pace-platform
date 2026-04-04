@@ -76,6 +76,7 @@ export function ReportViewer({ reportUrl, loading }: ReportViewerProps) {
           ref={iframeRef}
           src={reportUrl}
           title="レポートプレビュー"
+          sandbox="allow-same-origin"
           className="h-[700px] w-full"
           onLoad={() => setIframeLoaded(true)}
         />

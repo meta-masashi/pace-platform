@@ -34,8 +34,8 @@ DROP POLICY IF EXISTS fatigue_alerts_staff_access ON fatigue_alerts;
 CREATE POLICY fatigue_alerts_staff_access ON fatigue_alerts
   FOR ALL TO authenticated
   USING (athlete_id IN (
-    SELECT a.id FROM athletes a
-    JOIN staff s ON s.team_id = a.team_id
+    SELECT a.id FROM public.athletes a
+    JOIN public.staff s ON s.team_id = a.team_id
     WHERE s.id = auth.uid()
   ));
 

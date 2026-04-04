@@ -24,6 +24,9 @@ import { TeamConditioningChart } from './team-conditioning-chart';
 import type { TeamTrendDataPoint } from './team-conditioning-chart';
 import { ScoreBucketBar } from './score-bucket-bar';
 import type { TeamConditioningResult } from '@/lib/conditioning/team-score';
+import { TeamLoadSummary } from './team-load-summary';
+import { AttentionAthleteCard, RehabAthleteCard } from './attention-athlete-card';
+import type { AttentionAthleteData, RehabAthleteData } from './attention-athlete-card';
 
 // Dynamic imports for Recharts components (SSR disabled)
 const AcwrTrendChart = dynamic(
@@ -97,6 +100,14 @@ interface DashboardData {
   conditioningTrend: ConditioningDataPoint[];
   alerts: AlertItem[];
   riskReports: RiskPreventionReport[];
+  teamLoadSummary?: {
+    avgAcwr: number;
+    avgMonotony: number;
+    loadConcentration: { name: string; percent: number }[];
+    concentrationTotal: number;
+  };
+  attentionAthletes?: AttentionAthleteData[];
+  rehabAthletes?: RehabAthleteData[];
 }
 
 /** v6 推論パイプラインから取得される選手別データ */
@@ -599,6 +610,16 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
         </PlanGateOverlay>
       </div>
 
+      {/* Team Load Summary */}
+      {data.teamLoadSummary && (
+        <TeamLoadSummary
+          avgAcwr={data.teamLoadSummary.avgAcwr}
+          avgMonotony={data.teamLoadSummary.avgMonotony}
+          loadConcentration={data.teamLoadSummary.loadConcentration}
+          concentrationTotal={data.teamLoadSummary.concentrationTotal}
+        />
+      )}
+
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
         <PlanGateOverlay gated={isStandard} featureName="ACWR トレンド分析">
@@ -645,6 +666,34 @@ export function DashboardContent({ searchParamsPromise }: DashboardContentProps)
       )}
       {teamConditioningLoading && (
         <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
+      )}
+
+      {/* 要確認選手 */}
+      {(data.attentionAthletes && data.attentionAthletes.length > 0) && (
+        <div>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            要確認選手
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.attentionAthletes.map((athlete) => (
+              <AttentionAthleteCard key={athlete.athleteId} athlete={athlete} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* リハビリ選手 */}
+      {(data.rehabAthletes && data.rehabAthletes.length > 0) && (
+        <div>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            リハビリ中の選手
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.rehabAthletes.map((athlete) => (
+              <RehabAthleteCard key={athlete.athleteId} athlete={athlete} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* ROI Report — Pro+ 専用 */}

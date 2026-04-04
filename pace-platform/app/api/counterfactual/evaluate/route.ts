@@ -41,18 +41,7 @@ const ALLOWED_ROLES = ["AT", "PT", "master"];
 // ---------------------------------------------------------------------------
 
 export const POST = withApiHandler(async (request, ctx) => {
-  // ----- リクエストパース -----
-  const query = (await request.json()) as CounterfactualQuery;
-
-  if (!query.athleteId || !query.targetNodeId || !query.targetDate) {
-    throw new ApiError(400, "athleteId, targetNodeId, targetDate は必須です。");
-  }
-
-  if (!query.interventions || query.interventions.length === 0) {
-    throw new ApiError(400, "少なくとも1つの介入が必要です。");
-  }
-
-  // ----- 認証・認可チェック -----
+  // ----- 認証・認可チェック (body パース前に実行) -----
   const supabase = await createClient();
   const {
     data: { user },
@@ -72,6 +61,17 @@ export const POST = withApiHandler(async (request, ctx) => {
 
   if (!staff || !ALLOWED_ROLES.includes(staff.role as string)) {
     throw new ApiError(403, "この操作には AT、PT、または master ロールが必要です。");
+  }
+
+  // ----- リクエストパース -----
+  const query = (await request.json()) as CounterfactualQuery;
+
+  if (!query.athleteId || !query.targetNodeId || !query.targetDate) {
+    throw new ApiError(400, "athleteId, targetNodeId, targetDate は必須です。");
+  }
+
+  if (!query.interventions || query.interventions.length === 0) {
+    throw new ApiError(400, "少なくとも1つの介入が必要です。");
   }
 
   // ----- アスリートアクセス確認（RLS 経由） -----

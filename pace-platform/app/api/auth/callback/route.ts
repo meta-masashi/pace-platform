@@ -31,13 +31,19 @@ function isValidRedirectPath(path: string): boolean {
   if (!path.startsWith('/')) return false;
   if (path.startsWith('//')) return false;
   if (/[:\\]/.test(path)) return false;
+  // Open Redirect 防止: "@" を含まないことも検証
+  if (path.includes('@')) return false;
   // URL エンコードされたプロトコル相対パスを防止
   try {
     const decoded = decodeURIComponent(path);
-    if (decoded.startsWith('//') || /[:\\]/.test(decoded)) return false;
+    if (decoded.startsWith('//') || /[:\\]/.test(decoded) || decoded.includes('@')) return false;
   } catch {
     return false; // デコード失敗 = 不正入力
   }
+  // 単一 "/" の後にパスが続くことを確認（"//" 防止済み）
+  if (!/^\/[^/]/.test(path)) return false;
+  // プロトコルスキームパターンの防止
+  if (/^\/[a-zA-Z][a-zA-Z\d+\-.]*:/.test(path)) return false;
   return true;
 }
 
@@ -74,8 +80,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   // 明示的なリダイレクト先が指定されている場合はそちらを使用
   // セキュリティ: リダイレクト先はサイト内パスのみ許可（オープンリダイレクト防止）
-  if (next && isValidRedirectPath(next)) {
-    return NextResponse.redirect(`${origin}${next}`);
+  if (next) {
+    const destination = isValidRedirectPath(next) ? next : "/dashboard";
+    return NextResponse.redirect(`${origin}${destination}`);
   }
 
   // ロールに基づくリダイレクト先の決定

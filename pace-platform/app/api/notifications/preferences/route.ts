@@ -44,7 +44,7 @@ export const GET = withApiHandler(async (_req, _ctx) => {
     .eq("staff_id", user.id);
 
   if (prefError) {
-    throw new ApiError(500, prefError.message);
+    throw new ApiError(500, "通知設定の取得に失敗しました。");
   }
 
   return NextResponse.json({
@@ -115,7 +115,7 @@ export const PUT = withApiHandler(async (req, _ctx) => {
     .single();
 
   if (upsertError) {
-    throw new ApiError(500, upsertError.message);
+    throw new ApiError(500, "通知設定の更新に失敗しました。");
   }
 
   return NextResponse.json({ preference: result });

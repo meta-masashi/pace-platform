@@ -18,13 +18,19 @@ export default async function StaffLayout({
     redirect('/login');
   }
 
-  // スタッフの所属チーム名を取得（自動紐付け）
-  let teamName = '';
+  // スタッフテーブルに存在するか検証（認証済みでもスタッフでなければ拒否）
   const { data: staff } = await supabase
     .from('staff')
     .select('org_id')
     .eq('id', user.id)
     .single();
+
+  if (!staff) {
+    redirect('/unauthorized');
+  }
+
+  // スタッフの所属チーム名を取得（自動紐付け）
+  let teamName = '';
 
   if (staff?.org_id) {
     const { data: teams } = await supabase

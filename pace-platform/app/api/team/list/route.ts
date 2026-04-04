@@ -20,9 +20,24 @@ export const GET = withApiHandler(async (req, ctx) => {
     throw new ApiError(401, '認証が必要です。');
   }
 
+  // ----- スタッフ権限チェック -----
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, org_id, role')
+    .eq('id', user.id)
+    .single();
+
+  if (!staff) {
+    return NextResponse.json(
+      { success: false, error: '権限がありません' },
+      { status: 403 },
+    );
+  }
+
   const { data: teams, error: teamsError } = await supabase
     .from('teams')
     .select('id, name')
+    .eq('org_id', staff.org_id)
     .order('name', { ascending: true });
 
   if (teamsError) {

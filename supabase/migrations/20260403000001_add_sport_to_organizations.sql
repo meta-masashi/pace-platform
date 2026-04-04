@@ -1,11 +1,20 @@
--- Migration: Add sport column to organizations table
+-- Migration: Add sport column to organizations and athletes tables
 -- Purpose: Enable sport-specific inference pipeline configuration (SportProfile)
 -- Related: BUG-11 (onboarding API was not saving sport to organizations)
 
--- Add sport column with CHECK constraint for valid sport IDs
+-- Add sport column to organizations
 ALTER TABLE organizations
   ADD COLUMN IF NOT EXISTS sport TEXT NOT NULL DEFAULT 'other'
   CHECK (sport IN ('soccer', 'baseball', 'basketball', 'rugby', 'other'));
+
+-- Add sport column to athletes (needed by inference pipeline)
+ALTER TABLE athletes
+  ADD COLUMN IF NOT EXISTS sport TEXT NOT NULL DEFAULT 'soccer'
+  CHECK (sport IN ('soccer', 'baseball', 'basketball', 'rugby', 'other'));
+
+-- Add is_contact_sport flag to athletes (used for contact-sport injury risk multiplier)
+ALTER TABLE athletes
+  ADD COLUMN IF NOT EXISTS is_contact_sport BOOLEAN NOT NULL DEFAULT false;
 
 -- Backfill: If athletes already have sport set, update the organization to match
 UPDATE organizations o

@@ -12,8 +12,6 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateUUID } from '@/lib/security/input-validator';
 import { InferencePipeline } from '@/lib/engine/v6/pipeline';
-import { configForSport } from '@/lib/engine/v6/config';
-import { getSportProfile } from '@/lib/engine/v6/config/sport-profiles';
 import type {
   AthleteContext,
   DailyInput,
@@ -21,6 +19,66 @@ import type {
   PipelineOutput,
   TissueCategory,
 } from '@/lib/engine/v6/types';
+
+// ---------------------------------------------------------------------------
+// Go Engine — Shadow Mode integration
+// GO_ENGINE_ENABLED: false | shadow | true
+// ---------------------------------------------------------------------------
+
+type GoEngineMode = 'false' | 'shadow' | 'true';
+
+const GO_ENGINE_MODE = (process.env.GO_ENGINE_ENABLED ?? 'false') as GoEngineMode;
+const GO_ENGINE_URL  = process.env.GO_ENGINE_URL ?? 'https://pace-engine.fly.dev';
+
+/** Go エンジンを呼び出す（失敗しても TS 結果に影響しない） */
+async function callGoEngine(
+  dailyInput: DailyInput,
+  context: AthleteContext,
+): Promise<{ data: unknown; latencyMs: number } | null> {
+  const start = Date.now();
+  try {
+    const res = await fetch(`${GO_ENGINE_URL}/v6/infer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        daily_input: {
+          date: dailyInput.date,
+          subjective: {
+            sleep_quality:   dailyInput.subjectiveScores?.sleepQuality   ?? 5,
+            fatigue:         dailyInput.subjectiveScores?.fatigue        ?? 5,
+            muscle_soreness: dailyInput.subjectiveScores?.muscleSoreness ?? 3,
+            stress:          dailyInput.subjectiveScores?.stressLevel    ?? 3,
+            mood:            dailyInput.subjectiveScores?.mood           ?? 5,
+            hrv:             null,
+            pain_nrs:        dailyInput.subjectiveScores?.painNRS        ?? 0,
+          },
+          rpe:          dailyInput.sRPE               ?? 0,
+          duration_min: dailyInput.trainingDurationMin ?? 0,
+          gps_external: null,
+        },
+        athlete_context: {
+          athlete_id:       context.athleteId,
+          sport:            context.sport,
+          age:              context.age,
+          valid_data_days:  context.validDataDays,
+          risk_multipliers: context.riskMultipliers ?? {},
+          bayesian_priors:  context.bayesianPriors  ?? {},
+          context_flags:    {},
+          maturation_mode:  'adult',
+        },
+        history: [],
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!res.ok) return null;
+    const json = await res.json() as { data: unknown };
+    return { data: json.data, latencyMs: Date.now() - start };
+  } catch {
+    // Go エンジン失敗は TS 結果に影響させない
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // POST /api/pipeline
@@ -97,16 +155,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // ----- 組織の競技種目を取得 -----
-    const { data: orgData } = await supabase
-      .from('organizations')
-      .select('sport')
-      .eq('id', staff.org_id)
-      .single();
-
-    const orgSport = (orgData?.sport as string) ?? (athlete.sport as string) ?? 'other';
-    const sportProfile = getSportProfile(orgSport);
-
     // baseline_reset_at を取得（ベースラインリセット対応）
     const { data: conditionCache } = await supabase
       .from('athlete_condition_cache')
@@ -168,8 +216,8 @@ export async function POST(request: Request) {
       orgId: athlete.org_id as string,
       teamId: (athlete.team_id as string) ?? '',
       age: (athlete.age as number) ?? 25,
-      sport: orgSport,
-      isContactSport: sportProfile.isContactSport,
+      sport: (athlete.sport as string) ?? 'unknown',
+      isContactSport: (athlete.is_contact_sport as boolean) ?? false,
       validDataDays: validDataDays ?? 0,
       bayesianPriors: {},
       riskMultipliers: {},
@@ -181,19 +229,56 @@ export async function POST(request: Request) {
         riskMultiplier: (entry.risk_multiplier as number) ?? 1.0,
       })),
       tissueHalfLifes: {
-        metabolic: sportProfile.tissueDefaults.metabolic.halfLifeDays,
-        structural_soft: sportProfile.tissueDefaults.structural_soft.halfLifeDays,
-        structural_hard: sportProfile.tissueDefaults.structural_hard.halfLifeDays,
-        neuromotor: sportProfile.tissueDefaults.neuromotor.halfLifeDays,
+        metabolic: 2,
+        structural_soft: 7,
+        structural_hard: 21,
+        neuromotor: 3,
       } satisfies Record<TissueCategory, number>,
       ...(lastKnownRecord ? { lastKnownRecord } : {}),
     };
 
-    // ----- パイプライン実行 -----
-    // 競技別 SportProfile から PipelineConfig を生成
-    const pipelineConfig = configForSport(orgSport);
-    const pipeline = new InferencePipeline(pipelineConfig);
-    const output: PipelineOutput = await pipeline.execute(body.dailyInput, context);
+    // ----- パイプライン実行（Go Engine / TypeScript 切替） -----
+    const pipeline = new InferencePipeline();
+
+    let output: PipelineOutput;
+
+    if (GO_ENGINE_MODE === 'true') {
+      // ── Go primary: Go が失敗したら TS にフォールバック ──
+      const goResult = await callGoEngine(body.dailyInput, context);
+      if (goResult) {
+        // Go 結果をそのまま返す（型は compatible）
+        output = goResult.data as PipelineOutput;
+        console.info('[pipeline] Go engine used', { latencyMs: goResult.latencyMs });
+      } else {
+        console.warn('[pipeline] Go engine failed — falling back to TypeScript');
+        output = await pipeline.execute(body.dailyInput, context);
+      }
+    } else if (GO_ENGINE_MODE === 'shadow') {
+      // ── Shadow: TS を返しつつ Go を並行実行してログ比較 ──
+      const [tsOutput, goResult] = await Promise.all([
+        pipeline.execute(body.dailyInput, context),
+        callGoEngine(body.dailyInput, context),
+      ]);
+      output = tsOutput;
+
+      if (goResult) {
+        const goDecision = (goResult.data as { decision?: { decision?: string } })?.decision?.decision;
+        const tsDecision = tsOutput.decision.decision;
+        const matches = goDecision === tsDecision;
+        console.info('[pipeline:shadow] Go vs TS comparison', {
+          athleteId: context.athleteId,
+          go: goDecision,
+          ts: tsDecision,
+          matches,
+          goLatencyMs: goResult.latencyMs,
+        });
+      } else {
+        console.warn('[pipeline:shadow] Go engine unavailable');
+      }
+    } else {
+      // ── TypeScript only (default) ──
+      output = await pipeline.execute(body.dailyInput, context);
+    }
 
     // ----- トレースログを DB に保存 -----
     const traceLog = InferencePipeline.buildTraceLog(

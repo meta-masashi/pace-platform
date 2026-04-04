@@ -269,10 +269,10 @@ export const DELETE = withApiHandler(async (req, ctx) => {
     throw new ApiError(400, "有効な lockId を指定してください。");
   }
 
-  // ----- ロック取得 -----
+  // ----- ロック取得 (org_id 所有権チェック付き) -----
   const { data: lock, error: lockFetchError } = await supabase
     .from("athlete_locks")
-    .select("id, lock_type, athlete_id")
+    .select("id, lock_type, athlete_id, athletes!inner(org_id)")
     .eq("id", body.lockId)
     .single();
 
@@ -280,14 +280,9 @@ export const DELETE = withApiHandler(async (req, ctx) => {
     throw new ApiError(404, "指定されたロックが見つかりません。");
   }
 
-  // ロックの対象選手が自組織に属するか検証（IDOR防止）
-  const { data: lockAthlete } = await supabase
-    .from("athletes")
-    .select("org_id")
-    .eq("id", lock.athlete_id)
-    .single();
-
-  if (!lockAthlete || (lockAthlete.org_id as string) !== (staff.org_id as string)) {
+  // ----- org_id 所有権チェック（IDOR防止） -----
+  const lockOrgId = (lock.athletes as unknown as { org_id: string })?.org_id;
+  if (lockOrgId !== staff.org_id) {
     throw new ApiError(403, "このロックを削除する権限がありません。");
   }
 

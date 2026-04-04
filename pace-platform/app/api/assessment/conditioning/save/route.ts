@@ -9,6 +9,10 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateUUID } from '@/lib/security/input-validator';
 
+function sanitizeString(s: string): string {
+  return s.replace(/<[^>]*>/g, '').trim();
+}
+
 // ---------------------------------------------------------------------------
 // リクエストボディ型
 // ---------------------------------------------------------------------------
@@ -147,7 +151,7 @@ export async function POST(request: Request) {
       efficiency_analysis: body.efficiencyAnalysis ?? {},
       pain_analysis: body.painAnalysis ?? {},
       risk_category: body.riskCategory ?? null,
-      staff_notes: body.staffNotes ?? null,
+      staff_notes: body.staffNotes ? sanitizeString(body.staffNotes) : null,
       ai_suggestion: body.aiSuggestion ?? null,
       ai_adopted: body.aiAdopted ?? false,
       selected_scenario: body.selectedScenario ?? null,

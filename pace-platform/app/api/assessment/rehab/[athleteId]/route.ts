@@ -150,8 +150,8 @@ export async function GET(
         }));
 
         // 回復度スコア（NRS改善率 + Phase進捗 + 基準達成率の複合）
-        const initialNrs = nrsTrend.length > 0 ? nrsTrend[0]!.nrs : 0;
-        const currentNrs = nrsTrend.length > 0 ? nrsTrend[nrsTrend.length - 1]!.nrs : 0;
+        const initialNrs = nrsTrend.length > 0 ? nrsTrend[0]?.nrs ?? 0 : 0;
+        const currentNrs = nrsTrend.length > 0 ? nrsTrend[nrsTrend.length - 1]?.nrs ?? 0 : 0;
         const nrsImprovement = initialNrs > 0
           ? Math.round(((initialNrs - currentNrs) / initialNrs) * 100)
           : 0;

@@ -92,6 +92,7 @@ END $outer$;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- RLS 更新: チームスタッフもアクセス可能に
 -- ─────────────────────────────────────────────────────────────────────────────
+-- video_uploads: スタッフ (AT/PT/Master) が所属チームの動画にアクセス可能
 DO $outer$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'video_uploads') THEN
@@ -99,11 +100,12 @@ BEGIN
     CREATE POLICY video_uploads_staff_access ON video_uploads
       FOR ALL TO authenticated
       USING (team_id IN (
-        SELECT team_id FROM staff WHERE id = auth.uid()
+        SELECT team_id FROM public.staff WHERE id = auth.uid() AND team_id IS NOT NULL
       ));
   END IF;
 END $outer$;
 
+-- cv_jobs: スタッフが所属チームのジョブにアクセス可能
 DO $outer$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'cv_jobs') THEN
@@ -111,7 +113,7 @@ BEGIN
     CREATE POLICY cv_jobs_staff_access ON cv_jobs
       FOR ALL TO authenticated
       USING (team_id IN (
-        SELECT team_id FROM staff WHERE id = auth.uid()
+        SELECT team_id FROM public.staff WHERE id = auth.uid() AND team_id IS NOT NULL
       ));
   END IF;
 END $outer$;

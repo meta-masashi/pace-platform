@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { withApiHandler, ApiError } from "@/lib/api/handler";
+import { sanitizeString } from "@/lib/security/input-validator";
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -143,25 +144,25 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     if (body.sText.length < 10) {
       throw new ApiError(400, "主観的所見（S）は10文字以上必要です。");
     }
-    updateFields.s_text = body.sText;
+    updateFields.s_text = sanitizeString(body.sText, 5000);
   }
   if (body.oText !== undefined) {
     if (body.oText.length < 10) {
       throw new ApiError(400, "客観的所見（O）は10文字以上必要です。");
     }
-    updateFields.o_text = body.oText;
+    updateFields.o_text = sanitizeString(body.oText, 5000);
   }
   if (body.aText !== undefined) {
     if (body.aText.length < 10) {
       throw new ApiError(400, "評価（A）は10文字以上必要です。");
     }
-    updateFields.a_text = body.aText;
+    updateFields.a_text = sanitizeString(body.aText, 5000);
   }
   if (body.pText !== undefined) {
     if (body.pText.length < 10) {
       throw new ApiError(400, "計画（P）は10文字以上必要です。");
     }
-    updateFields.p_text = body.pText;
+    updateFields.p_text = sanitizeString(body.pText, 5000);
   }
 
   if (Object.keys(updateFields).length === 0) {

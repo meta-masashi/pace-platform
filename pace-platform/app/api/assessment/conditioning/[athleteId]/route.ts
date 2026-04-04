@@ -202,7 +202,7 @@ function buildLoadAnalysis(
     date: m.date as string,
     value: (m.acwr as number) ?? 0,
   }));
-  const currentAcwr = acwrTrend.length > 0 ? acwrTrend[acwrTrend.length - 1]!.value : 0;
+  const currentAcwr = acwrTrend.length > 0 ? (acwrTrend[acwrTrend.length - 1]?.value ?? 0) : 0;
 
   // 急性/慢性負荷（sRPE ベース）
   const last7Srpe = last7.map((m) => (m.srpe as number) ?? 0);
@@ -251,7 +251,7 @@ function buildLoadAnalysis(
     let damage = 0;
     for (let i = 0; i < last28.length; i++) {
       const daysSince = last28.length - 1 - i;
-      const srpe = (last28[i]!.srpe as number) ?? 0;
+      const srpe = (last28[i]?.srpe as number) ?? 0;
       const normalizedLoad = srpe / 1000; // 正規化
       damage += normalizedLoad * Math.exp(-decayFactor * daysSince);
     }
@@ -266,7 +266,7 @@ function buildLoadAnalysis(
     date: m.date as string,
     value: (m.hp_computed as number) ?? 50,
   }));
-  const currentPrep = prepTrend.length > 0 ? prepTrend[prepTrend.length - 1]!.value : 50;
+  const currentPrep = prepTrend.length > 0 ? (prepTrend[prepTrend.length - 1]?.value ?? 50) : 50;
 
   return {
     acwr: { current: Math.round(currentAcwr * 100) / 100, trend: acwrTrend },
@@ -299,7 +299,7 @@ function buildEfficiencyAnalysis(
     };
   });
   const currentDecoupling = decouplingTrend.length > 0
-    ? decouplingTrend[decouplingTrend.length - 1]!.value
+    ? (decouplingTrend[decouplingTrend.length - 1]?.value ?? 0)
     : 0;
 
   // 主観-客観ギャップ（sRPE vs HP ベース推定負荷）
@@ -328,16 +328,18 @@ function buildEfficiencyAnalysis(
   let alertCount = 0;
 
   for (const field of fields) {
+    const label = fieldLabels[field];
+    if (!label) continue;
     const values = allMetrics.map((m) => (m[field] as number) ?? 5).filter((v) => v > 0);
     if (values.length < 7) {
-      zScores[fieldLabels[field]!] = 0;
+      zScores[label] = 0;
       continue;
     }
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     const sd = Math.sqrt(values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length);
-    const latest = values[values.length - 1]!;
+    const latest = values[values.length - 1] ?? 0;
     const z = sd > 0 ? (latest - mean) / sd : 0;
-    zScores[fieldLabels[field]!] = Math.round(z * 100) / 100;
+    zScores[label] = Math.round(z * 100) / 100;
     if (z <= -1.5) alertCount++;
   }
 
@@ -358,13 +360,49 @@ function buildEfficiencyAnalysis(
     zScores,
     zScoreAlertCount: alertCount,
     performanceEfficiency: {
-      outputPerHrCost: { current: 0, average: 0, deviationPercent: 0 },
+      outputPerHrCost: (() => {
+        // 出力あたりの心拍コスト: sRPE / (HR / 100). Higher = more efficient.
+        const validEntries = allMetrics.filter(
+          (m) => ((m.srpe as number) ?? 0) > 0 && ((m.hp_computed as number) ?? 0) > 0,
+        );
+        if (validEntries.length === 0) return { current: 0, average: 0, deviationPercent: 0 };
+        const computeRatio = (m: Record<string, unknown>) => {
+          const srpe = (m.srpe as number) ?? 0;
+          const hr = (m.hp_computed as number) ?? 50; // hp_computed as proxy for HR load
+          return srpe / (hr / 100);
+        };
+        const allRatios = validEntries.map(computeRatio);
+        const currentVal = Math.round((allRatios[allRatios.length - 1] ?? 0) * 100) / 100;
+        const avgVal = Math.round(avg(allRatios) * 100) / 100;
+        const devPct = avgVal > 0 ? Math.round(((currentVal - avgVal) / avgVal) * 100) : 0;
+        return { current: currentVal, average: avgVal, deviationPercent: devPct };
+      })(),
       srpeToLoadRatio: {
-        current: gapData.length > 0 ? 1 + (gapData[gapData.length - 1]!.gapPercent / 100) : 1,
+        current: gapData.length > 0 ? 1 + ((gapData[gapData.length - 1]?.gapPercent ?? 0) / 100) : 1,
         average: 1,
-        deviationPercent: gapData.length > 0 ? gapData[gapData.length - 1]!.gapPercent : 0,
+        deviationPercent: gapData.length > 0 ? (gapData[gapData.length - 1]?.gapPercent ?? 0) : 0,
       },
-      recoveryHr: { current: 0, average: 0, deviationPercent: 0 },
+      recoveryHr: (() => {
+        // 運動後の心拍回復: HRV as proxy for recovery capacity
+        const hrvValues = allMetrics
+          .map((m) => (m.hrv as number) ?? 0)
+          .filter((v) => v > 0);
+        if (hrvValues.length === 0) {
+          // Fallback: derive from hp_computed (higher hp = better recovery proxy)
+          const hpValues = allMetrics
+            .map((m) => (m.hp_computed as number) ?? 0)
+            .filter((v) => v > 0);
+          if (hpValues.length === 0) return { current: 0, average: 0, deviationPercent: 0 };
+          const currentHp = hpValues[hpValues.length - 1] ?? 0;
+          const avgHp = Math.round(avg(hpValues) * 100) / 100;
+          const devPct = avgHp > 0 ? Math.round(((currentHp - avgHp) / avgHp) * 100) : 0;
+          return { current: Math.round(currentHp * 100) / 100, average: avgHp, deviationPercent: devPct };
+        }
+        const currentHrv = hrvValues[hrvValues.length - 1] ?? 0;
+        const avgHrv = Math.round(avg(hrvValues) * 100) / 100;
+        const devPct = avgHrv > 0 ? Math.round(((currentHrv - avgHrv) / avgHrv) * 100) : 0;
+        return { current: Math.round(currentHrv * 100) / 100, average: avgHrv, deviationPercent: devPct };
+      })(),
       sleepEfficiency: {
         current: Math.round(latestSleep * 20),
         average: Math.round(avgSleep * 20),
@@ -400,8 +438,8 @@ function buildPainAnalysis(
 
     let num = 0, denA = 0, denB = 0;
     for (let i = 0; i < nrsVals.length; i++) {
-      const a = nrsVals[i]! - nrsMean;
-      const b = srpeVals[i]! - srpeMean;
+      const a = (nrsVals[i] ?? 0) - nrsMean;
+      const b = (srpeVals[i] ?? 0) - srpeMean;
       num += a * b;
       denA += a * a;
       denB += b * b;
@@ -413,7 +451,7 @@ function buildPainAnalysis(
   // パターン検出
   const patterns: string[] = [];
   const recentNrs = nrsTrend.slice(-3).map((d) => d.nrs);
-  if (recentNrs.length >= 3 && recentNrs[0]! < recentNrs[1]! && recentNrs[1]! < recentNrs[2]!) {
+  if (recentNrs.length >= 3 && (recentNrs[0] ?? 0) < (recentNrs[1] ?? 0) && (recentNrs[1] ?? 0) < (recentNrs[2] ?? 0)) {
     patterns.push('3日連続NRS上昇傾向');
   }
   if (correlation >= 0.7) {

@@ -138,7 +138,7 @@ type HandlerFn = (
 export function withApiHandler(
   handler: HandlerFn,
   options?: ApiHandlerOptions,
-): (req: Request, routeCtx?: { params?: Promise<Record<string, string>> }) => Promise<NextResponse> {
+): (req: Request, routeCtx: { params: Promise<Record<string, string | string[]>> }) => Promise<NextResponse> {
   const service = options?.service ?? 'api';
   const captureErrors = options?.captureErrors ?? true;
   const exposeTraceId = options?.exposeTraceId ?? true;
@@ -146,7 +146,8 @@ export function withApiHandler(
   const log = createLogger(service, options?.logLevel);
   const serviceTracer = createTracer(service);
 
-  return async (req: Request, routeCtx?: { params?: Promise<Record<string, string>> }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return async (req: Request, routeCtx: { params: Promise<Record<string, string | string[]>> } = { params: Promise.resolve({}) } as any) => {
     const traceId = getTraceIdFromRequest(req);
     const method = req.method;
     const url = new URL(req.url);
@@ -200,12 +201,15 @@ export function withApiHandler(
 
         try {
           // params を解決（Next.js 15 では Promise）
-          const resolvedParams = routeCtx?.params ? await routeCtx.params : undefined;
+          const rawParams = await routeCtx.params;
+          const resolvedParams: Record<string, string> = Object.fromEntries(
+            Object.entries(rawParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] ?? '' : v]),
+          );
 
           const ctx: ApiContext = {
             traceId,
             log: apiLog,
-            params: resolvedParams ?? {},
+            params: resolvedParams,
           };
 
           const result = await handler(req, ctx);
