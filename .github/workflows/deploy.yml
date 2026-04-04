@@ -21,15 +21,12 @@ jobs:
           version: latest
 
       - name: Push DB migrations
-        # --db-url で直接 PostgreSQL 接続 — SUPABASE_ACCESS_TOKEN 不要
-        # SUPABASE_DB_URL = postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
-        run: |
-          REF=$(printf '%s' "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
-          DB_URL="postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.${REF}.supabase.co:5432/postgres"
-          supabase db push --db-url "$DB_URL"
+        # SUPABASE_DB_URL に完全な接続URLを格納する方式
+        # 例: postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
+        # または pooler: postgresql://postgres.[ref]:[password]@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
         env:
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
   # ── 2. フロントエンド デプロイ ──────────────────────────────────────────
   deploy-frontend:
