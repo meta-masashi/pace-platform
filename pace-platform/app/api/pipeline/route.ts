@@ -21,6 +21,66 @@ import type {
 } from '@/lib/engine/v6/types';
 
 // ---------------------------------------------------------------------------
+// Go Engine — Shadow Mode integration
+// GO_ENGINE_ENABLED: false | shadow | true
+// ---------------------------------------------------------------------------
+
+type GoEngineMode = 'false' | 'shadow' | 'true';
+
+const GO_ENGINE_MODE = (process.env.GO_ENGINE_ENABLED ?? 'false') as GoEngineMode;
+const GO_ENGINE_URL  = process.env.GO_ENGINE_URL ?? 'https://pace-engine.fly.dev';
+
+/** Go エンジンを呼び出す（失敗しても TS 結果に影響しない） */
+async function callGoEngine(
+  dailyInput: DailyInput,
+  context: AthleteContext,
+): Promise<{ data: unknown; latencyMs: number } | null> {
+  const start = Date.now();
+  try {
+    const res = await fetch(`${GO_ENGINE_URL}/v6/infer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        daily_input: {
+          date: dailyInput.date,
+          subjective: {
+            sleep_quality:    dailyInput.sleepQuality   ?? 5,
+            fatigue:          dailyInput.fatigue        ?? 5,
+            muscle_soreness:  dailyInput.muscleSoreness ?? 3,
+            stress:           dailyInput.stressLevel    ?? 3,
+            mood:             dailyInput.mood           ?? 5,
+            hrv:              dailyInput.hrv            ?? null,
+            pain_nrs:         dailyInput.painNRS        ?? 0,
+          },
+          rpe:          dailyInput.sRPE               ?? 0,
+          duration_min: dailyInput.trainingDurationMin ?? 0,
+          gps_external: null,
+        },
+        athlete_context: {
+          athlete_id:       context.athleteId,
+          sport:            context.sport,
+          age:              context.age,
+          valid_data_days:  context.validDataDays,
+          risk_multipliers: context.riskMultipliers ?? {},
+          bayesian_priors:  context.bayesianPriors  ?? {},
+          context_flags:    {},
+          maturation_mode:  'adult',
+        },
+        history: [],
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!res.ok) return null;
+    const json = await res.json() as { data: unknown };
+    return { data: json.data, latencyMs: Date.now() - start };
+  } catch {
+    // Go エンジン失敗は TS 結果に影響させない
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/pipeline
 // ---------------------------------------------------------------------------
 
@@ -177,11 +237,48 @@ export async function POST(request: Request) {
       ...(lastKnownRecord ? { lastKnownRecord } : {}),
     };
 
-    // ----- パイプライン実行 -----
+    // ----- パイプライン実行（Go Engine / TypeScript 切替） -----
     const pipeline = new InferencePipeline();
-    // Node 0-3 は pipeline.execute 内でフォールバック処理されるため、
-    // 登録されていないノードはスキップされる
-    const output: PipelineOutput = await pipeline.execute(body.dailyInput, context);
+
+    let output: PipelineOutput;
+
+    if (GO_ENGINE_MODE === 'true') {
+      // ── Go primary: Go が失敗したら TS にフォールバック ──
+      const goResult = await callGoEngine(body.dailyInput, context);
+      if (goResult) {
+        // Go 結果をそのまま返す（型は compatible）
+        output = goResult.data as PipelineOutput;
+        console.info('[pipeline] Go engine used', { latencyMs: goResult.latencyMs });
+      } else {
+        console.warn('[pipeline] Go engine failed — falling back to TypeScript');
+        output = await pipeline.execute(body.dailyInput, context);
+      }
+    } else if (GO_ENGINE_MODE === 'shadow') {
+      // ── Shadow: TS を返しつつ Go を並行実行してログ比較 ──
+      const [tsOutput, goResult] = await Promise.all([
+        pipeline.execute(body.dailyInput, context),
+        callGoEngine(body.dailyInput, context),
+      ]);
+      output = tsOutput;
+
+      if (goResult) {
+        const goDecision = (goResult.data as { decision?: { decision?: string } })?.decision?.decision;
+        const tsDecision = tsOutput.decision.decision;
+        const matches = goDecision === tsDecision;
+        console.info('[pipeline:shadow] Go vs TS comparison', {
+          athleteId: context.athleteId,
+          go: goDecision,
+          ts: tsDecision,
+          matches,
+          goLatencyMs: goResult.latencyMs,
+        });
+      } else {
+        console.warn('[pipeline:shadow] Go engine unavailable');
+      }
+    } else {
+      // ── TypeScript only (default) ──
+      output = await pipeline.execute(body.dailyInput, context);
+    }
 
     // ----- トレースログを DB に保存 -----
     const traceLog = InferencePipeline.buildTraceLog(

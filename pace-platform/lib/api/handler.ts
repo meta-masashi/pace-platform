@@ -138,7 +138,7 @@ type HandlerFn = (
 export function withApiHandler(
   handler: HandlerFn,
   options?: ApiHandlerOptions,
-): (req: Request, routeCtx?: { params?: Promise<Record<string, string>> }) => Promise<NextResponse> {
+): (req: Request, routeCtx?: { params: Promise<Record<string, string>> }) => Promise<NextResponse> {
   const service = options?.service ?? 'api';
   const captureErrors = options?.captureErrors ?? true;
   const exposeTraceId = options?.exposeTraceId ?? true;
@@ -146,7 +146,7 @@ export function withApiHandler(
   const log = createLogger(service, options?.logLevel);
   const serviceTracer = createTracer(service);
 
-  return async (req: Request, routeCtx?: { params?: Promise<Record<string, string>> }) => {
+  return async (req: Request, routeCtx?: { params: Promise<Record<string, string>> }) => {
     const traceId = getTraceIdFromRequest(req);
     const method = req.method;
     const url = new URL(req.url);
@@ -200,7 +200,7 @@ export function withApiHandler(
 
         try {
           // params を解決（Next.js 15 では Promise）
-          const resolvedParams = routeCtx?.params ? await routeCtx.params : undefined;
+          const resolvedParams = routeCtx?.params != null ? await routeCtx.params : undefined;
 
           const ctx: ApiContext = {
             traceId,
