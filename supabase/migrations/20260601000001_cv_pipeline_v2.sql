@@ -130,7 +130,7 @@ AS $$
   FROM daily_metrics dm
   WHERE
     (cutoff_date IS NULL OR dm.date <= cutoff_date)
-    AND dm.fatigue_score IS NOT NULL
+    AND dm.fatigue_subjective IS NOT NULL
     AND dm.hrv IS NOT NULL
   GROUP BY dm.athlete_id
   HAVING COUNT(DISTINCT dm.date) >= min_days;
