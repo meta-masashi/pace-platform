@@ -63,9 +63,9 @@ export function AdminChart({
   );
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="max-w-2xl rounded-lg border border-slate-200 bg-white p-4">
       {title && (
-        <h3 className="mb-3 text-sm font-semibold text-slate-700">{title}</h3>
+        <h3 className="mb-3 text-xs font-semibold text-slate-700">{title}</h3>
       )}
       <svg
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
