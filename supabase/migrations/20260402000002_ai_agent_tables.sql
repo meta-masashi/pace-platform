@@ -130,9 +130,9 @@ CREATE POLICY "weekly_plans_athlete_read" ON public.weekly_plans
     status = 'approved'
     AND (
       plan_type = 'team'
-      OR athlete_id IN (SELECT id FROM public.athletes WHERE user_id = auth.uid())
+      OR athlete_id IN (SELECT id FROM public.athletes WHERE id = auth.uid())
     )
-    AND org_id IN (SELECT org_id FROM public.athletes WHERE user_id = auth.uid())
+    AND org_id IN (SELECT org_id FROM public.athletes WHERE id = auth.uid())
   );
 
 -- -------------------------------------------------------------------------

@@ -16,8 +16,21 @@ ALTER TABLE athletes
 ALTER TABLE athletes
   ADD COLUMN IF NOT EXISTS is_contact_sport BOOLEAN NOT NULL DEFAULT false;
 
--- Backfill skipped: athletes.sport column may not exist in all environments.
--- New organizations default to 'other'; can be updated via settings.
+-- Backfill: If athletes already have sport set, update the organization to match
+UPDATE organizations o
+SET sport = sub.athlete_sport
+FROM (
+  SELECT DISTINCT ON (a.org_id)
+    a.org_id,
+    a.sport AS athlete_sport
+  FROM athletes a
+  WHERE a.sport IS NOT NULL
+    AND a.sport != ''
+    AND a.sport IN ('soccer', 'baseball', 'basketball', 'rugby', 'other')
+  ORDER BY a.org_id, a.created_at ASC
+) sub
+WHERE o.id = sub.org_id
+  AND o.sport = 'other';
 
 -- Add comment for documentation
 COMMENT ON COLUMN organizations.sport IS

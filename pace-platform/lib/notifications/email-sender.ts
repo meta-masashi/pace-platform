@@ -167,7 +167,7 @@ async function sendViaResend(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.RESEND_FROM_EMAIL ?? "PACE <noreply@pace.hachi.co.jp>",
+      from: process.env.RESEND_FROM_EMAIL ?? "PACE <noreply@hachi-riskon.com>",
       to: [to],
       subject,
       html,

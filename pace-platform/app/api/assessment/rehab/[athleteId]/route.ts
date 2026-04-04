@@ -141,7 +141,8 @@ export async function GET(
           .select('date, nrs')
           .eq('athlete_id', athleteId)
           .gte('date', injuryDate ?? '2020-01-01')
-          .order('date', { ascending: true });
+          .order('date', { ascending: true })
+          .limit(365);
 
         const nrsTrend = (nrsMetrics ?? []).map((m) => ({
           date: m.date as string,
@@ -165,7 +166,8 @@ export async function GET(
           .from('rehab_prescriptions')
           .select('id, exercise_id, start_day, end_day, sets, reps, duration_sec, notes, status')
           .eq('program_id', programId)
-          .eq('status', 'active');
+          .eq('status', 'active')
+          .limit(100);
 
         // 処方に紐づく種目情報を取得
         const exerciseIds = (prescriptions ?? []).map((p) => p.exercise_id as string);

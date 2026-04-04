@@ -74,8 +74,10 @@ export const GET = withApiHandler(async (req, ctx) => {
       athletes!inner ( id, name, org_id ),
       staff:set_by_staff_id ( name )
     `)
+    .eq("athletes.org_id", staff.org_id)
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
-    .order("set_at", { ascending: false });
+    .order("set_at", { ascending: false })
+    .limit(500);
 
   if (athleteId) {
     query = query.eq("athlete_id", athleteId);
@@ -278,7 +280,7 @@ export const DELETE = withApiHandler(async (req, ctx) => {
     throw new ApiError(404, "指定されたロックが見つかりません。");
   }
 
-  // ----- org_id 所有権チェック -----
+  // ----- org_id 所有権チェック（IDOR防止） -----
   const lockOrgId = (lock.athletes as unknown as { org_id: string })?.org_id;
   if (lockOrgId !== staff.org_id) {
     throw new ApiError(403, "このロックを削除する権限がありません。");

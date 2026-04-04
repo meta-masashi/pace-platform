@@ -46,7 +46,9 @@ COMMENT ON TABLE public.mc_tracking_nodes IS '女性アスリート月経周期�
 -- ============================================================
 DO $$
 BEGIN
-  ALTER TABLE public.alpha_chains ADD COLUMN nodes_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'alpha_chains') THEN
+    ALTER TABLE public.alpha_chains ADD COLUMN nodes_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+  END IF;
 EXCEPTION
   WHEN duplicate_column THEN NULL;
 END $$;

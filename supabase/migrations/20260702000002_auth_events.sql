@@ -50,10 +50,15 @@ CREATE POLICY "auth_events_service_only"
 
 -- 自動クリーンアップ: 90日以上前のイベントを毎日削除
 -- pg_cron が有効な場合のみ
-SELECT cron.schedule(
-  'auth-events-cleanup',
-  '0 3 * * *',
-  $$DELETE FROM public.auth_events WHERE created_at < now() - interval '90 days'$$
-);
+DO $outer$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.schedule(
+      'auth-events-cleanup',
+      '0 3 * * *',
+      'DELETE FROM public.auth_events WHERE created_at < now() - interval ''90 days'''
+    );
+  END IF;
+END $outer$;
 
 COMMENT ON TABLE public.auth_events IS 'ログイン試行・セキュリティイベント記録。ブルートフォース検知・監査ログに使用';

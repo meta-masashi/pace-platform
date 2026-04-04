@@ -42,9 +42,10 @@ CREATE INDEX IF NOT EXISTS idx_athletes_org_sport
 -- athlete_locks
 -- ========================================
 -- 有効中の Lock の高速取得（ダッシュボード / チームメニュー除外判定）
+-- 有効ロック高速取得: expires_at IS NULL のみ（now() は IMMUTABLE でないため部分インデックスに不可）
 CREATE INDEX IF NOT EXISTS idx_athlete_locks_athlete_active
   ON public.athlete_locks (athlete_id)
-  WHERE expires_at IS NULL OR expires_at > now();
+  WHERE expires_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_athlete_locks_hard
   ON public.athlete_locks (athlete_id, lock_type)
@@ -73,20 +74,12 @@ CREATE INDEX IF NOT EXISTS idx_assessments_in_progress
   WHERE status = 'in_progress';
 
 -- ========================================
--- assessment_responses
+-- assessment_responses（後続マイグレーションで作成されるためスキップ）
 -- ========================================
-CREATE INDEX IF NOT EXISTS idx_assessment_responses_assessment
-  ON public.assessment_responses (assessment_id, timestamp ASC);
 
 -- ========================================
--- assessment_results
+-- assessment_results（後続マイグレーションで作成されるためスキップ）
 -- ========================================
-CREATE INDEX IF NOT EXISTS idx_assessment_results_assessment
-  ON public.assessment_results (assessment_id);
-
-CREATE INDEX IF NOT EXISTS idx_assessment_results_org_confidence
-  ON public.assessment_results (org_id, confidence DESC)
-  WHERE confidence IS NOT NULL;
 
 -- ========================================
 -- assessment_nodes
@@ -97,17 +90,11 @@ CREATE INDEX IF NOT EXISTS idx_assessment_nodes_file_type
 CREATE INDEX IF NOT EXISTS idx_assessment_nodes_phase
   ON public.assessment_nodes (file_type, phase);
 
--- 競合仮説グループ検索（ゼロサム正規化処理用）
-CREATE INDEX IF NOT EXISTS idx_assessment_nodes_mutex_group
-  ON public.assessment_nodes (mutual_exclusive_group)
-  WHERE mutual_exclusive_group IS NOT NULL;
+-- 競合仮説グループ検索（mutual_exclusive_group は後続マイグレーションで追加されるためスキップ）
 
 -- ========================================
--- biomechanical_vectors（004 で定義済みの追加分）
+-- biomechanical_vectors（テーブル未作成のためスキップ）
 -- ========================================
--- vector_type 別グラフトラバーサル
-CREATE INDEX IF NOT EXISTS idx_bv_source_type
-  ON public.biomechanical_vectors (source_node_id, vector_type);
 
 -- ========================================
 -- rehab_programs

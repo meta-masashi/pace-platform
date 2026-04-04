@@ -40,6 +40,7 @@ CREATE POLICY fatigue_alerts_staff_access ON fatigue_alerts
   ));
 
 -- v_active_fatigue_alerts VIEW: acknowledged_by の名前付き
+DROP VIEW IF EXISTS v_active_fatigue_alerts;
 CREATE OR REPLACE VIEW v_active_fatigue_alerts AS
 SELECT
   fa.id,

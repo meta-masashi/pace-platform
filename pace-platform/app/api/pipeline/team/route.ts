@@ -79,10 +79,11 @@ export const GET = withApiHandler(async (req, ctx) => {
   // Supabase では distinct on が使えないため、全件取得後にクライアント側でフィルタ
   const { data: traces, error: tracesError } = await supabase
     .from('inference_trace_logs')
-    .select('*')
+    .select('id, athlete_id, org_id, timestamp_utc, risk_level, decision, priority, athlete_name, acknowledged')
     .in('athlete_id', athleteIds)
     .eq('org_id', staff.org_id)
-    .order('timestamp_utc', { ascending: false });
+    .order('timestamp_utc', { ascending: false })
+    .limit(500);
 
   if (tracesError) {
     ctx.log.error('トレース取得エラー', { detail: tracesError });

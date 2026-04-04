@@ -88,8 +88,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://pace.hachi.co.jp",
-        "https://*.pace.hachi.co.jp",
+        "https://hachi-riskon.com",
+        "https://*.hachi-riskon.com",
         "http://localhost:3000",
         "http://localhost:8080",
     ],

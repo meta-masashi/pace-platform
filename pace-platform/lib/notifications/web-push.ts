@@ -26,7 +26,7 @@ export async function sendWebPush(
 
   const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
   const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-  const vapidSubject = process.env.VAPID_SUBJECT ?? "mailto:noreply@pace.hachi.co.jp";
+  const vapidSubject = process.env.VAPID_SUBJECT ?? "mailto:noreply@hachi-riskon.com";
 
   if (!vapidPublicKey || !vapidPrivateKey) {
     return {

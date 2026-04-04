@@ -20,9 +20,13 @@ CREATE TABLE IF NOT EXISTS public.risk_decay_log (
   half_life_days FLOAT NOT NULL,
   chronic_modifier FLOAT NOT NULL DEFAULT 1.0,
   days_elapsed INT NOT NULL,
-  computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT unique_decay_entry UNIQUE (athlete_id, assessment_id, node_id, (computed_at::date))
+  computed_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 日付単位のユニーク制約
+CREATE UNIQUE INDEX IF NOT EXISTS unique_decay_entry
+  ON public.risk_decay_log (athlete_id, assessment_id, node_id, computed_date);
 
 -- ---------------------------------------------------------------------------
 -- RLS ポリシー

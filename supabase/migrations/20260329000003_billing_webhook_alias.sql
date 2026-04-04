@@ -49,45 +49,8 @@ WHERE (nrs >= 5 OR acwr > 1.3)
   AND soft_lock = false;
 
 -- ------------------------------------------------------------
--- 2. athlete_alerts VIEW
+-- 2. athlete_alerts VIEW（20260329000002_phase_d_fixes.sql で作成済み — スキップ）
 -- ------------------------------------------------------------
-
-CREATE OR REPLACE VIEW public.athlete_alerts AS
-  -- triage alerts
-  SELECT
-    t.id,
-    t.athlete_id,
-    a.name          AS athlete_name,
-    a.org_id,
-    a.team_id,
-    t.trigger_type  AS alert_type,
-    t.severity,
-    t.metric_value,
-    t.threshold_value,
-    NULL::TEXT      AS alert_status,
-    t.created_at,
-    t.created_at    AS updated_at
-  FROM public.triage t
-  JOIN public.athletes a ON a.id = t.athlete_id
-
-  UNION ALL
-
-  -- fatigue_alerts
-  SELECT
-    fa.id,
-    fa.athlete_id,
-    a.name          AS athlete_name,
-    a.org_id,
-    a.team_id,
-    'fatigue'       AS alert_type,
-    fa.predicted_fatigue_state AS severity,
-    NULL::NUMERIC   AS metric_value,
-    NULL::NUMERIC   AS threshold_value,
-    fa.alert_status,
-    fa.created_at,
-    fa.created_at   AS updated_at
-  FROM public.fatigue_alerts fa
-  JOIN public.athletes a ON a.id = fa.athlete_id;
 
 -- ------------------------------------------------------------
 -- 3. risk_prevention_logs

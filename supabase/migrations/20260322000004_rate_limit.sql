@@ -19,8 +19,16 @@ CREATE INDEX IF NOT EXISTS rate_limit_log_key_ts ON public.rate_limit_log (key, 
 -- Auto-cleanup: delete rows older than 2 minutes every minute.
 -- NOTE: This requires pg_cron. Enable it in Supabase dashboard → Database → Extensions.
 -- If pg_cron is not enabled, comment out the SELECT below and handle cleanup manually.
-SELECT cron.schedule(
-  'rate-limit-cleanup',
-  '* * * * *',
-  $$DELETE FROM public.rate_limit_log WHERE ts < now() - interval '2 minutes'$$
-);
+-- pg_cron が利用可能な場合のみ自動クリーンアップを有効化
+-- 注意: pg_cron 未有効時は外部 cron で以下を定期実行:
+--   DELETE FROM public.rate_limit_log WHERE ts < now() - interval '2 minutes';
+DO $outer$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.schedule(
+      'rate-limit-cleanup',
+      '* * * * *',
+      'DELETE FROM public.rate_limit_log WHERE ts < now() - interval ''2 minutes'''
+    );
+  END IF;
+END $outer$;
