@@ -23,9 +23,36 @@ import type {
   NodeResult,
   PipelineConfig,
   TissueCategory,
+  ZScoreStage,
 } from '../types';
 import type { CleaningOutput } from './node1-cleaning';
 import { adaptACWR } from '../adapters/conditioning-adapter';
+import { Z_SCORE_STAGES } from '../config';
+
+// ---------------------------------------------------------------------------
+// 段階的 Z-Score 重み付け
+// ---------------------------------------------------------------------------
+
+/**
+ * データ蓄積日数に応じた Z-Score 段階的重みを返す。
+ * Go エンジン `GraduatedZScoreWeight()` と完全一致。
+ *
+ * @param daysSinceStart 蓄積開始からの経過日数
+ * @param stages カスタム段階設定（省略時は Z_SCORE_STAGES）
+ */
+export function getZScoreStageWeight(
+  daysSinceStart: number,
+  stages: ZScoreStage[] = Z_SCORE_STAGES,
+): number {
+  for (const stage of stages) {
+    if (daysSinceStart >= stage.minDays && daysSinceStart <= stage.maxDays) {
+      return stage.weight;
+    }
+  }
+  // レンジ外は最終段階の weight を返す（保険）
+  const last = stages[stages.length - 1];
+  return last ? last.weight : 0;
+}
 // ODE・EKF は Level 5 エビデンスのため排除（REMEDIATION-PLAN-v2）
 // import { callODEEngine, callEKFEngine } from '../gateway';
 
