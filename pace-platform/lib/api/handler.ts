@@ -146,7 +146,8 @@ export function withApiHandler(
   const log = createLogger(service, options?.logLevel);
   const serviceTracer = createTracer(service);
 
-  return async (req: Request, routeCtx: { params: Promise<Record<string, string | string[]>> }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return async (req: Request, routeCtx: { params: Promise<Record<string, string | string[]>> } = { params: Promise.resolve({}) } as any) => {
     const traceId = getTraceIdFromRequest(req);
     const method = req.method;
     const url = new URL(req.url);
