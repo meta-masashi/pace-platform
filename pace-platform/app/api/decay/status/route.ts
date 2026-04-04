@@ -58,7 +58,7 @@ export const GET = withApiHandler(async (req, ctx) => {
   // 各ノードについて最新の computed_at のレコードのみ取得
   const { data: decayLogs, error: logError } = await supabase
     .from("risk_decay_log")
-    .select("id, athlete_id, assessment_id, node_id, current_risk, computed_at, decay_factor, lambda, initial_risk, half_life_days")
+    .select("id, athlete_id, assessment_id, node_id, current_risk, computed_at, decay_factor, lambda, initial_risk, half_life_days, days_elapsed")
     .eq("athlete_id", athleteId)
     .gt("current_risk", RISK_THRESHOLD)
     .order("computed_at", { ascending: false })

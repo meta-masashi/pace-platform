@@ -2,12 +2,22 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/auth/callback', '/tokushoho', '/privacy'];
+const PUBLIC_ROUTES = [
+  '/login',
+  '/auth/login',
+  '/auth/athlete-login',
+  '/auth/admin-login',
+  '/auth/athlete-signup',
+  '/auth/callback',
+  '/tokushoho',
+  '/privacy',
+];
 
 // API routes that skip session-based auth (use their own auth mechanisms)
 const API_AUTH_EXEMPT = [
   '/api/auth/callback',        // OAuth callback
   '/api/auth/login',           // Login (pre-auth, has own brute force protection)
+  '/api/auth/athlete-signup',  // Athlete self-signup (has own auth check)
   '/api/s2s/ingest',           // Machine-to-machine (API key auth)
   '/api/webhooks/',            // Stripe webhooks (signature verification)
   '/api/health',               // Health check endpoint (infrastructure monitoring)
@@ -35,6 +45,11 @@ function hasStaticExtension(pathname: string): boolean {
   const ext = pathname.slice(lastDot).toLowerCase();
   return STATIC_EXTENSIONS.has(ext);
 }
+
+// ---------------------------------------------------------------------------
+// 選手向けページパス（未認証時のリダイレクト先判定用）
+// ---------------------------------------------------------------------------
+const ATHLETE_PAGE_PATHS = ['/home', '/checkin', '/history'];
 
 // ---------------------------------------------------------------------------
 // セキュリティ・パフォーマンスヘッダー（OWASP 推奨準拠）
@@ -124,6 +139,107 @@ function validateOrigin(request: NextRequest): boolean {
 
 const DEPRECATED_PREFIXES = ['/api/telehealth', '/api/insurance'];
 
+// ---------------------------------------------------------------------------
+// ロール判定ヘルパー（user_metadata ベース、DB クエリ不要）
+// ---------------------------------------------------------------------------
+
+interface UserRoles {
+  isPlatformAdmin: boolean;
+  isStaff: boolean;
+  isAthlete: boolean;
+  loginContext: string | undefined;
+}
+
+function extractUserRoles(user: { user_metadata?: Record<string, unknown> }): UserRoles {
+  const detectedRoles = user.user_metadata?.detected_roles as string[] | undefined;
+  const loginContext = user.user_metadata?.login_context as string | undefined;
+
+  return {
+    isPlatformAdmin: detectedRoles?.includes('platform_admin') ?? false,
+    isStaff: detectedRoles?.includes('staff') ?? false,
+    isAthlete: detectedRoles?.includes('athlete') ?? false,
+    loginContext,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 認証済みユーザーのログインページアクセス制御
+// ---------------------------------------------------------------------------
+
+function handleAuthenticatedLoginPageAccess(
+  pathname: string,
+  roles: UserRoles,
+  requestUrl: string,
+): NextResponse | null {
+  // /auth/login にアクセス
+  if (pathname === '/auth/login' || pathname === '/login') {
+    if (roles.isPlatformAdmin) {
+      return NextResponse.redirect(new URL('/auth/admin-login', requestUrl));
+    }
+    if (roles.isAthlete && !roles.isStaff) {
+      return NextResponse.redirect(new URL('/auth/athlete-login', requestUrl));
+    }
+    if (roles.isStaff) {
+      return NextResponse.redirect(new URL('/dashboard', requestUrl));
+    }
+  }
+
+  // /auth/athlete-login にアクセス
+  if (pathname === '/auth/athlete-login') {
+    if (roles.isPlatformAdmin) {
+      return NextResponse.redirect(new URL('/auth/admin-login', requestUrl));
+    }
+    if (roles.isStaff) {
+      // スタッフは /auth/login へ誘導
+      return NextResponse.redirect(new URL('/auth/login', requestUrl));
+    }
+    if (roles.isAthlete) {
+      return NextResponse.redirect(new URL('/home', requestUrl));
+    }
+  }
+
+  // /auth/admin-login にアクセス
+  if (pathname === '/auth/admin-login') {
+    if (roles.isPlatformAdmin) {
+      return NextResponse.redirect(new URL('/platform-admin', requestUrl));
+    }
+    // platform_admin 以外は /auth/login へ
+    return NextResponse.redirect(new URL('/auth/login', requestUrl));
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// /platform-admin/* パスのアクセス制御
+// ---------------------------------------------------------------------------
+
+function handlePlatformAdminAccess(
+  pathname: string,
+  roles: UserRoles,
+  requestUrl: string,
+  isApiRoute: boolean,
+): NextResponse | null {
+  if (!pathname.startsWith('/platform-admin')) {
+    return null;
+  }
+
+  if (roles.isPlatformAdmin) {
+    return null; // アクセス許可
+  }
+
+  // platform_admin でないユーザーはアクセス拒否
+  if (isApiRoute) {
+    return NextResponse.json(
+      { success: false, error: 'プラットフォーム管理者権限が必要です。' },
+      { status: 403 },
+    );
+  }
+
+  // ページルート → /dashboard へリダイレクト
+  return NextResponse.redirect(new URL('/dashboard', requestUrl));
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -141,7 +257,7 @@ export async function middleware(request: NextRequest) {
   // Skip auth check for public routes and static assets
   if (
     pathname === '/' ||
-    PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) ||
+    PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/')) ||
     pathname.startsWith('/_next/') ||
     hasStaticExtension(pathname)
   ) {
@@ -249,8 +365,17 @@ export async function middleware(request: NextRequest) {
         );
       }
 
-      // ページルート → ログインへリダイレクト
-      const loginUrl = new URL('/login', request.url);
+      // ページルート → ロール別ログインページへリダイレクト
+      let loginPath: string;
+      if (pathname.startsWith('/platform-admin')) {
+        loginPath = '/auth/admin-login';
+      } else if (ATHLETE_PAGE_PATHS.some((p) => pathname.startsWith(p))) {
+        loginPath = '/auth/athlete-login';
+      } else {
+        loginPath = '/auth/login';
+      }
+
+      const loginUrl = new URL(loginPath, request.url);
       loginUrl.searchParams.set('redirect', pathname);
       const redirectResponse = NextResponse.redirect(loginUrl);
       // Cookie をリダイレクトレスポンスにも引き継ぐ（トークンリフレッシュ対応）
@@ -258,6 +383,43 @@ export async function middleware(request: NextRequest) {
         redirectResponse.cookies.set(cookie.name, cookie.value);
       });
       return redirectResponse;
+    }
+
+    // -----------------------------------------------------------------------
+    // 認証済みユーザーのルーティング制御
+    // -----------------------------------------------------------------------
+    const roles = extractUserRoles(user);
+
+    // ★ ログインページへのアクセス（認証済みユーザーのリダイレクト）
+    const loginRedirect = handleAuthenticatedLoginPageAccess(
+      pathname,
+      roles,
+      request.url,
+    );
+    if (loginRedirect) {
+      // Cookie を引き継ぐ
+      response.cookies.getAll().forEach((cookie) => {
+        loginRedirect.cookies.set(cookie.name, cookie.value);
+      });
+      return loginRedirect;
+    }
+
+    // ★ /platform-admin/* へのアクセス制御
+    const isApiRoute = pathname.startsWith('/api/');
+    const platformAdminGuard = handlePlatformAdminAccess(
+      pathname,
+      roles,
+      request.url,
+      isApiRoute,
+    );
+    if (platformAdminGuard) {
+      if (!isApiRoute) {
+        // Cookie を引き継ぐ
+        response.cookies.getAll().forEach((cookie) => {
+          platformAdminGuard.cookies.set(cookie.name, cookie.value);
+        });
+      }
+      return platformAdminGuard;
     }
 
     // 検証済みユーザー ID をヘッダーに設定（ルートハンドラーで getUser() の再呼出しを省略可能）

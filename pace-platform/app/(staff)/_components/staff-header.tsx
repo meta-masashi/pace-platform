@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import { OfflineBadge } from '@/app/_components/offline-badge';
+import { RoleSwitchToggle } from '@/components/layout/role-switch-toggle';
 
 interface StaffHeaderProps {
   user: User;
@@ -55,6 +56,7 @@ export function StaffHeader({ user, teamName }: StaffHeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        <RoleSwitchToggle userId={user.id} />
         <OfflineBadge />
       <div className="relative" ref={menuRef}>
         <button
