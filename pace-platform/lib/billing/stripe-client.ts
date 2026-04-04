@@ -43,23 +43,36 @@ export const stripe: Stripe | null = stripeSecretKey
 // プラン定義（JPY 固定）
 // ============================================================
 
-// MASTER-SPEC v1.1: Standard / Pro / Pro+CV Addon / Enterprise
+// MASTER-SPEC v1.3: Standard / Pro / Pro+CV Addon / Enterprise
 export type PlanId = 'standard' | 'pro' | 'pro_cv' | 'enterprise'
 
 export interface PlanDefinition {
   id: PlanId
   name: string
+  nameJa: string            // 日本語名（platform_admin UI 用）
   priceJpy: number | null   // enterprise は問い合わせ制のため null
   maxStaff: number | null   // null = 無制限
   maxAthletes: number | null
   priceId: string | null    // Stripe Price ID（環境変数から取得）
   features: string[]
+  /** platform_admin ダッシュボード用メタデータ */
+  adminMeta: {
+    /** プラン表示カラー（UI ラベル用） */
+    color: string
+    /** 簡潔なプラン説明 */
+    description: string
+    /** プラン順序（ソート用） */
+    order: number
+    /** アップグレード先のプラン ID */
+    upgradeTo: PlanId | null
+  }
 }
 
 export const PLANS: Record<PlanId, PlanDefinition> = {
   standard: {
     id: 'standard',
     name: 'Standard',
+    nameJa: 'スタンダード',
     priceJpy: 100000,
     maxStaff: 5,
     maxAthletes: 50,
@@ -69,10 +82,17 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       'feature_basic_assessment',
       'feature_daily_checkin',
     ],
+    adminMeta: {
+      color: '#3B82F6',   // blue-500
+      description: '選手管理・SOAP・基本分析',
+      order: 1,
+      upgradeTo: 'pro',
+    },
   },
   pro: {
     id: 'pro',
     name: 'Pro',
+    nameJa: 'プロ',
     priceJpy: 300000,
     maxStaff: 20,
     maxAthletes: 200,
@@ -83,10 +103,17 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       'feature_rag_pipeline',
       'feature_gemini_ai',
     ],
+    adminMeta: {
+      color: '#8B5CF6',   // violet-500
+      description: 'Standard + LLM 分析・高度ダッシュボード',
+      order: 2,
+      upgradeTo: 'pro_cv',
+    },
   },
   pro_cv: {
     id: 'pro_cv',
     name: 'Pro + CV Addon',
+    nameJa: 'プロ + CV アドオン',
     priceJpy: 500000,
     maxStaff: 20,
     maxAthletes: 200,
@@ -98,10 +125,17 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       'feature_rag_pipeline',
       'feature_gemini_ai',
     ],
+    adminMeta: {
+      color: '#F59E0B',   // amber-500
+      description: 'Pro + CV 解析 API（50本/月）',
+      order: 3,
+      upgradeTo: 'enterprise',
+    },
   },
   enterprise: {
     id: 'enterprise',
     name: 'Enterprise',
+    nameJa: 'エンタープライズ',
     priceJpy: 600000,
     maxStaff: null,
     maxAthletes: null,
@@ -116,6 +150,12 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       'feature_enterprise',
       'feature_multi_team',
     ],
+    adminMeta: {
+      color: '#10B981',   // emerald-500
+      description: 'Pro + CV Addon + 複数チーム管理',
+      order: 4,
+      upgradeTo: null,
+    },
   },
 }
 

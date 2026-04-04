@@ -27,11 +27,12 @@ function getBrowserClient() {
  * `/api/auth/callback` に認可コードが返され、セッションが確立される。
  */
 export async function signInWithMagicLink(
-  email: string
+  email: string,
+  loginContext: 'staff' | 'athlete' | 'admin' = 'staff'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = getBrowserClient();
-    const redirectTo = `${window.location.origin}/api/auth/callback`;
+    const redirectTo = `${window.location.origin}/api/auth/callback?login_context=${loginContext}`;
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -60,9 +61,11 @@ export async function signInWithMagicLink(
  * ブラウザを Google のログインページにリダイレクトし、
  * 認証完了後に `/api/auth/callback` に戻る。
  */
-export async function signInWithGoogle(): Promise<void> {
+export async function signInWithGoogle(
+  loginContext: 'staff' | 'athlete' | 'admin' = 'staff'
+): Promise<void> {
   const supabase = getBrowserClient();
-  const redirectTo = `${window.location.origin}/api/auth/callback`;
+  const redirectTo = `${window.location.origin}/api/auth/callback?login_context=${loginContext}`;
 
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",

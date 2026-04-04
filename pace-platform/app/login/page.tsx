@@ -371,9 +371,19 @@ export default function LoginPage() {
           </form>
         )}
 
+        {/* 選手誘導リンク */}
+        <div className="text-center">
+          <a
+            href="/auth/athlete-login"
+            className="inline-flex items-center gap-1 text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+          >
+            選手の方はこちら &rarr;
+          </a>
+        </div>
+
         {/* フッター */}
         <p className="text-center text-xs text-gray-400">
-          &copy; 2024 PACE Platform. All rights reserved.
+          &copy; 2026 PACE Platform. All rights reserved.
         </p>
       </div>
     </div>
