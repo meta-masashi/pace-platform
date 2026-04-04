@@ -100,7 +100,7 @@ DROP POLICY IF EXISTS video_uploads_staff_access ON video_uploads;
 CREATE POLICY video_uploads_staff_access ON video_uploads
   FOR ALL TO authenticated
   USING (team_id IN (
-    SELECT team_id FROM team_staff WHERE user_id = auth.uid()
+    SELECT team_id FROM public.staff WHERE id = auth.uid() AND team_id IS NOT NULL
   ));
 
 -- cv_jobs: スタッフが所属チームのジョブにアクセス可能
@@ -108,7 +108,7 @@ DROP POLICY IF EXISTS cv_jobs_staff_access ON cv_jobs;
 CREATE POLICY cv_jobs_staff_access ON cv_jobs
   FOR ALL TO authenticated
   USING (team_id IN (
-    SELECT team_id FROM team_staff WHERE user_id = auth.uid()
+    SELECT team_id FROM public.staff WHERE id = auth.uid() AND team_id IS NOT NULL
   ));
 
 -- ─────────────────────────────────────────────────────────────────────────────
