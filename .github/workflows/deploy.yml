@@ -20,44 +20,11 @@ jobs:
         with:
           version: latest
 
-      - name: Link Supabase project
-        run: |
-          REF=$(printf '%s' "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
-          echo "Project ref length: ${#REF}"
-          # --password を付与して DB 直接接続でリンク（アクセストークン不要）
-          supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-
-      - name: Sync migration history
-        run: |
-          PROJECT_REF=$(printf '%s' "${{ secrets.SUPABASE_PROJECT_REF }}" | tr -d '[:space:]')
-          MGMT_API="https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query"
-
-          echo "Truncating schema_migrations..."
-          curl -s -X POST "$MGMT_API" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ACCESS_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"query":"TRUNCATE supabase_migrations.schema_migrations"}' || true
-
-          echo "Registering local migration files..."
-          for f in supabase/migrations/*.sql; do
-            ver=$(basename "$f" .sql | grep -oE '^[0-9]+')
-            [ -z "$ver" ] && continue
-            echo "  applied: ${ver}"
-            supabase migration repair --status applied "$ver" || true
-          done
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        continue-on-error: true
-
       - name: Push DB migrations
-        # --db-url で直接接続 — SUPABASE_ACCESS_TOKEN が失効していても動作する
+        # --db-url で直接 PostgreSQL 接続 — SUPABASE_ACCESS_TOKEN 不要
         run: |
           REF=$(printf '%s' "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
-          DB_URL="postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.${REF}.supabase.co:5432/postgres"
+          DB_URL="postgresql://postgres.${REF}:${SUPABASE_DB_PASSWORD}@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres"
           supabase db push --db-url "$DB_URL"
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -121,11 +88,11 @@ jobs:
       - name: Link Supabase project
         run: |
           REF=$(printf '%s' "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
-          supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase link --project-ref "$REF"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        continue-on-error: true
 
       - name: Deploy dunning-cron
         run: supabase functions deploy dunning-cron --no-verify-jwt
