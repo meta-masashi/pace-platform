@@ -220,21 +220,20 @@ export function SimpleCheckin({ athleteId }: SimpleCheckinProps) {
   // -------------------------------------------------------------------------
   const stepNum = phase === 'step1' ? 1 : phase === 'step2' ? 2 : 3;
 
+  // 親レイアウト (max-w-[430px], pb-20, pt-6, px-4) の中で流れるフォーム
+  // ボトムナビ(56px) + レイアウト余白(24+80=104px) を差し引いた高さを確保
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+    <div className="-mx-4 -mt-6 flex min-h-[calc(100dvh-80px)] flex-col bg-white">
       {/* ヘッダー: プログレス */}
-      <div
-        className="px-6 pb-4"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}
-      >
+      <div className="px-5 pb-3 pt-4">
         <ProgressBar current={stepNum} total={3} />
-        <p className="mt-2 text-center text-xs font-medium text-slate-500">
+        <p className="mt-2 text-center text-[11px] font-medium text-slate-500">
           {stepNum} / 3
         </p>
       </div>
 
       {/* コンテンツ */}
-      <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-4">
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-6">
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {error}
@@ -257,7 +256,7 @@ export function SimpleCheckin({ athleteId }: SimpleCheckinProps) {
               <button
                 type="button"
                 onClick={() => handleCondition('good')}
-                className="flex min-h-[80px] items-center gap-4 rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-6 py-5 text-left transition-all active:scale-[0.98] active:bg-emerald-100"
+                className="flex min-h-[72px] items-center gap-3 rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-6 py-5 text-left transition-all active:scale-[0.98] active:bg-emerald-100"
               >
                 <span className="text-4xl" aria-hidden>
                   🟢
@@ -273,7 +272,7 @@ export function SimpleCheckin({ athleteId }: SimpleCheckinProps) {
               <button
                 type="button"
                 onClick={() => handleCondition('ok')}
-                className="flex min-h-[80px] items-center gap-4 rounded-2xl border-2 border-amber-200 bg-amber-50 px-6 py-5 text-left transition-all active:scale-[0.98] active:bg-amber-100"
+                className="flex min-h-[72px] items-center gap-3 rounded-2xl border-2 border-amber-200 bg-amber-50 px-6 py-5 text-left transition-all active:scale-[0.98] active:bg-amber-100"
               >
                 <span className="text-4xl" aria-hidden>
                   🟡
@@ -289,7 +288,7 @@ export function SimpleCheckin({ athleteId }: SimpleCheckinProps) {
               <button
                 type="button"
                 onClick={() => handleCondition('tough')}
-                className="flex min-h-[80px] items-center gap-4 rounded-2xl border-2 border-rose-200 bg-rose-50 px-6 py-5 text-left transition-all active:scale-[0.98] active:bg-rose-100"
+                className="flex min-h-[72px] items-center gap-3 rounded-2xl border-2 border-rose-200 bg-rose-50 px-6 py-5 text-left transition-all active:scale-[0.98] active:bg-rose-100"
               >
                 <span className="text-4xl" aria-hidden>
                   🔴
@@ -317,7 +316,7 @@ export function SimpleCheckin({ athleteId }: SimpleCheckinProps) {
               </p>
             </div>
 
-            <div className="mb-6 flex flex-wrap gap-2">
+            <div className="flex flex-1 flex-wrap content-start gap-2 pb-6">
               {PAIN_PARTS.map((part) => {
                 const selected = painParts.includes(part.id);
                 return (
@@ -338,7 +337,7 @@ export function SimpleCheckin({ athleteId }: SimpleCheckinProps) {
               })}
             </div>
 
-            <div className="mt-auto flex flex-col gap-3">
+            <div className="flex flex-col gap-3">
               {painParts.length > 0 ? (
                 <button
                   type="button"
@@ -416,8 +415,6 @@ export function SimpleCheckin({ athleteId }: SimpleCheckinProps) {
         )}
       </div>
 
-      {/* セーフエリア下部 */}
-      <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} />
     </div>
   );
 }
