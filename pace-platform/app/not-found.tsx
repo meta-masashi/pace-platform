@@ -1,6 +1,36 @@
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/server';
 
-export default function NotFound() {
+export default async function NotFound() {
+  // 認証状態に応じてリダイレクト先を決定
+  let href = '/auth/login';
+  let label = 'ログインに戻る';
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const loginContext = user.user_metadata?.login_context;
+      const detectedRoles = (user.user_metadata?.detected_roles ?? []) as string[];
+
+      if (loginContext === 'platform_admin' || detectedRoles.includes('platform_admin')) {
+        href = '/platform-admin';
+        label = '管理ダッシュボードに戻る';
+      } else if (loginContext === 'athlete' || detectedRoles.includes('athlete')) {
+        href = '/home';
+        label = 'ホームに戻る';
+      } else if (loginContext === 'staff' || detectedRoles.includes('staff')) {
+        href = '/dashboard';
+        label = 'ダッシュボードに戻る';
+      }
+    }
+  } catch {
+    // 認証チェック失敗時はログインへフォールバック
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <div className="text-center">
@@ -21,7 +51,7 @@ export default function NotFound() {
 
         <div className="mt-8">
           <Link
-            href="/dashboard"
+            href={href}
             className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
           >
             <svg
@@ -36,7 +66,7 @@ export default function NotFound() {
               <path d="M19 12H5" />
               <polyline points="12 19 5 12 12 5" />
             </svg>
-            ダッシュボードに戻る
+            {label}
           </Link>
         </div>
       </div>
