@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { BioSwipeWrapper } from './_components/bio-swipe-wrapper';
+import { SimpleCheckin } from './_components/simple-checkin';
 
 export default function CheckinPage() {
   const [athleteId, setAthleteId] = useState('');
@@ -55,5 +55,5 @@ export default function CheckinPage() {
     );
   }
 
-  return <BioSwipeWrapper athleteId={athleteId} />;
+  return <SimpleCheckin athleteId={athleteId} />;
 }
