@@ -148,7 +148,8 @@ COMMENT ON FUNCTION get_athletes_with_sufficient_data IS
 -- ─────────────────────────────────────────────────────────────────────────────
 -- DBN 疲労アラート VIEW: AT/PT が確認すべき高疲労予測一覧
 -- ─────────────────────────────────────────────────────────────────────────────
-CREATE OR REPLACE VIEW v_active_fatigue_alerts AS
+DROP VIEW IF EXISTS v_active_fatigue_alerts;
+CREATE VIEW v_active_fatigue_alerts AS
 SELECT
   fa.id,
   fa.athlete_id,
