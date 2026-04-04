@@ -20,13 +20,18 @@ jobs:
         with:
           version: latest
 
-      - name: Push DB migrations
-        # SUPABASE_DB_URL に完全な接続URLを格納する方式
-        # 例: postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
-        # または pooler: postgresql://postgres.[ref]:[password]@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres
-        run: supabase db push --db-url "$SUPABASE_DB_URL"
+      - name: Link Supabase project
+        run: |
+          REF=$(printf '%s' "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
+          supabase link --project-ref "$REF"
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Push DB migrations
+        run: supabase db push --include-all
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
   # ── 2. フロントエンド デプロイ ──────────────────────────────────────────
   deploy-frontend:
