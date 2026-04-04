@@ -1,30 +1,43 @@
 'use client';
 
-import { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthCard } from '@/components/auth/auth-card';
-import { MagicLinkForm } from '@/components/auth/magic-link-form';
-import { OAuthButtons } from '@/components/auth/oauth-buttons';
-import {
-  signInWithMagicLink,
-  signInWithGoogle,
-} from '@/lib/supabase/auth-helpers';
+import { signInWithPassword } from '@/lib/supabase/auth-helpers';
 
 // ---------------------------------------------------------------------------
-// 管理者ログインページ（Slate/Dark テーマ）
+// 管理者ログインページ（Email + Password のみ）
 // ---------------------------------------------------------------------------
 
 function AdminLoginContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const errorParam = searchParams.get('error');
 
-  async function handleMagicLink(email: string) {
-    return signInWithMagicLink(email, 'admin');
-  }
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function handleGoogle() {
-    await signInWithGoogle('admin');
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const result = await signInWithPassword(email, password);
+      if (!result.success) {
+        setError(result.error ?? 'ログインに失敗しました。');
+        setLoading(false);
+        return;
+      }
+      // パスワード認証はセッションが即座に確立される → 直接リダイレクト
+      router.push('/platform-admin');
+    } catch {
+      setError('ログイン中にエラーが発生しました。');
+      setLoading(false);
+    }
   }
 
   return (
@@ -52,25 +65,55 @@ function AdminLoginContent() {
           </div>
         )}
 
-        {/* Magic Link フォーム */}
-        <MagicLinkForm
-          variant="admin"
-          onSubmit={handleMagicLink}
-          buttonLabel="ログインリンクを送信"
-        />
-
-        {/* 区切り線 */}
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-700" />
+        {/* フォームエラー */}
+        {error && (
+          <div className="rounded-md border border-red-400/30 bg-red-900/20 p-3 text-sm text-red-300">
+            {error}
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-slate-900 px-3 text-slate-500">または</span>
-          </div>
-        </div>
+        )}
 
-        {/* Google OAuth */}
-        <OAuthButtons variant="admin" onGoogleLogin={handleGoogle} />
+        {/* Email + Password フォーム */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="admin-email" className="block text-sm font-medium text-slate-300 mb-1">
+              メールアドレス
+            </label>
+            <input
+              id="admin-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@example.com"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="admin-password" className="block text-sm font-medium text-slate-300 mb-1">
+              パスワード
+            </label>
+            <input
+              id="admin-password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="パスワードを入力"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              disabled={loading}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || !email || !password}
+            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? 'ログイン中...' : 'ログイン'}
+          </button>
+        </form>
 
         {/* 管理者専用注記 */}
         <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">

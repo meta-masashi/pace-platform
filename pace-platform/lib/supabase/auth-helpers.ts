@@ -80,6 +80,34 @@ export async function signInWithGoogle(
 }
 
 // ---------------------------------------------------------------------------
+// Email + Password 認証
+// ---------------------------------------------------------------------------
+
+/**
+ * メールアドレスとパスワードでサインインする。
+ */
+export async function signInWithPassword(
+  email: string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = getBrowserClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch {
+    return { success: false, error: "ログイン中にエラーが発生しました。" };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // サインアウト
 // ---------------------------------------------------------------------------
 
