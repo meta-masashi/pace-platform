@@ -114,8 +114,10 @@ END $$;
 DO $$ BEGIN
   -- The enterprise admin RLS policies remain functional but the management UI
   -- has been removed. Document this for future reference.
-  COMMENT ON FUNCTION is_enterprise_admin() IS
-    '[PARTIALLY DEPRECATED 2026-03-25] Enterprise admin check function. '
-    'Enterprise management UI removed per implementation-change-directive v3.2. '
-    'Function retained for RLS policies and Stripe billing compatibility.';
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'is_enterprise_admin') THEN
+    COMMENT ON FUNCTION is_enterprise_admin() IS
+      '[PARTIALLY DEPRECATED 2026-03-25] Enterprise admin check function. '
+      'Enterprise management UI removed per implementation-change-directive v3.2. '
+      'Function retained for RLS policies and Stripe billing compatibility.';
+  END IF;
 END $$;

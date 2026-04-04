@@ -35,11 +35,12 @@ CREATE POLICY fatigue_alerts_staff_access ON fatigue_alerts
   FOR ALL TO authenticated
   USING (athlete_id IN (
     SELECT a.id FROM athletes a
-    JOIN team_staff ts ON ts.team_id = a.team_id
-    WHERE ts.user_id = auth.uid()
+    JOIN staff s ON s.team_id = a.team_id
+    WHERE s.id = auth.uid()
   ));
 
 -- v_active_fatigue_alerts VIEW: acknowledged_by の名前付き
+DROP VIEW IF EXISTS v_active_fatigue_alerts;
 CREATE OR REPLACE VIEW v_active_fatigue_alerts AS
 SELECT
   fa.id,

@@ -157,7 +157,8 @@ ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
 -- 自組織のサブスクリプションのみ参照可能
 -- NOTE: staff テーブルの主キー id = Supabase Auth uid であるため
 --       user_id ではなく id = auth.uid() を使用する（002_staff_athletes.sql 準拠）
-CREATE POLICY IF NOT EXISTS "subscriptions_select_own_org"
+DROP POLICY IF EXISTS "subscriptions_select_own_org" ON public.subscriptions;
+CREATE POLICY "subscriptions_select_own_org"
   ON public.subscriptions
   FOR SELECT
   USING (
@@ -169,7 +170,8 @@ ALTER TABLE public.stripe_events ENABLE ROW LEVEL SECURITY;
 
 -- Service Role（Webhook ハンドラー）のみ書き込み可能
 -- 一般ユーザーは参照・更新不可
-CREATE POLICY IF NOT EXISTS "stripe_events_service_role_only"
+DROP POLICY IF EXISTS "stripe_events_service_role_only" ON public.stripe_events;
+CREATE POLICY "stripe_events_service_role_only"
   ON public.stripe_events
   FOR ALL
   USING (false)  -- デフォルト拒否（Service Role は RLS をバイパス）
@@ -179,9 +181,8 @@ CREATE POLICY IF NOT EXISTS "stripe_events_service_role_only"
 ALTER TABLE public.dunning_schedules ENABLE ROW LEVEL SECURITY;
 
 -- 自組織のみ参照可能（master ロールのみ閲覧許可）
--- NOTE: staff テーブルの主キー id = Supabase Auth uid であるため
---       user_id ではなく get_my_org_id() ヘルパーを使用する（008_rls_policies.sql 準拠）
-CREATE POLICY IF NOT EXISTS "dunning_schedules_select_own_org"
+DROP POLICY IF EXISTS "dunning_schedules_select_own_org" ON public.dunning_schedules;
+CREATE POLICY "dunning_schedules_select_own_org"
   ON public.dunning_schedules
   FOR SELECT
   USING (

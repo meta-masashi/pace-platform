@@ -170,7 +170,7 @@ export async function generateAndSendMorningNotifications(
   );
 
   // --- 5. チャネル別送信 ---
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://pace.hachi.co.jp";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hachi-riskon.com";
   const agendaUrl = `${siteUrl}/dashboard?date=${date}`;
 
   for (const pref of preferences as NotificationPreference[]) {

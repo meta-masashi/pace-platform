@@ -11,16 +11,16 @@ ALTER TABLE organizations
 UPDATE organizations o
 SET sport = sub.athlete_sport
 FROM (
-  SELECT DISTINCT ON (a.organization_id)
-    a.organization_id,
+  SELECT DISTINCT ON (a.org_id)
+    a.org_id,
     a.sport AS athlete_sport
   FROM athletes a
   WHERE a.sport IS NOT NULL
     AND a.sport != ''
     AND a.sport IN ('soccer', 'baseball', 'basketball', 'rugby', 'other')
-  ORDER BY a.organization_id, a.created_at ASC
+  ORDER BY a.org_id, a.created_at ASC
 ) sub
-WHERE o.id = sub.organization_id
+WHERE o.id = sub.org_id
   AND o.sport = 'other';
 
 -- Add comment for documentation

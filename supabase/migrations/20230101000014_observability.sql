@@ -96,13 +96,15 @@ CREATE INDEX IF NOT EXISTS idx_api_traces_duration_ms
 ALTER TABLE public.web_vitals_log ENABLE ROW LEVEL SECURITY;
 
 -- 書き込みは認証済みユーザー全員可（匿名含む: anon ロールも INSERT を許可）
-CREATE POLICY IF NOT EXISTS "web_vitals_log_insert_all"
+DROP POLICY IF EXISTS "web_vitals_log_insert_all" ON public.web_vitals_log;
+CREATE POLICY "web_vitals_log_insert_all"
   ON public.web_vitals_log
   FOR INSERT
   WITH CHECK (true);
 
 -- 読み取りは master ロールのみ
-CREATE POLICY IF NOT EXISTS "web_vitals_log_select_master"
+DROP POLICY IF EXISTS "web_vitals_log_select_master" ON public.web_vitals_log;
+CREATE POLICY "web_vitals_log_select_master"
   ON public.web_vitals_log
   FOR SELECT
   USING (
@@ -113,13 +115,15 @@ CREATE POLICY IF NOT EXISTS "web_vitals_log_select_master"
 ALTER TABLE public.api_traces ENABLE ROW LEVEL SECURITY;
 
 -- 書き込みは全員可（Service Role によるバックエンドからの INSERT を許可）
-CREATE POLICY IF NOT EXISTS "api_traces_insert_all"
+DROP POLICY IF EXISTS "api_traces_insert_all" ON public.api_traces;
+CREATE POLICY "api_traces_insert_all"
   ON public.api_traces
   FOR INSERT
   WITH CHECK (true);
 
 -- 読み取りは master ロールのみ
-CREATE POLICY IF NOT EXISTS "api_traces_select_master"
+DROP POLICY IF EXISTS "api_traces_select_master" ON public.api_traces;
+CREATE POLICY "api_traces_select_master"
   ON public.api_traces
   FOR SELECT
   USING (

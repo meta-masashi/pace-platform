@@ -62,7 +62,7 @@ serve(async (req: Request) => {
 
     // --- 各チームの通知を実行 ---
     const date = new Date().toISOString().split("T")[0]!;
-    const siteUrl = Deno.env.get("SITE_URL") ?? "https://pace.hachi.co.jp";
+    const siteUrl = Deno.env.get("SITE_URL") ?? "https://hachi-riskon.com";
     const results: Array<{
       teamId: string;
       teamName: string;
@@ -142,7 +142,7 @@ serve(async (req: Request) => {
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({
-                    from: Deno.env.get("RESEND_FROM_EMAIL") ?? "PACE <noreply@pace.hachi.co.jp>",
+                    from: Deno.env.get("RESEND_FROM_EMAIL") ?? "PACE <noreply@hachi-riskon.com>",
                     to: [to],
                     subject: `【PACE】本日のアジェンダが生成されました（${date}）`,
                     html: buildEmailHtml(teamName, date, alertCount, criticalCount, agendaUrl),

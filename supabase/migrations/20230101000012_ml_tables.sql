@@ -85,7 +85,50 @@ CREATE POLICY "evaluation_runs_master_only"
   USING (public.is_master());
 
 -- ========================================
--- 3. document_embeddings への不足カラム追加
+-- 3a. document_sources テーブル（document_embeddings.document_id の参照先）
+--    ingest.ts が document_id を参照するため、先に作成する必要がある
+-- ========================================
+CREATE TABLE IF NOT EXISTS public.document_sources (
+  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  org_id      UUID        REFERENCES public.organizations(id) ON DELETE CASCADE,
+  title       TEXT        NOT NULL,
+  description TEXT,
+  source_url  TEXT,
+  file_type   TEXT        NOT NULL DEFAULT 'text'
+                CHECK (file_type IN ('text', 'pdf', 'markdown')),
+  category    TEXT,
+  metadata    JSONB       NOT NULL DEFAULT '{}',
+  created_by  UUID        REFERENCES public.staff(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at  TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+DROP TRIGGER IF EXISTS handle_updated_at ON public.document_sources;
+CREATE TRIGGER handle_updated_at
+  BEFORE UPDATE ON public.document_sources
+  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_document_sources_org
+  ON public.document_sources (org_id)
+  WHERE org_id IS NOT NULL;
+
+ALTER TABLE public.document_sources ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "document_sources_select" ON public.document_sources;
+CREATE POLICY "document_sources_select"
+  ON public.document_sources FOR SELECT
+  USING (
+    org_id IS NULL
+    OR org_id = public.get_my_org_id()
+  );
+
+DROP POLICY IF EXISTS "document_sources_write_master" ON public.document_sources;
+CREATE POLICY "document_sources_write_master"
+  ON public.document_sources FOR ALL
+  USING (public.is_master());
+
+-- ========================================
+-- 3b. document_embeddings への不足カラム追加
 --    用途: rag/ingest.ts が使用する document_id / chunk_index / category カラム
 --    注意: カラムが既に存在する場合は DO $$ EXCEPTION で安全にスキップ
 -- ========================================
@@ -218,44 +261,5 @@ CREATE POLICY "cv_analysis_jobs_staff_select"
   );
 
 -- ========================================
--- 5. document_sources テーブル（document_embeddings.document_id の参照先）
---    ingest.ts が document_id を参照するため、テーブルが未作成の場合は作成
+-- 5. document_sources テーブル（セクション 3a で作成済み）
 -- ========================================
-CREATE TABLE IF NOT EXISTS public.document_sources (
-  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  org_id      UUID        REFERENCES public.organizations(id) ON DELETE CASCADE,
-  title       TEXT        NOT NULL,
-  description TEXT,
-  source_url  TEXT,
-  file_type   TEXT        NOT NULL DEFAULT 'text'
-                CHECK (file_type IN ('text', 'pdf', 'markdown')),
-  category    TEXT,
-  metadata    JSONB       NOT NULL DEFAULT '{}',
-  created_by  UUID        REFERENCES public.staff(id) ON DELETE SET NULL,
-  created_at  TIMESTAMPTZ DEFAULT now() NOT NULL,
-  updated_at  TIMESTAMPTZ DEFAULT now() NOT NULL
-);
-
-DROP TRIGGER IF EXISTS handle_updated_at ON public.document_sources;
-CREATE TRIGGER handle_updated_at
-  BEFORE UPDATE ON public.document_sources
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
-CREATE INDEX IF NOT EXISTS idx_document_sources_org
-  ON public.document_sources (org_id)
-  WHERE org_id IS NOT NULL;
-
-ALTER TABLE public.document_sources ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "document_sources_select" ON public.document_sources;
-CREATE POLICY "document_sources_select"
-  ON public.document_sources FOR SELECT
-  USING (
-    org_id IS NULL
-    OR org_id = public.get_my_org_id()
-  );
-
-DROP POLICY IF EXISTS "document_sources_write_master" ON public.document_sources;
-CREATE POLICY "document_sources_write_master"
-  ON public.document_sources FOR ALL
-  USING (public.is_master());

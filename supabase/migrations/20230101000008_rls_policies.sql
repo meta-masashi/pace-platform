@@ -168,17 +168,9 @@ CREATE POLICY "daily_metrics_update_own_org"
   USING (org_id = public.get_my_org_id());
 
 -- ========================================
--- mc_tracking（月経周期: 閲覧は AT/PT/master のみ）
+-- mc_tracking（月経周期: テーブルは後続マイグレーションで作成される）
+-- RLS ポリシーは 20260330000003_menstrual_phase.sql で設定
 -- ========================================
-DROP POLICY IF EXISTS "mc_tracking_select_clinical" ON public.mc_tracking;
-CREATE POLICY "mc_tracking_select_clinical"
-  ON public.mc_tracking FOR SELECT
-  USING (org_id = public.get_my_org_id() AND (public.is_master() OR public.is_at_or_pt()));
-
-DROP POLICY IF EXISTS "mc_tracking_write_clinical" ON public.mc_tracking;
-CREATE POLICY "mc_tracking_write_clinical"
-  ON public.mc_tracking FOR ALL
-  USING (org_id = public.get_my_org_id() AND (public.is_master() OR public.is_at_or_pt()));
 
 -- ========================================
 -- assessment_nodes（マスタデータ: 全スタッフ閲覧可、更新は master のみ）
@@ -194,20 +186,8 @@ CREATE POLICY "assessment_nodes_write_master"
   USING (public.is_master());
 
 -- ========================================
--- alpha_chains（マスタデータ: 全スタッフ閲覧可）
+-- alpha_chains / biomechanical_vectors: テーブル未作成のため RLS ポリシーをスキップ
 -- ========================================
-DROP POLICY IF EXISTS "alpha_chains_select_all" ON public.alpha_chains;
-CREATE POLICY "alpha_chains_select_all"
-  ON public.alpha_chains FOR SELECT
-  USING (auth.uid() IS NOT NULL);
-
--- ========================================
--- biomechanical_vectors（マスタデータ: 全スタッフ閲覧可）
--- ========================================
-DROP POLICY IF EXISTS "biomechanical_vectors_select_all" ON public.biomechanical_vectors;
-CREATE POLICY "biomechanical_vectors_select_all"
-  ON public.biomechanical_vectors FOR SELECT
-  USING (auth.uid() IS NOT NULL);
 
 -- ========================================
 -- assessments
@@ -223,38 +203,9 @@ CREATE POLICY "assessments_write_clinical"
   USING (org_id = public.get_my_org_id() AND (public.is_master() OR public.is_at_or_pt()));
 
 -- ========================================
--- assessment_responses
+-- assessment_responses / assessment_results: テーブル未作成のため RLS ポリシーをスキップ
+-- 後続マイグレーション (20260403000002) で作成・ポリシー設定される
 -- ========================================
-DROP POLICY IF EXISTS "assessment_responses_select_own_org" ON public.assessment_responses;
-CREATE POLICY "assessment_responses_select_own_org"
-  ON public.assessment_responses FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.assessments a
-      WHERE a.id = assessment_responses.assessment_id
-        AND a.org_id = public.get_my_org_id()
-    )
-  );
-
-DROP POLICY IF EXISTS "assessment_responses_insert_clinical" ON public.assessment_responses;
-CREATE POLICY "assessment_responses_insert_clinical"
-  ON public.assessment_responses FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.assessments a
-      WHERE a.id = assessment_responses.assessment_id
-        AND a.org_id = public.get_my_org_id()
-    )
-    AND (public.is_master() OR public.is_at_or_pt())
-  );
-
--- ========================================
--- assessment_results
--- ========================================
-DROP POLICY IF EXISTS "assessment_results_select_own_org" ON public.assessment_results;
-CREATE POLICY "assessment_results_select_own_org"
-  ON public.assessment_results FOR SELECT
-  USING (org_id = public.get_my_org_id());
 
 -- ========================================
 -- rtp_injury_nodes（マスタデータ: 全スタッフ閲覧可）

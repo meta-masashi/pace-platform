@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS athletes (
   name          TEXT          NOT NULL,
   position      TEXT          NOT NULL DEFAULT '',
   number        INT,
+  sport         TEXT          NOT NULL DEFAULT 'other',
   age           INT,
   sex           sex_type,
   profile_photo TEXT,
@@ -176,6 +177,8 @@ CREATE INDEX IF NOT EXISTS idx_athletes_status  ON athletes(status);
 CREATE TABLE IF NOT EXISTS daily_metrics (
   id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   athlete_id           UUID         NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  org_id               UUID         REFERENCES organizations(id),
+  team_id              UUID         REFERENCES teams(id),
   date                 DATE         NOT NULL DEFAULT CURRENT_DATE,
   nrs                  NUMERIC(4,1) NOT NULL DEFAULT 0 CHECK (nrs >= 0 AND nrs <= 10),
   hrv                  NUMERIC(6,2) NOT NULL CHECK (hrv > 0),
@@ -239,6 +242,7 @@ CREATE TABLE IF NOT EXISTS assessments (
   id                UUID                    PRIMARY KEY DEFAULT gen_random_uuid(),
   athlete_id        UUID                    NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
   staff_id          UUID                    NOT NULL REFERENCES staff(id)    ON DELETE RESTRICT,
+  org_id            UUID                    NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   assessment_type   assessment_type         NOT NULL,
   status            assessment_status_type  NOT NULL DEFAULT 'in_progress',
   responses         JSONB                   NOT NULL DEFAULT '[]'::jsonb,
@@ -304,6 +308,7 @@ CREATE INDEX IF NOT EXISTS idx_athlete_locks_active     ON athlete_locks(athlete
 CREATE TABLE IF NOT EXISTS rehab_programs (
   id                 UUID               PRIMARY KEY DEFAULT gen_random_uuid(),
   athlete_id         UUID               NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  org_id             UUID               NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   diagnosis_code     TEXT               NOT NULL DEFAULT '',
   diagnosis_label    TEXT               NOT NULL,
   current_phase      INT                NOT NULL DEFAULT 1 CHECK (current_phase BETWEEN 1 AND 4),
@@ -375,6 +380,7 @@ CREATE TABLE IF NOT EXISTS workouts (
   id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   athlete_id           UUID         REFERENCES athletes(id) ON DELETE CASCADE,
   team_id              UUID         REFERENCES teams(id)    ON DELETE CASCADE,
+  org_id               UUID         NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   type                 workout_type NOT NULL,
   generated_by_ai      BOOLEAN      NOT NULL DEFAULT false,
   generated_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -401,6 +407,7 @@ CREATE TABLE IF NOT EXISTS soap_notes (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   athlete_id  UUID        NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
   staff_id    UUID        NOT NULL REFERENCES staff(id)    ON DELETE RESTRICT,
+  org_id      UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   s_text      TEXT        NOT NULL DEFAULT '',
   o_text      TEXT        NOT NULL DEFAULT '',
   a_text      TEXT        NOT NULL DEFAULT '',
@@ -472,6 +479,7 @@ CREATE INDEX IF NOT EXISTS idx_attendance_status     ON attendance_records(statu
 CREATE TABLE IF NOT EXISTS channels (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id      UUID        NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  org_id       UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name         TEXT        NOT NULL,
   member_count INT         NOT NULL DEFAULT 0,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -489,6 +497,7 @@ CREATE TABLE IF NOT EXISTS messages (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   channel_id      UUID        NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
   staff_id        UUID        NOT NULL REFERENCES staff(id)    ON DELETE RESTRICT,
+  org_id          UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   content         TEXT        NOT NULL,
   linked_soap_id  UUID        REFERENCES soap_notes(id) ON DELETE SET NULL,
   cds_disclaimer  BOOLEAN     NOT NULL DEFAULT false,
@@ -504,33 +513,30 @@ CREATE INDEX IF NOT EXISTS idx_messages_staff_id    ON messages(staff_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at  ON messages(channel_id, created_at ASC);
 
 -- =============================================================
--- TABLE: audit_logs
+-- TABLE: audit_logs（HIPAA準拠: 全操作を記録）
+-- 注意: 007_community_audit.sql と統合済みのスキーマ
 -- =============================================================
+-- 旧スキーマが存在する場合は削除（初回リセット対応）
+DROP TABLE IF EXISTS audit_logs CASCADE;
+
 CREATE TABLE IF NOT EXISTS audit_logs (
-  id               UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
-  timestamp        TIMESTAMPTZ       NOT NULL DEFAULT now(),
-  staff_id         UUID              NOT NULL REFERENCES staff(id) ON DELETE RESTRICT,
-  staff_name       TEXT              NOT NULL DEFAULT '',
-  staff_role       role_type         NOT NULL,
-  action_type      audit_action_type NOT NULL,
-  athlete_id       UUID              REFERENCES athletes(id) ON DELETE SET NULL,
-  athlete_name     TEXT,
-  ai_assisted      BOOLEAN           NOT NULL DEFAULT false,
-  disclaimer_shown BOOLEAN           NOT NULL DEFAULT false,
-  cds_version      TEXT              NOT NULL DEFAULT '',
-  session_id       TEXT,
-  notes            TEXT,
-  created_at       TIMESTAMPTZ       NOT NULL DEFAULT now()
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  org_id        UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  staff_id      UUID REFERENCES staff(id) ON DELETE SET NULL,
+  action        TEXT NOT NULL,
+  target_type   TEXT NOT NULL,
+  target_id     UUID,
+  details_json  JSONB DEFAULT '{}',
+  ip_address    INET,
+  user_agent    TEXT,
+  timestamp     TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
-COMMENT ON TABLE audit_logs IS 'Immutable CDS audit trail for all AI-assisted clinical decisions.';
-COMMENT ON COLUMN audit_logs.disclaimer_shown IS 'True if the user acknowledged the AI disclaimer';
-COMMENT ON COLUMN audit_logs.cds_version      IS 'PACE-CDS version string for traceability';
+COMMENT ON TABLE audit_logs IS 'Immutable audit trail for all operations (HIPAA compliant).';
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_staff_id   ON audit_logs(staff_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_athlete_id ON audit_logs(athlete_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp  ON audit_logs(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action     ON audit_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action     ON audit_logs(action);
 
 -- =============================================================
 -- TABLE: escalation_records
@@ -643,6 +649,15 @@ COMMENT ON VIEW triage_list IS 'Computed triage view: athletes sorted by priorit
 -- UPDATED_AT trigger function
 -- =============================================================
 CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- handle_updated_at は set_updated_at のエイリアス（後続マイグレーション互換）
+CREATE OR REPLACE FUNCTION handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = now();

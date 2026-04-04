@@ -51,12 +51,12 @@ ALTER TABLE public.ai_plan_jobs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "ai_plan_jobs_org_read" ON public.ai_plan_jobs
   FOR SELECT USING (
-    org_id IN (SELECT org_id FROM public.staff WHERE user_id = auth.uid())
+    org_id IN (SELECT org_id FROM public.staff WHERE id = auth.uid())
   );
 
 CREATE POLICY "ai_plan_jobs_org_insert" ON public.ai_plan_jobs
   FOR INSERT WITH CHECK (
-    org_id IN (SELECT org_id FROM public.staff WHERE user_id = auth.uid())
+    org_id IN (SELECT org_id FROM public.staff WHERE id = auth.uid())
   );
 
 -- -------------------------------------------------------------------------
@@ -111,17 +111,17 @@ ALTER TABLE public.weekly_plans ENABLE ROW LEVEL SECURITY;
 -- スタッフポリシー
 CREATE POLICY "weekly_plans_staff_read" ON public.weekly_plans
   FOR SELECT USING (
-    org_id IN (SELECT org_id FROM public.staff WHERE user_id = auth.uid())
+    org_id IN (SELECT org_id FROM public.staff WHERE id = auth.uid())
   );
 
 CREATE POLICY "weekly_plans_staff_write" ON public.weekly_plans
   FOR INSERT WITH CHECK (
-    org_id IN (SELECT org_id FROM public.staff WHERE user_id = auth.uid())
+    org_id IN (SELECT org_id FROM public.staff WHERE id = auth.uid())
   );
 
 CREATE POLICY "weekly_plans_staff_update" ON public.weekly_plans
   FOR UPDATE USING (
-    org_id IN (SELECT org_id FROM public.staff WHERE user_id = auth.uid())
+    org_id IN (SELECT org_id FROM public.staff WHERE id = auth.uid())
   );
 
 -- 選手ポリシー: approved の自分の計画のみ
@@ -130,9 +130,9 @@ CREATE POLICY "weekly_plans_athlete_read" ON public.weekly_plans
     status = 'approved'
     AND (
       plan_type = 'team'
-      OR athlete_id IN (SELECT id FROM public.athletes WHERE user_id = auth.uid())
+      OR athlete_id IN (SELECT id FROM public.athletes WHERE id = auth.uid())
     )
-    AND org_id IN (SELECT org_id FROM public.athletes WHERE user_id = auth.uid())
+    AND org_id IN (SELECT org_id FROM public.athletes WHERE id = auth.uid())
   );
 
 -- -------------------------------------------------------------------------
