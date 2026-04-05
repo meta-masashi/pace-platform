@@ -1,32 +1,63 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AuthCard } from '@/components/auth/auth-card';
-import { MagicLinkForm } from '@/components/auth/magic-link-form';
-import { OAuthButtons } from '@/components/auth/oauth-buttons';
 import { RoleMismatchBanner } from '@/components/auth/role-mismatch-banner';
-import {
-  signInWithMagicLink,
-  signInWithGoogle,
-} from '@/lib/supabase/auth-helpers';
 
 // ---------------------------------------------------------------------------
-// 選手ログインページ（モバイルPWA向け）
+// 選手ログインページ（モバイルPWA向け・メール+パスワード）
 // ---------------------------------------------------------------------------
 
 function AthleteLoginContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const showStaffBanner = searchParams.get('from') === 'staff';
   const errorParam = searchParams.get('error');
 
-  async function handleMagicLink(email: string) {
-    return signInWithMagicLink(email, 'athlete');
-  }
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(
+    errorParam ? decodeURIComponent(errorParam) : null,
+  );
+  const [loading, setLoading] = useState(false);
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [locked, setLocked] = useState<{ remainingMinutes?: number } | null>(null);
 
-  async function handleGoogle() {
-    await signInWithGoogle('athlete');
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setRemainingAttempts(null);
+    setLocked(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? '認証エラーが発生しました。');
+        if (data.locked) {
+          setLocked({ remainingMinutes: data.remainingMinutes });
+        } else if (data.remainingAttempts !== undefined) {
+          setRemainingAttempts(data.remainingAttempts);
+        }
+        return;
+      }
+
+      router.push(data.redirectTo ?? '/home');
+      router.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`ログインエラー: ${msg}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -55,32 +86,79 @@ function AthleteLoginContent() {
           />
         )}
 
-        {/* URLパラメータエラー */}
-        {errorParam && (
-          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {decodeURIComponent(errorParam)}
+        {/* メール + パスワードフォーム */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label
+              htmlFor="athlete-email"
+              className="block text-sm font-medium text-gray-700"
+            >
+              メールアドレス
+            </label>
+            <input
+              id="athlete-email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              placeholder="user@example.com"
+            />
           </div>
-        )}
 
-        {/* Magic Link フォーム（推奨） */}
-        <MagicLinkForm
-          variant="default"
-          onSubmit={handleMagicLink}
-          buttonLabel="ログインリンクを送信"
-        />
-
-        {/* 区切り線 */}
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200" />
+          <div>
+            <label
+              htmlFor="athlete-password"
+              className="block text-sm font-medium text-gray-700"
+            >
+              パスワード
+            </label>
+            <input
+              id="athlete-password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              placeholder="パスワードを入力"
+            />
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-white px-3 text-gray-400">または</span>
-          </div>
-        </div>
 
-        {/* Google OAuth */}
-        <OAuthButtons variant="default" onGoogleLogin={handleGoogle} />
+          {/* アカウントロック警告 */}
+          {locked && (
+            <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+              アカウントが一時的にロックされています。
+              {locked.remainingMinutes && ` 約${locked.remainingMinutes}分後に再度お試しください。`}
+            </div>
+          )}
+
+          {/* 通常エラー */}
+          {error && !locked && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {/* 残り試行回数 */}
+          {remainingAttempts !== null && remainingAttempts <= 3 && !locked && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+              残り試行回数: <span className="font-bold">{remainingAttempts}回</span>
+              {remainingAttempts <= 1 && '（次回失敗でアカウントがロックされます）'}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || locked !== null}
+            className="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? 'ログイン中...' : locked ? 'アカウントロック中' : 'ログイン'}
+          </button>
+        </form>
 
         {/* 新規登録セクション */}
         <div className="border-t border-gray-100 pt-4">
