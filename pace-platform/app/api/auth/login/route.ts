@@ -322,13 +322,18 @@ export async function POST(request: NextRequest) {
 
   // ロール判定（staff を優先。staff + athlete の兼任ユーザーはスタッフ画面へ）
   // staff テーブルには user_id カラムが無いため email でリンク
+  //
+  // service client (RLS バイパス) を使う理由:
+  //   athletes テーブルの RLS ポリシーは staff の org_id 経由で判定されるため、
+  //   アスリート本人が認証クライアントで自分の行を SELECT できない。
+  //   認証情報は signInWithPassword で検証済みなので、役割 lookup のみ service で実施。
   const [{ data: staff }, { data: athlete }] = await Promise.all([
-    supabase
+    service
       .from('staff')
       .select('id')
       .eq('email', authData.user.email ?? '')
       .maybeSingle(),
-    supabase
+    service
       .from('athletes')
       .select('id')
       .eq('user_id', authData.user.id)
