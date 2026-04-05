@@ -32,9 +32,12 @@ export type Feature =
   | 'feature_enterprise'         // エンタープライズ専用機能
   | 'feature_multi_team'         // 複数チーム管理
   | 'feature_condition_score'    // コンディションスコア表示
+  | 'feature_condition_score_hrv'// HRV 統合型コンディションスコア（Pro 以上）
+  | 'feature_insight_card'       // インサイトカード（Pro 以上）
   | 'feature_calendar_sync'      // カレンダー同期
   | 'feature_ai_weekly_plan'     // AI週間プラン生成
   | 'feature_risk_avoidance_report' // リスク回避レポート
+  | 'feature_acwr_trend_chart'   // ACWR トレンドチャート（Pro 以上）
 
 // プラン別に許可される機能 (MASTER-SPEC v6.2)
 export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
@@ -56,9 +59,12 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_rag_pipeline',
     'feature_gemini_ai',
     'feature_condition_score',
+    'feature_condition_score_hrv',
+    'feature_insight_card',
     'feature_calendar_sync',
     'feature_ai_weekly_plan',
     'feature_risk_avoidance_report',
+    'feature_acwr_trend_chart',
   ],
   pro_cv: [
     'feature_basic_assessment',
@@ -71,9 +77,12 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_rag_pipeline',
     'feature_gemini_ai',
     'feature_condition_score',
+    'feature_condition_score_hrv',
+    'feature_insight_card',
     'feature_calendar_sync',
     'feature_ai_weekly_plan',
     'feature_risk_avoidance_report',
+    'feature_acwr_trend_chart',
   ],
   enterprise: [
     'feature_basic_assessment',
@@ -89,9 +98,12 @@ export const PLAN_FEATURES: Record<PlanId, Feature[]> = {
     'feature_enterprise',
     'feature_multi_team',
     'feature_condition_score',
+    'feature_condition_score_hrv',
+    'feature_insight_card',
     'feature_calendar_sync',
     'feature_ai_weekly_plan',
     'feature_risk_avoidance_report',
+    'feature_acwr_trend_chart',
   ],
 }
 
@@ -333,9 +345,12 @@ function getUpgradeHint(currentPlan: PlanId, feature: Feature): string {
     feature_cv_analysis: 'pro_cv',        // Pro + CV Addon 以上
     feature_rag_pipeline: 'pro',
     feature_gemini_ai: 'pro',
+    feature_condition_score_hrv: 'pro',
+    feature_insight_card: 'pro',
     feature_calendar_sync: 'pro',
     feature_ai_weekly_plan: 'pro',
     feature_risk_avoidance_report: 'pro',
+    feature_acwr_trend_chart: 'pro',
     feature_custom_bayes: 'enterprise',
     feature_enterprise: 'enterprise',
     feature_multi_team: 'enterprise',
