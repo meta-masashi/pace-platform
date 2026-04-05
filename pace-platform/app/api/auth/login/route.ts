@@ -320,14 +320,34 @@ export async function POST(request: NextRequest) {
     metadata: { userId: authData.user.id },
   })
 
-  // ロール判定
-  const { data: athlete } = await supabase
-    .from('athletes')
-    .select('id')
-    .eq('user_id', authData.user.id)
-    .maybeSingle()
+  // ロール判定（staff を優先。staff + athlete の兼任ユーザーはスタッフ画面へ）
+  // staff テーブルには user_id カラムが無いため email でリンク
+  const [{ data: staff }, { data: athlete }] = await Promise.all([
+    supabase
+      .from('staff')
+      .select('id')
+      .eq('email', authData.user.email ?? '')
+      .maybeSingle(),
+    supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', authData.user.id)
+      .maybeSingle(),
+  ])
 
-  const redirectTo = athlete ? '/home' : '/dashboard'
+  let redirectTo: string
+  let role: 'staff' | 'athlete'
+  if (staff) {
+    redirectTo = '/dashboard'
+    role = 'staff'
+  } else if (athlete) {
+    redirectTo = '/home'
+    role = 'athlete'
+  } else {
+    // どちらのロールも無い → staff ダッシュボードへ（最終的にプロファイル作成画面に誘導される想定）
+    redirectTo = '/dashboard'
+    role = 'staff'
+  }
 
   return NextResponse.json({
     success: true,
@@ -335,7 +355,7 @@ export async function POST(request: NextRequest) {
     user: {
       id: authData.user.id,
       email: authData.user.email,
-      role: athlete ? 'athlete' : 'staff',
+      role,
     },
   })
 }
