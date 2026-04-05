@@ -262,7 +262,8 @@ describe('Sprint 7.1: IDOR 防止 — locks', () => {
   });
 
   it('DELETE でロック対象選手の org_id を検証している', () => {
-    expect(content).toContain('lockAthlete');
+    // lock.athletes から org_id を抽出して staff.org_id と比較するパターン
+    expect(content).toMatch(/lock\.athletes|lockOrgId/);
     expect(content).toContain('このロックを削除する権限がありません');
   });
 });

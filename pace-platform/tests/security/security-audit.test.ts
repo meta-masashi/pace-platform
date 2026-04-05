@@ -72,13 +72,15 @@ describe('セキュリティ監査: API ルート認証', () => {
     it(`${relativePath} に認証チェックが含まれる`, () => {
       const content = readFileContent(routeFile)
 
-      // 認証チェックパターン: supabase.auth.getUser() またはAPIキー認証
+      // 認証チェックパターン: supabase.auth.getUser() / APIキー / platform_admin guard
       const hasAuthCheck =
         content.includes('auth.getUser') ||
         content.includes('getUser()') ||
         content.includes('auth.getSession') ||
         content.includes('Authorization') ||
-        content.includes('validateApiKey')
+        content.includes('validateApiKey') ||
+        content.includes('requirePlatformAdmin') ||
+        content.includes('requireStaff')
 
       expect(hasAuthCheck).toBe(true)
     })
@@ -86,10 +88,12 @@ describe('セキュリティ監査: API ルート認証', () => {
     it(`${relativePath} に 401 レスポンスが含まれる`, () => {
       const content = readFileContent(routeFile)
 
-      // 401 レスポンスパターン
+      // 401 レスポンスパターン（guard 経由の場合は guard 呼び出しで代替確認）
       const has401 =
         content.includes('401') ||
-        content.includes('認証が必要')
+        content.includes('認証が必要') ||
+        content.includes('requirePlatformAdmin') ||
+        content.includes('requireStaff')
 
       expect(has401).toBe(true)
     })
